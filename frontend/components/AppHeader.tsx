@@ -26,8 +26,8 @@ import {
   DeliveryParcel,
   Light,
   Pipelines,
-  Switcher as SwitcherIcon,
   ModelTuned,
+  Switcher as SwitcherIcon,
 } from "@carbon/icons-react";
 import { useTheme } from "@/hooks/useTheme";
 import styles from "./AppHeader.module.scss";
