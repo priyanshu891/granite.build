@@ -184,7 +184,9 @@ export function TuningsTable({
                               {cell.value}
                             </CarbonLink>
                           ) : cell.info.header === 'model' && (cell.value as string)?.startsWith('/') ? (
-                            <span title={cell.value as string}>{cell.value as string}</span>
+                            <span title={cell.value as string}>
+                              {(cell.value as string).split('/').slice(-2).join('/')}
+                            </span>
                           ) : cell.info.header === 'model' ? (
                             <a href={`https://huggingface.co/${cell.value}`} target="_blank" rel="noreferrer">
                               {cell.value}
