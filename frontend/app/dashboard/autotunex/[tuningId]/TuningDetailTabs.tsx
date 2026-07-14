@@ -7,6 +7,7 @@ import { getConfiguration } from '@/api/autotunex'
 import type { TuningJob } from '@/types'
 import { TuningLogViewer } from '@/components/TuningLogViewer'
 import { TrialsTable } from '@/components/TrialsTable'
+import { TuningResultsPanel } from '@/components/TuningResultsPanel'
 import { ConfigDisplay } from '../start-tuning/ConfigDisplay'
 
 function formatTime(seconds: number): string {
@@ -102,7 +103,7 @@ export function TuningDetailTabs({ job }: Props) {
             </TabPanel>
           )}
           <TabPanel>
-            {/* Results panel added in Task 9 */}
+            <TuningResultsPanel jobId={job.id} />
           </TabPanel>
         </TabPanels>
       </Tabs>
