@@ -1,0 +1,49 @@
+.sectionHeading {
+  background-color: var(--cds-layer-accent, #f4f4f4);
+  padding: 0.25rem 0.5rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.fieldGroup {
+  padding: 0.5rem 1rem 1rem;
+  flex: 0 1 160px;
+}
+
+.fieldLabelRow {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.fieldValue {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8125rem;
+}
+
+.tunerParamCard {
+  flex: 1 1 260px;
+  margin-bottom: 1rem;
+  background: var(--cds-layer-accent, #f1f1f1);
+  padding: 0.5rem 0;
+  border-radius: 4px;
+}
+
+.tunerParamRow {
+  padding: 0 1rem;
+}
+
+.section {
+  padding: 0 1rem 1rem;
+}
+
+.tooltipTrigger {
+  background: none;
+  border: none;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--cds-icon-secondary, #525252);
+}
