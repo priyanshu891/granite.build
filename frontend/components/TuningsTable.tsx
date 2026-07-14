@@ -61,10 +61,34 @@ function formatTime(seconds: number): string {
   return `${secs}s`
 }
 
-function totalTimeFor(job: TuningJob): string {
+function totalTimeSecondsFor(job: TuningJob): number {
   const start = new Date(job.created_at).getTime()
   const end = job.status === 'RUNNING' ? Date.now() : new Date(job.updated_at).getTime()
-  return formatTime(Math.floor((end - start) / 1000))
+  return Math.floor((end - start) / 1000)
+}
+
+function totalTimeFor(job: TuningJob): string {
+  return formatTime(totalTimeSecondsFor(job))
+}
+
+// Carbon's DataTable `sortRow` only receives the two cell *values* being
+// compared for the sorted column (not the full row), so `total_time`'s cell
+// value is kept as the raw numeric seconds for correct numeric sorting. The
+// human-formatted string used for display lives in `total_time_display` and
+// is looked up by row id at render time.
+const sortRow: NonNullable<React.ComponentProps<typeof DataTable>['sortRow']> = (
+  cellA,
+  cellB,
+  { key, sortDirection, sortStates, locale, compare }
+) => {
+  if (key === 'total_time') {
+    const a = typeof cellA === 'number' ? cellA : 0
+    const b = typeof cellB === 'number' ? cellB : 0
+    return sortDirection === sortStates.ASC ? a - b : b - a
+  }
+  // Replicate Carbon's own default sort for every other column so existing
+  // behavior on Experiment/Created on/Status/Model/etc. is unchanged.
+  return sortDirection === sortStates.ASC ? compare(cellA, cellB, locale) : compare(cellB, cellA, locale)
 }
 
 export function TuningsTable({
@@ -93,11 +117,13 @@ export function TuningsTable({
     model: j.model,
     config_name: j.config_name,
     dataset: j.dataset,
-    total_time: totalTimeFor(j),
+    total_time: totalTimeSecondsFor(j),
+    total_time_display: totalTimeFor(j),
   }))
+  const totalTimeDisplayById = new Map(rows.map((r) => [r.id, r.total_time_display]))
 
   return (
-    <DataTable rows={rows} headers={HEADERS} isSortable>
+    <DataTable rows={rows} headers={HEADERS} isSortable sortRow={sortRow}>
       {({
         rows: tableRows,
         headers,
@@ -191,6 +217,8 @@ export function TuningsTable({
                             <a href={`https://huggingface.co/${cell.value}`} target="_blank" rel="noreferrer">
                               {cell.value}
                             </a>
+                          ) : cell.info.header === 'total_time' ? (
+                            totalTimeDisplayById.get(row.id) ?? ''
                           ) : (
                             (cell.value as React.ReactNode)
                           )}
