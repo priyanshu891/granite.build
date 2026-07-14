@@ -15,11 +15,16 @@ import type {
   Dataset,
   Estimation,
   HuggingFaceModel,
+  LogEntry,
   PendingConfigData,
   PendingConfigUpdate,
   Resources,
   RewardFunctionValidationResult,
+  Trial,
+  TrialScore,
+  TuningAsset,
   TuningForm,
+  TuningJob,
 } from '@/types'
 
 function delay<T>(value: T, ms = 300): Promise<T> {
@@ -535,4 +540,216 @@ export async function generateTestSolutions(
     return `Mock model response (backend not wired up yet). Working through the problem step by step... #### ${noisyGuess}`
   })
   return delay({ solutions }, 500)
+}
+
+// ── Tuning jobs (Tunings list / detail view) ──────────────────────────────────
+
+function daysAgo(n: number): string {
+  return new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString()
+}
+
+const MOCK_JOBS: TuningJob[] = [
+  {
+    id: 'job-a1b2c3d4',
+    status: 'COMPLETED',
+    model: 'ibm-granite/granite-3.3-8b-instruct',
+    model_source: 'huggingface',
+    experiment_name: 'granite_lora_instructions',
+    config_id: 'cfg-lora-default',
+    config_name: 'LoRA Default',
+    dataset_id: 'ds-instructions',
+    dataset: 'Instruction pairs (sample)',
+    seed: 42,
+    precision: 'bf16',
+    autotune: true,
+    created_at: daysAgo(6),
+    updated_at: daysAgo(5),
+  },
+  {
+    id: 'job-e5f6g7h8',
+    status: 'RUNNING',
+    model: 'ibm-granite/granite-4.0-h-micro',
+    model_source: 'huggingface',
+    experiment_name: 'granite_alora_fast_run',
+    config_id: 'cfg-alora-fast',
+    config_name: 'aLoRA Fast',
+    dataset_id: 'ds-instructions',
+    dataset: 'Instruction pairs (sample)',
+    seed: 7,
+    precision: 'bf16',
+    autotune: true,
+    created_at: daysAgo(1),
+    updated_at: daysAgo(0),
+  },
+  {
+    id: 'job-i9j0k1l2',
+    status: 'ERROR',
+    model: 'mistralai/Mistral-7B-Instruct-v0.3',
+    model_source: 'huggingface',
+    experiment_name: 'mistral_sft_attempt',
+    config_id: 'cfg-lora-default',
+    config_name: 'LoRA Default',
+    dataset_id: 'ds-instructions',
+    dataset: 'Instruction pairs (sample)',
+    seed: 13,
+    precision: 'fp32',
+    autotune: false,
+    created_at: daysAgo(4),
+    updated_at: daysAgo(4),
+  },
+  {
+    id: 'job-m3n4o5p6',
+    status: 'PENDING',
+    model: 'Qwen/Qwen2.5-7B-Instruct',
+    model_source: 'huggingface',
+    experiment_name: 'qwen_lora_queued',
+    config_id: 'cfg-lora-default',
+    config_name: 'LoRA Default',
+    dataset_id: 'ds-instructions',
+    dataset: 'Instruction pairs (sample)',
+    seed: 99,
+    precision: 'bf16',
+    autotune: false,
+    created_at: daysAgo(0),
+    updated_at: daysAgo(0),
+  },
+  {
+    id: 'job-q7r8s9t0',
+    status: 'TERMINATED',
+    model: 'meta-llama/Llama-3.1-8B-Instruct',
+    model_source: 'huggingface',
+    experiment_name: 'llama_cancelled_test',
+    config_id: 'cfg-alora-fast',
+    config_name: 'aLoRA Fast',
+    dataset_id: 'ds-instructions',
+    dataset: 'Instruction pairs (sample)',
+    seed: 21,
+    precision: 'bf16',
+    autotune: false,
+    created_at: daysAgo(3),
+    updated_at: daysAgo(3),
+  },
+  {
+    id: 'job-u1v2w3x4',
+    status: 'SUBMITTED',
+    model: 'ibm-granite/granite-4.0-h-tiny',
+    model_source: 'huggingface',
+    experiment_name: 'granite_hpo_submitted',
+    config_id: 'cfg-lora-default',
+    config_name: 'LoRA Default',
+    dataset_id: 'ds-instructions',
+    dataset: 'Instruction pairs (sample)',
+    seed: 55,
+    precision: 'bf16',
+    autotune: true,
+    created_at: daysAgo(0),
+    updated_at: daysAgo(0),
+  },
+]
+
+export async function getJobs(): Promise<TuningJob[]> {
+  return delay([...MOCK_JOBS])
+}
+
+export async function getJob(id: string): Promise<TuningJob> {
+  const found = MOCK_JOBS.find((j) => j.id === id)
+  if (!found) throw new Error(`Job ${id} not found`)
+  return delay(found)
+}
+
+export async function deleteJob(id: string): Promise<void> {
+  const idx = MOCK_JOBS.findIndex((j) => j.id === id)
+  if (idx !== -1) MOCK_JOBS.splice(idx, 1)
+  return delay(undefined, 300)
+}
+
+// ── Trials (autotune jobs only) ───────────────────────────────────────────────
+
+function mockTrialConfig(seed: number): Record<string, any> {
+  return {
+    training_config: {
+      learning_rate: 1e-4 * (1 + seed * 0.1),
+      per_device_train_batch_size: 2 + (seed % 3),
+      num_train_epochs: 3,
+      output_dir: `/tmp/trial-${seed}`,
+      train_file: `/tmp/trial-${seed}/train.jsonl`,
+    },
+  }
+}
+
+const MOCK_TRIALS: Record<string, Trial[]> = {
+  'job-a1b2c3d4': Array.from({ length: 4 }, (_, i) => {
+    const score: TrialScore = {
+      metric: 'loss',
+      metrics: { loss: 0.42 - i * 0.03, train_loss: 0.5 - i * 0.04, total_time: 600 + i * 45 },
+    }
+    return {
+      id: `trial-a1b2c3d4-${i}`,
+      job_id: 'job-a1b2c3d4',
+      status: 'COMPLETED' as const,
+      config: mockTrialConfig(i),
+      score,
+      created_at: daysAgo(6),
+      updated_at: daysAgo(5),
+    }
+  }),
+  'job-e5f6g7h8': [
+    {
+      id: 'trial-e5f6g7h8-0',
+      job_id: 'job-e5f6g7h8',
+      status: 'RUNNING' as const,
+      config: mockTrialConfig(0),
+      score: null,
+      created_at: daysAgo(1),
+      updated_at: daysAgo(0),
+    },
+    {
+      id: 'trial-e5f6g7h8-1',
+      job_id: 'job-e5f6g7h8',
+      status: 'COMPLETED' as const,
+      config: mockTrialConfig(1),
+      score: { metric: 'loss', metrics: { loss: 0.38, train_loss: 0.44, total_time: 720 } },
+      created_at: daysAgo(1),
+      updated_at: daysAgo(0),
+    },
+  ],
+  'job-u1v2w3x4': [],
+}
+
+export async function getJobTrials(jobId: string): Promise<Trial[]> {
+  return delay(MOCK_TRIALS[jobId] ?? [], 400)
+}
+
+// ── Output assets (Results tab) ───────────────────────────────────────────────
+
+const MOCK_ASSETS: Record<string, TuningAsset[]> = {
+  'job-a1b2c3d4': [
+    { filename: 'adapter_model.safetensors', size: 41_943_040, modified: daysAgo(5) },
+    { filename: 'adapter_config.json', size: 812, modified: daysAgo(5) },
+    { filename: 'training_report.html', size: 128_400, modified: daysAgo(5) },
+  ],
+}
+
+export async function getJobAssets(jobId: string): Promise<TuningAsset[]> {
+  return delay(MOCK_ASSETS[jobId] ?? [], 300)
+}
+
+// ── Logs ───────────────────────────────────────────────────────────────────────
+
+function mockLogLines(jobId: string, count: number): LogEntry[] {
+  return Array.from({ length: count }, (_, i) => ({
+    timestamp: new Date(Date.now() - (count - i) * 15_000).toISOString(),
+    level: i % 7 === 0 ? 'WARNING' : 'INFO',
+    filename: 'trainer.py',
+    message: `[${jobId}] step ${i + 1}/${count}: mock training log line (backend not wired up yet).`,
+  }))
+}
+
+export async function getJobLogs(
+  jobId: string,
+  opts?: { status?: TuningJob['status'] }
+): Promise<{ logs: LogEntry[]; hasMore: boolean }> {
+  const isActive = opts?.status ? ['RUNNING', 'PENDING', 'SUBMITTED'].includes(opts.status) : false
+  const count = isActive ? 12 + Math.floor(Math.random() * 4) : 20
+  return delay({ logs: mockLogLines(jobId, count), hasMore: false }, 300)
 }
