@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getConfiguration } from '@/api/autotunex'
 import type { TuningJob } from '@/types'
 import { TuningLogViewer } from '@/components/TuningLogViewer'
+import { TrialsTable } from '@/components/TrialsTable'
 import { ConfigDisplay } from '../start-tuning/ConfigDisplay'
 
 function formatTime(seconds: number): string {
@@ -97,7 +98,7 @@ export function TuningDetailTabs({ job }: Props) {
           </TabPanel>
           {job.autotune && (
             <TabPanel>
-              {/* Trials panel added in Task 8 */}
+              <TrialsTable jobId={job.id} />
             </TabPanel>
           )}
           <TabPanel>
