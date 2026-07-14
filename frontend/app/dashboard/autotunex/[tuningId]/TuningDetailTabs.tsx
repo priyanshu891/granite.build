@@ -1,0 +1,110 @@
+'use client'
+
+import { Tabs, TabList, Tab, TabPanels, TabPanel, FormLabel, Modal } from '@carbon/react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { getConfiguration } from '@/api/autotunex'
+import type { TuningJob } from '@/types'
+import { TuningLogViewer } from '@/components/TuningLogViewer'
+import { ConfigDisplay } from '../start-tuning/ConfigDisplay'
+
+function formatTime(seconds: number): string {
+  if (seconds <= 0) return '0 s'
+  const days = Math.floor(seconds / 86400)
+  const hours = Math.floor((seconds % 86400) / 3600)
+  const mins = Math.floor((seconds % 3600) / 60)
+  const secs = Math.floor(seconds % 60)
+  if (days > 0) return `${days}d ${hours}h`
+  if (hours > 0) return `${hours}h ${mins}m`
+  if (mins > 0) return `${mins}m ${secs}s`
+  return `${secs}s`
+}
+
+function DetailsPanel({ job }: { job: TuningJob }) {
+  const [configOpen, setConfigOpen] = useState(false)
+
+  const { data: configuration } = useQuery({
+    queryKey: ['autotunex-config', job.config_id],
+    queryFn: () => getConfiguration(job.config_id),
+    enabled: configOpen,
+  })
+
+  const totalTimeSeconds = Math.floor(
+    ((job.status === 'RUNNING' ? Date.now() : new Date(job.updated_at).getTime()) - new Date(job.created_at).getTime()) / 1000
+  )
+
+  const fields: { label: string; value: React.ReactNode }[] = [
+    { label: 'Status', value: job.status },
+    { label: 'Model', value: job.model },
+    { label: 'Model source', value: job.model_source },
+    {
+      label: 'Configuration',
+      value: (
+        <a href="#" onClick={(e) => { e.preventDefault(); setConfigOpen(true) }}>
+          {job.config_name}
+        </a>
+      ),
+    },
+    { label: 'Data set', value: job.dataset },
+    { label: 'Seed', value: job.seed },
+    { label: 'Precision', value: job.precision },
+    { label: 'Total time', value: formatTime(totalTimeSeconds) },
+  ]
+
+  return (
+    <div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', marginBottom: '2rem' }}>
+        {fields.map((f) => (
+          <div key={f.label} style={{ minWidth: '10rem' }}>
+            <FormLabel>{f.label}</FormLabel>
+            <div style={{ fontFamily: 'monospace' }}>{f.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <h5 style={{ marginBottom: '0.5rem' }}>Logs</h5>
+      <TuningLogViewer jobId={job.id} status={job.status} />
+
+      <Modal
+        open={configOpen}
+        passiveModal
+        modalHeading={`Configuration: ${job.config_name}`}
+        onRequestClose={() => setConfigOpen(false)}
+        size="lg"
+      >
+        {configuration ? <ConfigDisplay configuration={configuration} /> : <p>Loading…</p>}
+      </Modal>
+    </div>
+  )
+}
+
+interface Props {
+  job: TuningJob
+}
+
+export function TuningDetailTabs({ job }: Props) {
+  return (
+    <div style={{ padding: '0 1.5rem 2rem' }}>
+      <Tabs>
+        <TabList aria-label="Tuning detail tabs">
+          <Tab>Details</Tab>
+          {job.autotune && <Tab>Trials</Tab>}
+          <Tab>Results</Tab>
+        </TabList>
+        <TabPanels>
+          <TabPanel>
+            <DetailsPanel job={job} />
+          </TabPanel>
+          {job.autotune && (
+            <TabPanel>
+              {/* Trials panel added in Task 8 */}
+            </TabPanel>
+          )}
+          <TabPanel>
+            {/* Results panel added in Task 9 */}
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
+    </div>
+  )
+}

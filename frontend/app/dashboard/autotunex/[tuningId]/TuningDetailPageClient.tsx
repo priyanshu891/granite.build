@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getJob } from '@/api/autotunex'
 import { PageHeader } from '@/components/PageHeader'
 import { TuningStatusBadge } from '@/components/TuningStatusBadge'
+import { TuningDetailTabs } from './TuningDetailTabs'
 import styles from './page.module.scss'
 
 const ACTIVE_STATUSES = new Set(['RUNNING', 'PENDING', 'SUBMITTED'])
@@ -110,7 +111,7 @@ function TuningDetailContent() {
           )}
         </div>
       </div>
-      {/* Tabs content added in Task 7 */}
+      {job && <TuningDetailTabs job={job} />}
     </div>
   )
 }
