@@ -530,6 +530,55 @@ export interface PendingConfigUpdate {
   config_data: ConfigData
 }
 
+// ── Tunings list / detail view ────────────────────────────────────────────────
+
+export type TuningStatus = 'COMPLETED' | 'ERROR' | 'RUNNING' | 'TERMINATED' | 'PENDING' | 'SUBMITTED'
+
+export interface TuningJob {
+  id: string
+  status: TuningStatus
+  model: string
+  model_source: ModelSource
+  experiment_name: string
+  config_id: string
+  config_name: string
+  dataset_id: string
+  dataset: string
+  seed: number
+  precision: string
+  autotune: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface TrialScore {
+  metric: string
+  metrics: Record<string, number>
+}
+
+export interface Trial {
+  id: string
+  job_id: string
+  status: TuningStatus
+  config: Record<string, any>
+  score: TrialScore | null
+  created_at: string
+  updated_at: string
+}
+
+export interface TuningAsset {
+  filename: string
+  size: number
+  modified: string
+}
+
+export interface LogEntry {
+  timestamp: string
+  level: string
+  filename: string
+  message: string
+}
+
 export type LaunchPhase =
   | 'creating_dataset'
   | 'uploading_files'
