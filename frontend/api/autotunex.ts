@@ -16,6 +16,7 @@ import type {
   Estimation,
   HuggingFaceModel,
   LogEntry,
+  ModelSource,
   PendingConfigData,
   PendingConfigUpdate,
   Resources,
@@ -25,7 +26,12 @@ import type {
   TuningAsset,
   TuningForm,
   TuningJob,
+  TuningStatus,
 } from '@/types'
+import axios from 'axios'
+import { autotunexApiBase } from '@/api/client'
+
+const client = axios.create({ baseURL: autotunexApiBase('') })
 
 function delay<T>(value: T, ms = 300): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), ms))
@@ -548,119 +554,39 @@ function daysAgo(n: number): string {
   return new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString()
 }
 
-const MOCK_JOBS: TuningJob[] = [
-  {
-    id: 'job-a1b2c3d4',
-    status: 'COMPLETED',
-    model: 'ibm-granite/granite-3.3-8b-instruct',
-    model_source: 'huggingface',
-    experiment_name: 'granite_lora_instructions',
-    config_id: 'cfg-lora-default',
-    config_name: 'LoRA Default',
-    dataset_id: 'ds-instructions',
-    dataset: 'Instruction pairs (sample)',
-    seed: 42,
-    precision: 'bf16',
-    autotune: true,
-    created_at: daysAgo(6),
-    updated_at: daysAgo(5),
-  },
-  {
-    id: 'job-e5f6g7h8',
-    status: 'RUNNING',
-    model: 'ibm-granite/granite-4.0-h-micro',
-    model_source: 'huggingface',
-    experiment_name: 'granite_alora_fast_run',
-    config_id: 'cfg-alora-fast',
-    config_name: 'aLoRA Fast',
-    dataset_id: 'ds-instructions',
-    dataset: 'Instruction pairs (sample)',
-    seed: 7,
-    precision: 'bf16',
-    autotune: true,
-    created_at: daysAgo(1),
-    updated_at: daysAgo(0),
-  },
-  {
-    id: 'job-i9j0k1l2',
-    status: 'ERROR',
-    model: 'mistralai/Mistral-7B-Instruct-v0.3',
-    model_source: 'huggingface',
-    experiment_name: 'mistral_sft_attempt',
-    config_id: 'cfg-lora-default',
-    config_name: 'LoRA Default',
-    dataset_id: 'ds-instructions',
-    dataset: 'Instruction pairs (sample)',
-    seed: 13,
-    precision: 'fp32',
-    autotune: false,
-    created_at: daysAgo(4),
-    updated_at: daysAgo(4),
-  },
-  {
-    id: 'job-m3n4o5p6',
-    status: 'PENDING',
-    model: 'Qwen/Qwen2.5-7B-Instruct',
-    model_source: 'huggingface',
-    experiment_name: 'qwen_lora_queued',
-    config_id: 'cfg-lora-default',
-    config_name: 'LoRA Default',
-    dataset_id: 'ds-instructions',
-    dataset: 'Instruction pairs (sample)',
-    seed: 99,
-    precision: 'bf16',
-    autotune: false,
-    created_at: daysAgo(0),
-    updated_at: daysAgo(0),
-  },
-  {
-    id: 'job-q7r8s9t0',
-    status: 'TERMINATED',
-    model: 'meta-llama/Llama-3.1-8B-Instruct',
-    model_source: 'huggingface',
-    experiment_name: 'llama_cancelled_test',
-    config_id: 'cfg-alora-fast',
-    config_name: 'aLoRA Fast',
-    dataset_id: 'ds-instructions',
-    dataset: 'Instruction pairs (sample)',
-    seed: 21,
-    precision: 'bf16',
-    autotune: false,
-    created_at: daysAgo(3),
-    updated_at: daysAgo(3),
-  },
-  {
-    id: 'job-u1v2w3x4',
-    status: 'SUBMITTED',
-    model: 'ibm-granite/granite-4.0-h-tiny',
-    model_source: 'huggingface',
-    experiment_name: 'granite_hpo_submitted',
-    config_id: 'cfg-lora-default',
-    config_name: 'LoRA Default',
-    dataset_id: 'ds-instructions',
-    dataset: 'Instruction pairs (sample)',
-    seed: 55,
-    precision: 'bf16',
-    autotune: true,
-    created_at: daysAgo(0),
-    updated_at: daysAgo(0),
-  },
-]
+function adaptJob(raw: Record<string, unknown>): TuningJob {
+  return {
+    id: raw.id as string,
+    status: raw.status as TuningStatus,
+    model: raw.model as string,
+    model_source: raw.model_source as ModelSource,
+    experiment_name: raw.experiment_name as string,
+    config_id: raw.config_id as string,
+    config_name: raw.config_name as string,
+    dataset_id: raw.dataset_id as string,
+    dataset: raw.dataset as string,
+    seed: raw.seed as number,
+    precision: raw.precision as string,
+    autotune: Boolean(raw.autotune),
+    created_at: raw.created_at as string,
+    updated_at: raw.updated_at as string,
+  }
+}
 
 export async function getJobs(): Promise<TuningJob[]> {
-  return delay([...MOCK_JOBS])
+  const { data } = await client.get<Record<string, unknown>[]>('/jobs')
+  return (data ?? []).map(adaptJob)
 }
 
 export async function getJob(id: string): Promise<TuningJob> {
-  const found = MOCK_JOBS.find((j) => j.id === id)
-  if (!found) throw new Error(`Job ${id} not found`)
-  return delay(found)
+  const { data } = await client.get<Record<string, unknown>>(`/job/${id}`, {
+    params: { include_logs: false },
+  })
+  return adaptJob(data)
 }
 
 export async function deleteJob(id: string): Promise<void> {
-  const idx = MOCK_JOBS.findIndex((j) => j.id === id)
-  if (idx !== -1) MOCK_JOBS.splice(idx, 1)
-  return delay(undefined, 300)
+  await client.delete(`/job/${id}`)
 }
 
 // ── Trials (autotune jobs only) ───────────────────────────────────────────────

@@ -532,7 +532,7 @@ export interface PendingConfigUpdate {
 
 // ── Tunings list / detail view ────────────────────────────────────────────────
 
-export type TuningStatus = 'COMPLETED' | 'ERROR' | 'RUNNING' | 'TERMINATED' | 'PENDING' | 'SUBMITTED'
+export type TuningStatus = 'COMPLETED' | 'ERROR' | 'RUNNING' | 'TERMINATED' | 'PENDING' | 'SUBMITTED' | 'PAUSED'
 
 export interface TuningJob {
   id: string
