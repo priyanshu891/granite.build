@@ -1,12 +1,11 @@
 /**
- * Stub API client for the AutoTuneX Start Tuning wizard.
+ * API client for the AutoTuneX backend (FastAPI service, proxied via
+ * /api/autotunex/* — see `autotunexApiBase` in `@/api/client`).
  *
- * The real AutoTuneX backend is a separate FastAPI service this repo doesn't
- * yet proxy to. Every function here mirrors the real API's signature/shape
- * (see the AutoTuneX SvelteKit app's `api.ts`) but resolves mock data after a
- * short simulated delay instead of making a network call. Swapping a
- * function's body for a real `axios`/`fetch` call later is a same-signature
- * change — nothing that calls these functions needs to change.
+ * Dev mode: calls go through the Next.js dev proxy. Standalone builds target
+ * AUTOTUNEX_API_URL directly when it's baked in at build time. `getHFModels`/
+ * `getHFModelCard` are the two exceptions — they call the public HuggingFace
+ * API directly via bare `axios`, not through this backend.
  */
 import type {
   AiMappingSuggestion,
