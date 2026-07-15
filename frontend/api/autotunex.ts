@@ -550,10 +550,6 @@ export async function generateTestSolutions(
 
 // ── Tuning jobs (Tunings list / detail view) ──────────────────────────────────
 
-function daysAgo(n: number): string {
-  return new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString()
-}
-
 function adaptJob(raw: Record<string, unknown>): TuningJob {
   return {
     id: raw.id as string,
@@ -591,73 +587,46 @@ export async function deleteJob(id: string): Promise<void> {
 
 // ── Trials (autotune jobs only) ───────────────────────────────────────────────
 
-function mockTrialConfig(seed: number): Record<string, any> {
+function adaptTrial(raw: Record<string, unknown>): Trial {
+  const rawScore = raw.score as Record<string, unknown> | undefined
+  const hasScore = !!rawScore && Object.keys(rawScore).length > 0
   return {
-    training_config: {
-      learning_rate: 1e-4 * (1 + seed * 0.1),
-      per_device_train_batch_size: 2 + (seed % 3),
-      num_train_epochs: 3,
-      output_dir: `/tmp/trial-${seed}`,
-      train_file: `/tmp/trial-${seed}/train.jsonl`,
-    },
+    id: raw.id as string,
+    job_id: raw.job_id as string,
+    status: raw.status as TuningStatus,
+    config: (raw.config as Record<string, any>) ?? {},
+    score: hasScore
+      ? { metric: rawScore!.metric as string, metrics: rawScore!.metrics as Record<string, number> }
+      : null,
+    created_at: raw.created_at as string,
+    updated_at: raw.updated_at as string,
   }
 }
 
-const MOCK_TRIALS: Record<string, Trial[]> = {
-  'job-a1b2c3d4': Array.from({ length: 4 }, (_, i) => {
-    const score: TrialScore = {
-      metric: 'loss',
-      metrics: { loss: 0.42 - i * 0.03, train_loss: 0.5 - i * 0.04, total_time: 600 + i * 45 },
-    }
-    return {
-      id: `trial-a1b2c3d4-${i}`,
-      job_id: 'job-a1b2c3d4',
-      status: 'COMPLETED' as const,
-      config: mockTrialConfig(i),
-      score,
-      created_at: daysAgo(6),
-      updated_at: daysAgo(5),
-    }
-  }),
-  'job-e5f6g7h8': [
-    {
-      id: 'trial-e5f6g7h8-0',
-      job_id: 'job-e5f6g7h8',
-      status: 'RUNNING' as const,
-      config: mockTrialConfig(0),
-      score: null,
-      created_at: daysAgo(1),
-      updated_at: daysAgo(0),
-    },
-    {
-      id: 'trial-e5f6g7h8-1',
-      job_id: 'job-e5f6g7h8',
-      status: 'COMPLETED' as const,
-      config: mockTrialConfig(1),
-      score: { metric: 'loss', metrics: { loss: 0.38, train_loss: 0.44, total_time: 720 } },
-      created_at: daysAgo(1),
-      updated_at: daysAgo(0),
-    },
-  ],
-  'job-u1v2w3x4': [],
-}
-
 export async function getJobTrials(jobId: string): Promise<Trial[]> {
-  return delay(MOCK_TRIALS[jobId] ?? [], 400)
+  try {
+    const { data } = await client.get<Record<string, unknown>[]>(`/job/${jobId}/trials`)
+    return (data ?? []).map(adaptTrial)
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) return []
+    throw err
+  }
 }
 
 // ── Output assets (Results tab) ───────────────────────────────────────────────
 
-const MOCK_ASSETS: Record<string, TuningAsset[]> = {
-  'job-a1b2c3d4': [
-    { filename: 'adapter_model.safetensors', size: 41_943_040, modified: daysAgo(5) },
-    { filename: 'adapter_config.json', size: 812, modified: daysAgo(5) },
-    { filename: 'training_report.html', size: 128_400, modified: daysAgo(5) },
-  ],
-}
-
 export async function getJobAssets(jobId: string): Promise<TuningAsset[]> {
-  return delay(MOCK_ASSETS[jobId] ?? [], 300)
+  try {
+    const { data } = await client.get<Record<string, unknown>[]>(`/job/${jobId}/result_report`)
+    return (data ?? []).map((a) => ({
+      filename: a.filename as string,
+      size: a.size as number,
+      modified: a.modified as string,
+    }))
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 400) return []
+    throw err
+  }
 }
 
 // ── Logs ───────────────────────────────────────────────────────────────────────
