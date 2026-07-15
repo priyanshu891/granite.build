@@ -631,20 +631,26 @@ export async function getJobAssets(jobId: string): Promise<TuningAsset[]> {
 
 // ── Logs ───────────────────────────────────────────────────────────────────────
 
-function mockLogLines(jobId: string, count: number): LogEntry[] {
-  return Array.from({ length: count }, (_, i) => ({
-    timestamp: new Date(Date.now() - (count - i) * 15_000).toISOString(),
-    level: i % 7 === 0 ? 'WARNING' : 'INFO',
-    filename: 'trainer.py',
-    message: `[${jobId}] step ${i + 1}/${count}: mock training log line (backend not wired up yet).`,
-  }))
+function adaptLogEntry(raw: Record<string, unknown>): LogEntry {
+  return {
+    id: raw.id as number,
+    timestamp: raw.timestamp as string,
+    level: raw.level as string,
+    filename: raw.filename as string,
+    message: raw.message as string,
+  }
 }
 
 export async function getJobLogs(
   jobId: string,
-  opts?: { status?: TuningJob['status'] }
+  opts?: { beforeId?: number; limit?: number }
 ): Promise<{ logs: LogEntry[]; hasMore: boolean }> {
-  const isActive = opts?.status ? ['RUNNING', 'PENDING', 'SUBMITTED'].includes(opts.status) : false
-  const count = isActive ? 12 + Math.floor(Math.random() * 4) : 20
-  return delay({ logs: mockLogLines(jobId, count), hasMore: false }, 300)
+  const { data } = await client.get<{ logs: Record<string, unknown>[]; has_more: boolean }>(
+    `/job/${jobId}/logs`,
+    { params: { before_id: opts?.beforeId ?? 0, limit: opts?.limit ?? 50 } }
+  )
+  return {
+    logs: (data.logs ?? []).map(adaptLogEntry),
+    hasMore: Boolean(data.has_more),
+  }
 }

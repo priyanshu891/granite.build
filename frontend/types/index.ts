@@ -573,6 +573,7 @@ export interface TuningAsset {
 }
 
 export interface LogEntry {
+  id: number
   timestamp: string
   level: string
   filename: string

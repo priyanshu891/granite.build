@@ -16,8 +16,8 @@ interface Props {
 export function TuningLogViewer({ jobId, status }: Props) {
   const isActive = ACTIVE_STATUSES.has(status)
   const { data, isLoading } = useQuery({
-    queryKey: ['autotunex-job-logs', jobId, status],
-    queryFn: () => getJobLogs(jobId, { status }),
+    queryKey: ['autotunex-job-logs', jobId],
+    queryFn: () => getJobLogs(jobId, { beforeId: 0, limit: 200 }),
     refetchInterval: isActive ? 10_000 : false,
   })
 
@@ -25,7 +25,8 @@ export function TuningLogViewer({ jobId, status }: Props) {
     return <ProgressBar size="small" label="Loading" helperText="Loading logs..." />
   }
 
-  const logs = data?.logs ?? []
+  // Real API returns newest-first; reverse for the conventional oldest-first log view.
+  const logs = [...(data?.logs ?? [])].reverse()
 
   if (logs.length === 0) {
     return <div className={styles.logViewer}><div className={styles.logLine}>No logs available</div></div>
@@ -33,8 +34,8 @@ export function TuningLogViewer({ jobId, status }: Props) {
 
   return (
     <div className={styles.logViewer}>
-      {logs.map((log, i) => (
-        <div className={styles.logLine} key={i}>
+      {logs.map((log) => (
+        <div className={styles.logLine} key={log.id}>
           {new Date(log.timestamp).toLocaleString()} {log.level} -- {log.filename} -- {log.message}
         </div>
       ))}
