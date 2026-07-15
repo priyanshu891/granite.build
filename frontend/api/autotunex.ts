@@ -12,6 +12,7 @@ import type {
   AiMappingSuggestion,
   Configuration,
   ConfigData,
+  ConfigMutationResult,
   Dataset,
   Estimation,
   HuggingFaceModel,
@@ -102,177 +103,61 @@ export async function searchDMFModels(query: string): Promise<{ data: DmfModel[]
 
 // ── Configurations ────────────────────────────────────────────────────────────
 
-// Field `type` follows the real template's runtime contract: 'str' | 'int' | 'float' | 'bool' | 'list'
-// (not the 'string' the source app's own `Type` enum claims — every actual type check in its
-// config-editing form compares against the literal 'str').
-function mockConfigData(): ConfigData {
+function adaptConfiguration(raw: Record<string, unknown>): Configuration {
   return {
-    tune_config: {
-      scheduler: { type: 'str', values: ['fifo', 'hyperband'], default: 'fifo', max_val: null, min_val: null, description: 'Trial scheduler.' },
-      search_alg: { type: 'str', values: ['random', 'bayesopt'], default: 'random', max_val: null, min_val: null, description: 'Search algorithm.' },
-      num_samples: { type: 'int', values: null, default: 4, max_val: 32, min_val: 1, description: 'Number of hyperparameter configurations to try.' },
-      max_discrepancy: { type: 'int', values: null, default: 4, max_val: 16, min_val: 1, description: 'Max discrepancy for the lds search algorithm.' },
-      max_concurrent_trials: { type: 'int', values: null, default: 4, max_val: 16, min_val: 1, description: 'Max trials run in parallel.' },
-    },
-    tuners_config: {
-      lora: {
-        title: 'LoRA',
-        tuner_name: 'lora',
-        description: 'Low-Rank Adaptation.',
-        hyperparams: {
-          r: { type: 'int', values: [4, 8, 16, 32], default: 8, max_val: 64, min_val: 1, options: ['choice'], strategy: 'choice', for_tuner: true, description: 'LoRA rank.' },
-          bias: { type: 'str', values: ['none', 'all', 'lora_only'], default: 'none', max_val: null, min_val: null, options: ['choice'], strategy: 'choice', for_tuner: true, description: 'Bias training mode.' },
-          alpha_ratio: { type: 'float', values: [0.5, 1, 2], default: 1, max_val: 4, min_val: 0.25, options: ['choice'], strategy: 'choice', for_tuner: true, description: 'LoRA alpha / rank ratio.' },
-          lora_dropout: { type: 'float', values: [0, 0.05, 0.1], default: 0.05, max_val: 0.5, min_val: 0, options: ['choice'], strategy: 'choice', for_tuner: true, description: 'LoRA dropout.' },
-          learning_rate: { type: 'float', values: [1e-5, 1e-4, 1e-3], default: 1e-4, max_val: 1e-2, min_val: 1e-6, options: ['loguniform'], strategy: 'loguniform', for_tuner: true, description: 'Learning rate.' },
-          lr_scheduler_type: { type: 'str', values: ['linear', 'cosine'], default: 'linear', max_val: null, min_val: null, options: ['choice'], strategy: 'choice', for_tuner: false, description: 'LR scheduler.' },
-          gradient_accumulation_steps: { type: 'int', values: [1, 2, 4], default: 1, max_val: 16, min_val: 1, options: ['choice'], strategy: 'choice', for_tuner: false, description: 'Gradient accumulation steps.' },
-          per_device_train_batch_size: { type: 'int', values: [1, 2, 4], default: 2, max_val: 32, min_val: 1, options: ['choice'], strategy: 'choice', for_tuner: false, description: 'Per-device batch size.' },
-          invocation_string: { type: 'str', values: ['[UNK]'], default: '', max_val: null, min_val: null, options: ['choice'], strategy: 'choice', for_tuner: false, description: 'Prompt invocation string (aLoRA only).' },
-        },
-      },
-      alora: {
-        title: 'aLoRA',
-        tuner_name: 'alora',
-        description: 'Adaptive LoRA.',
-        hyperparams: {
-          r: { type: 'int', values: [4, 8, 16], default: 8, max_val: 64, min_val: 1, options: ['choice'], strategy: 'choice', for_tuner: true, description: 'LoRA rank.' },
-          bias: { type: 'str', values: ['none', 'all'], default: 'none', max_val: null, min_val: null, options: ['choice'], strategy: 'choice', for_tuner: true, description: 'Bias training mode.' },
-          alpha_ratio: { type: 'float', values: [0.5, 1, 2], default: 1, max_val: 4, min_val: 0.25, options: ['choice'], strategy: 'choice', for_tuner: true, description: 'LoRA alpha / rank ratio.' },
-          lora_dropout: { type: 'float', values: [0, 0.05], default: 0.05, max_val: 0.5, min_val: 0, options: ['choice'], strategy: 'choice', for_tuner: true, description: 'LoRA dropout.' },
-          learning_rate: { type: 'float', values: [1e-5, 1e-4], default: 1e-4, max_val: 1e-2, min_val: 1e-6, options: ['loguniform'], strategy: 'loguniform', for_tuner: true, description: 'Learning rate.' },
-          lr_scheduler_type: { type: 'str', values: ['linear'], default: 'linear', max_val: null, min_val: null, options: ['choice'], strategy: 'choice', for_tuner: false, description: 'LR scheduler.' },
-          gradient_accumulation_steps: { type: 'int', values: [1, 2], default: 1, max_val: 16, min_val: 1, options: ['choice'], strategy: 'choice', for_tuner: false, description: 'Gradient accumulation steps.' },
-          per_device_train_batch_size: { type: 'int', values: [1, 2], default: 2, max_val: 32, min_val: 1, options: ['choice'], strategy: 'choice', for_tuner: false, description: 'Per-device batch size.' },
-          invocation_string: { type: 'str', values: ['[UNK]'], default: '[UNK]', max_val: null, min_val: null, options: ['choice'], strategy: 'choice', for_tuner: false, description: 'Prompt invocation string.' },
-        },
-      },
-    },
-    training_config: {
-      seed: { type: 'int', values: null, default: 42, max_val: 10000, min_val: 0, description: 'Random seed.' },
-      precision: { type: 'str', values: ['fp32', 'bf16'], default: 'bf16', max_val: null, min_val: null, description: 'Training precision.' },
-      max_length: { type: 'int', values: null, default: 1024, max_val: 8192, min_val: 128, description: 'Max sequence length.' },
-      input_column: { type: 'str', values: null, default: 'input', max_val: null, min_val: null, description: 'Input column name.' },
-      warmup_ratio: { type: 'float', values: null, default: 0.1, max_val: 1, min_val: 0, description: 'Warmup ratio.' },
-      output_column: { type: 'str', values: null, default: 'output', max_val: null, min_val: null, description: 'Output column name.' },
-      hpo_num_epochs: { type: 'int', values: null, default: 3, max_val: 20, min_val: 1, description: 'Epochs per HPO trial.' },
-      num_train_epochs: { type: 'int', values: null, default: 3, max_val: 20, min_val: 1, description: 'Training epochs.' },
-      use_chat_template: { type: 'bool', values: null, default: true, max_val: null, min_val: null, description: 'Apply chat template.' },
-      num_gpus_per_trial: { type: 'int', values: null, default: 1, max_val: 8, min_val: 1, description: 'GPUs per trial.' },
-      num_cpus_per_worker: { type: 'int', values: null, default: 4, max_val: 32, min_val: 1, description: 'CPUs per worker.' },
-      use_flash_attention: { type: 'bool', values: null, default: true, max_val: null, min_val: null, description: 'Use flash attention.' },
-      train_implementation: { type: 'str', values: ['trl', 'peft'], default: 'peft', max_val: null, min_val: null, description: 'Training implementation.' },
-      hpo_dataset_percentage: { type: 'float', values: null, default: 0.2, max_val: 1, min_val: 0.01, description: 'Fraction of the dataset used during HPO.' },
-    },
-    tuners_rl_config: {
-      grpo: {
-        title: 'GRPO',
-        tuner_name: 'grpo',
-        description: 'Group Relative Policy Optimization',
-        hyperparams: {
-          learning_rate: { type: 'float', values: [1e-6, 1e-5, 1e-4], default: 1e-5, max_val: 1e-3, min_val: 1e-7, options: ['loguniform'], strategy: 'loguniform', for_tuner: true, description: 'Learning rate.' },
-        },
-      },
-      ppo: {
-        title: 'PPO',
-        tuner_name: 'ppo',
-        description: 'Proximal Policy Optimization',
-        hyperparams: {
-          learning_rate: { type: 'float', values: [1e-6, 1e-5, 1e-4], default: 1e-5, max_val: 1e-3, min_val: 1e-7, options: ['loguniform'], strategy: 'loguniform', for_tuner: true, description: 'Learning rate.' },
-        },
-      },
-      dapo: {
-        title: 'DAPO',
-        tuner_name: 'dapo',
-        description: 'Decoupled Advantage Policy Optimization',
-        hyperparams: {
-          learning_rate: { type: 'float', values: [1e-6, 1e-5, 1e-4], default: 1e-5, max_val: 1e-3, min_val: 1e-7, options: ['loguniform'], strategy: 'loguniform', for_tuner: true, description: 'Learning rate.' },
-        },
-      },
-    },
-    training_rl_config: {
-      rl_algorithm: { type: 'str', values: ['none', 'ppo', 'grpo', 'dapo'], default: 'none', max_val: null, min_val: null, description: 'RL algorithm.' },
-      kl_coef: { type: 'float', values: null, default: 0.001, max_val: 1, min_val: 0, description: 'KL penalty coefficient.' },
-    },
-    general_config: {
-      seed: { type: 'int', values: null, default: 42, max_val: 10000, min_val: 0, description: 'Random seed.' },
-    },
-    tokenizer_config: {
-      special_tokens: { type: 'list', values: null, default: [], max_val: null, min_val: null, description: 'Additional special tokens.' },
-    },
+    id: raw.id as string,
+    user_id: raw.user_id as string,
+    name: raw.name as string,
+    tuner_type: raw.tuner_type as string,
+    rl_tuner_type: (raw.rl_tuner_type as string | null | undefined) ?? null,
+    artifact_id: (raw.artifact_id as string) ?? '',
+    artifact_url: (raw.artifact_url as string) ?? '',
+    config_data: (raw.config_data as ConfigData | null | undefined) ?? null,
+    created_at: raw.created_at as string | undefined,
+    updated_at: raw.updated_at as string | undefined,
+    associated_jobs: (raw.associated_jobs as unknown[]) ?? [],
   }
 }
 
 export async function getConfigurationTemplate(): Promise<ConfigData> {
-  return delay(mockConfigData(), 400)
+  const { data } = await client.get<Record<string, unknown>>('/config')
+  return data as unknown as ConfigData
 }
 
-const MOCK_CONFIGURATIONS: Configuration[] = [
-  {
-    id: 'cfg-lora-default',
-    user_id: 'mock-user',
-    name: 'LoRA Default',
-    tuner_type: 'lora',
-    rl_tuner_type: null,
-    artifact_id: '',
-    artifact_url: '',
-    config_data: mockConfigData(),
-    created_at: new Date(2025, 5, 1).toISOString(),
-    updated_at: new Date(2025, 5, 1).toISOString(),
-  },
-  {
-    id: 'cfg-alora-fast',
-    user_id: 'mock-user',
-    name: 'aLoRA Fast',
-    tuner_type: 'alora',
-    rl_tuner_type: null,
-    artifact_id: '',
-    artifact_url: '',
-    config_data: mockConfigData(),
-    created_at: new Date(2025, 6, 1).toISOString(),
-    updated_at: new Date(2025, 6, 1).toISOString(),
-  },
-]
-
 export async function getConfigurations(): Promise<Configuration[]> {
-  return delay(MOCK_CONFIGURATIONS)
+  const { data } = await client.get<Record<string, unknown>[]>('/configs')
+  return (data ?? []).map(adaptConfiguration)
 }
 
 export async function getConfiguration(id: string): Promise<Configuration> {
-  const found = MOCK_CONFIGURATIONS.find((c) => c.id === id)
-  if (!found) throw new Error(`Configuration ${id} not found`)
-  return delay(found)
+  const { data } = await client.get<Record<string, unknown>>(`/config/${id}`)
+  return adaptConfiguration(data)
 }
 
-export async function createConfiguration(payload: PendingConfigData): Promise<Configuration> {
-  const config: Configuration = {
-    id: generateId('cfg'),
-    user_id: 'mock-user',
+export async function createConfiguration(payload: PendingConfigData): Promise<ConfigMutationResult> {
+  const { data } = await client.post<{ id: string; status: string; message?: string }>('/config', {
     name: payload.name,
-    tuner_type: payload.tuner_type ?? 'lora',
+    tuner_type: payload.tuner_type,
     rl_tuner_type: payload.rl_tuner_type,
-    artifact_id: '',
-    artifact_url: '',
     config_data: payload.config_data,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }
-  MOCK_CONFIGURATIONS.push(config)
-  return delay(config, 500)
+  })
+  return data
 }
 
-export async function updateConfiguration(configId: string, payload: PendingConfigUpdate): Promise<Configuration> {
-  const existing = MOCK_CONFIGURATIONS.find((c) => c.id === configId)
-  const updated: Configuration = {
-    ...(existing ?? MOCK_CONFIGURATIONS[0]),
-    id: configId,
-    name: payload.name,
-    tuner_type: payload.tuner_type ?? 'lora',
-    rl_tuner_type: payload.rl_tuner_type,
-    config_data: payload.config_data,
-    updated_at: new Date().toISOString(),
-  }
-  return delay(updated, 500)
+export async function updateConfiguration(
+  configId: string,
+  payload: PendingConfigUpdate
+): Promise<ConfigMutationResult> {
+  const { data } = await client.put<{ id: string; status: string; message?: string }>(
+    `/config/${configId}`,
+    {
+      name: payload.name,
+      tuner_type: payload.tuner_type,
+      rl_tuner_type: payload.rl_tuner_type,
+      config_data: payload.config_data,
+    }
+  )
+  return data
 }
 
 // ── Datasets ───────────────────────────────────────────────────────────────────

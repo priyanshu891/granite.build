@@ -459,10 +459,20 @@ export interface Configuration {
   rl_tuner_type?: string | null
   artifact_id: string
   artifact_url: string
-  config_data: ConfigData
-  created_at: string
-  updated_at: string
+  // Absent/null on list responses (GET /configs) — only populated on a
+  // single-config fetch (GET /config/{id}).
+  config_data?: ConfigData | null
+  // Not returned by the real backend's single-config Pydantic response model —
+  // may be absent even though the underlying row has them.
+  created_at?: string
+  updated_at?: string
   associated_jobs?: unknown[]
+}
+
+export interface ConfigMutationResult {
+  id: string
+  status: string
+  message?: string
 }
 
 // The editable form shape used by the config template/editor: a flat name +
