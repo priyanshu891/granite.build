@@ -23,7 +23,6 @@ import type {
   Resources,
   RewardFunctionValidationResult,
   Trial,
-  TrialScore,
   TuningAsset,
   TuningForm,
   TuningJob,
@@ -201,7 +200,7 @@ export async function uploadDatasetChunked(datasetId: string, opts: UploadDatase
     opts.onProgress(Math.min(100, Math.round((done / Math.max(1, totalBytes)) * 100)))
   }
 
-  const uploadOne = (file: File, role: string): Promise<void> =>
+  const uploadOne = (file: File, role: 'source' | 'train' | 'validation'): Promise<void> =>
     new Promise<void>((resolve, reject) => {
       const metadata: Record<string, string> = {
         dataset_id: datasetId,

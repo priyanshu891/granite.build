@@ -3,7 +3,7 @@
 import type { TuningStatus } from '@/types'
 
 // Mirrors BuildStatusBadge's shape+color convention (frontend/components/BuildStatusBadge.tsx)
-// applied to the 6 tuning-job statuses instead of Build's 10.
+// applied to the 7 tuning-job statuses instead of Build's 10.
 type ShapeKind = 'circle' | 'circle-outline' | 'triangle-outline' | 'prohibit' | 'square'
 
 function Shape({ kind, color, size }: { kind: ShapeKind; color: string; size: number }) {
