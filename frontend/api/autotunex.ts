@@ -221,23 +221,13 @@ export async function uploadDatasetChunked(datasetId: string, opts: UploadDatase
 // ── Job estimation & launch ───────────────────────────────────────────────────
 
 export async function estimateUsage(payload: Estimation): Promise<Resources> {
-  return delay(
-    {
-      model_size_billion_params: 3,
-      gpu_memory_gb: 24,
-      cpu_memory_gb: 32,
-      num_gpus: 1,
-      weights_memory: 6,
-      optimizer_memory: 6,
-      gradients_memory: 6,
-      activations_memory: 4,
-    },
-    400
-  )
+  const { data } = await client.post<Resources>('/job/estimate_usages', payload)
+  return data
 }
 
 export async function startJob(tuning: TuningForm): Promise<{ id: string }> {
-  return delay({ id: generateId('job') }, 500)
+  const { data } = await client.post<{ job_id: string }>('/job', tuning)
+  return { id: data.job_id }
 }
 
 // ── Dataset type metadata (backend-informed column requirements) ─────────────
