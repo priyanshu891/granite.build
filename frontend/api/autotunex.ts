@@ -259,139 +259,44 @@ export async function suggestColumnMappingAI(
   columnSamples: Record<string, string[]>,
   targetDatasetType?: string
 ): Promise<AiMappingSuggestion> {
-  return delay(
-    {
-      dataset_type: targetDatasetType ?? 'dataset_type_a',
-      dataset_type_desc: 'Mock dataset type — AutoTuneX backend integration not wired up yet.',
-      algorithm: 'lora',
-      confidence: 0.75,
-      column_mapping: Object.fromEntries(columnNames.map((c) => [c, { source_column: c, confidence: 0.75 }])),
-      reasoning: 'Mock suggestion — column names matched heuristically since the real backend is not wired up yet.',
-    },
-    600
-  )
+  const { data } = await client.post<Record<string, unknown>>('/datasets/suggest-mapping', {
+    sample_data: sampleData,
+    column_names: columnNames,
+    column_samples: columnSamples,
+    ...(targetDatasetType ? { target_dataset_type: targetDatasetType } : {}),
+  })
+  return {
+    dataset_type: data.dataset_type as string,
+    dataset_type_desc: (data.dataset_type_desc as string) ?? '',
+    algorithm: data.algorithm as string,
+    confidence: data.confidence as number,
+    column_mapping: data.column_mapping as AiMappingSuggestion['column_mapping'],
+    reasoning: data.reasoning as string,
+  }
 }
 
-// ── Reward function validation & test execution (Online RL step) ─────────────
+// ── Reward function validation & test execution (Online RL step) ────────────
 
-const DANGEROUS_CODE_PATTERNS: { pattern: RegExp; message: string }[] = [
-  { pattern: /\bos\.system\s*\(/, message: "Use of 'os.system()' is not allowed in reward functions." },
-  { pattern: /\bsubprocess\./, message: "Use of the 'subprocess' module is not allowed in reward functions." },
-  { pattern: /\beval\s*\(/, message: "Use of 'eval()' is not allowed in reward functions." },
-  { pattern: /\b__import__\s*\(/, message: "Use of '__import__()' is not allowed in reward functions." },
-  { pattern: /\bopen\s*\(/, message: "File access via 'open()' is not allowed in reward functions." },
-]
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-function extractFinalNumber(text: string): string | null {
-  const matches = text.match(/[-+]?\d+(?:\.\d+)?/g)
-  return matches && matches.length > 0 ? matches[matches.length - 1] : null
-}
-
-function normalizeGroundTruth(value: unknown): string | null {
-  if (value === null || value === undefined) return null
-  const cleaned = String(value).trim().replace(/,/g, '').replace(/\$/g, '')
-  return cleaned.length > 0 ? cleaned : null
-}
-
-/**
- * Mock reward-function "backend": there's no real Python sandbox here. This
- * runs a handful of plausible static checks (balanced parens, banned
- * imports/builtins, function signature) and, when `testExecution` is
- * requested, scores each test input with a crude numeric-match heuristic —
- * good enough to exercise the UI's pass/fail/error states without a real
- * execution engine.
- */
 export async function validateRewardFunction(
   code: string,
   functionName: string,
   testExecution: boolean = false,
   testInputs?: Record<string, any> | Record<string, any>[]
 ): Promise<RewardFunctionValidationResult> {
-  await delay(null, 450)
-
-  const syntaxErrors: string[] = []
-  const securityIssues: string[] = []
-
-  const trimmed = code.trim()
-  if (trimmed.length === 0) {
-    syntaxErrors.push('Reward function code is empty.')
-  } else {
-    const opens = (code.match(/\(/g) || []).length
-    const closes = (code.match(/\)/g) || []).length
-    if (opens !== closes) syntaxErrors.push('Unbalanced parentheses detected.')
-  }
-
-  for (const { pattern, message } of DANGEROUS_CODE_PATTERNS) {
-    if (pattern.test(code)) securityIssues.push(message)
-  }
-
-  const signatureMatch = code.match(new RegExp(`def\\s+${escapeRegExp(functionName)}\\s*\\(([^)]*)\\)`))
-  const functionFound = signatureMatch !== null
-  const paramCount = signatureMatch ? signatureMatch[1].split(',').filter((p) => p.trim().length > 0).length : 0
-  const functionSignatureValid = functionFound && paramCount >= 2
-
-  const syntaxValid = syntaxErrors.length === 0
-  const securityValid = securityIssues.length === 0
-  const success = syntaxValid && securityValid && functionFound && functionSignatureValid
-
-  let testResult: RewardFunctionValidationResult['test_result'] = null
-  if (testExecution) {
-    const inputs = Array.isArray(testInputs) ? testInputs : testInputs ? [testInputs] : []
-    if (!success) {
-      testResult = { executed: false, error: 'Fix validation errors above before running test cases.', results: [] }
-    } else {
-      const results = inputs.map((input) => {
-        const solutionStr = typeof input.solution_str === 'string' ? input.solution_str : ''
-        const groundTruth = normalizeGroundTruth(input.ground_truth)
-        if (!solutionStr && groundTruth === null) {
-          return { error: "Missing 'solution_str'/'ground_truth' in test input." }
-        }
-        const predicted = extractFinalNumber(solutionStr)
-        const isCorrect = predicted !== null && groundTruth !== null && predicted === groundTruth
-        const formatBonus = solutionStr.includes('####') ? 0.05 : 0
-        const lengthPenalty = solutionStr ? -Math.min(solutionStr.length / 4000, 0.2) : 0
-        const base = isCorrect ? 1 : -1
-        return { return_value: Math.round((base + formatBonus + lengthPenalty) * 1000) / 1000 }
-      })
-      testResult = {
-        executed: true,
-        stdout: `Ran ${results.length} test case(s) against ${functionName}().`,
-        results,
-      }
-    }
-  }
-
-  return {
-    success,
-    syntax_errors: syntaxErrors,
-    security_issues: securityIssues,
-    validation: {
-      syntax_valid: syntaxValid,
-      security_valid: securityValid,
-      function_found: functionFound,
-      function_signature_valid: functionSignatureValid,
-    },
-    test_result: testResult,
-  }
+  const { data } = await client.post<RewardFunctionValidationResult>('/reward-function/validate', {
+    code,
+    function_name: functionName,
+    test_execution: testExecution,
+    test_inputs: testInputs,
+  })
+  return data
 }
 
 export async function generateTestSolutions(
   prompts: Array<Array<{ role: string; content: string }>>
 ): Promise<{ solutions: string[] }> {
-  const solutions = prompts.map((messages, i) => {
-    const text = messages.map((m) => m.content).join(' ')
-    const numbers = text.match(/[-+]?\d+(?:\.\d+)?/g)
-    const guess = numbers && numbers.length > 0 ? parseFloat(numbers[numbers.length - 1]) : 10 + i
-    // Mock LLM: right most of the time, occasionally off by a bit — plausible
-    // mixed pass/fail behavior once these solutions are scored downstream.
-    const noisyGuess = Math.random() < 0.7 ? guess : guess + (Math.random() < 0.5 ? 1 : -1) * (Math.floor(Math.random() * 5) + 1)
-    return `Mock model response (backend not wired up yet). Working through the problem step by step... #### ${noisyGuess}`
-  })
-  return delay({ solutions }, 500)
+  const { data } = await client.post<{ solutions: string[] }>('/generate-test-solutions', { prompts })
+  return data
 }
 
 // ── Tuning jobs (Tunings list / detail view) ──────────────────────────────────
