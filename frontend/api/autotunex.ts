@@ -232,34 +232,23 @@ export async function startJob(tuning: TuningForm): Promise<{ id: string }> {
 
 // ── Dataset type metadata (backend-informed column requirements) ─────────────
 
+function stripColSuffix(key: string): string {
+  return key.endsWith('_col') ? key.slice(0, -4) : key
+}
+
 export async function getAutotuneDatasetTypes(): Promise<Record<string, any>> {
-  return delay({
-    dataset_type_a: {
-      columns: {
-        input: { name: 'input', desc: 'Instruction or prompt', required: true },
-        output: { name: 'output', desc: 'Expected response', required: true },
-      },
-    },
-    dataset_type_b: {
-      columns: {
-        prompt: { name: 'prompt', desc: 'Prompt', required: true },
-        chosen: { name: 'chosen', desc: 'Preferred response', required: true },
-        rejected: { name: 'rejected', desc: 'Rejected response', required: true },
-      },
-    },
-    dataset_type_c: {
-      columns: {
-        prompt: { name: 'prompt', desc: 'Prompt', required: true },
-        completion: { name: 'completion', desc: 'Completion', required: true },
-        label: { name: 'label', desc: 'true/false feedback label', required: true },
-      },
-    },
-    dataset_type_d: {
-      columns: {
-        prompt: { name: 'prompt', desc: 'Prompt', required: true },
-      },
-    },
-  })
+  const { data } = await client.get<Record<string, { desc?: string; columns?: Record<string, unknown> }>>(
+    '/autotune_dataset_types'
+  )
+  const normalized: Record<string, any> = {}
+  for (const [typeKey, typeVal] of Object.entries(data ?? {})) {
+    const columns: Record<string, unknown> = {}
+    for (const [colKey, colVal] of Object.entries(typeVal.columns ?? {})) {
+      columns[stripColSuffix(colKey)] = colVal
+    }
+    normalized[typeKey] = { desc: typeVal.desc, columns }
+  }
+  return normalized
 }
 
 // ── AI-assisted column mapping ────────────────────────────────────────────────
