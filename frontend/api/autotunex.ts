@@ -35,49 +35,21 @@ import { autotunexApiBase } from '@/api/client'
 
 const client = axios.create({ baseURL: autotunexApiBase('') })
 
-function delay<T>(value: T, ms = 300): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(value), ms))
-}
-
-function generateId(prefix: string): string {
-  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`
-}
-
 // ── HuggingFace models ────────────────────────────────────────────────────────
 
-const MOCK_HF_MODELS: HuggingFaceModel[] = [
-  'ibm-granite/granite-4.0-h-micro',
-  'ibm-granite/granite-4.0-h-tiny',
-  'ibm-granite/granite-3.3-8b-instruct',
-  'meta-llama/Llama-3.1-8B-Instruct',
-  'mistralai/Mistral-7B-Instruct-v0.3',
-  'Qwen/Qwen2.5-7B-Instruct',
-].map((id, i) => ({
-  _id: generateId('hf'),
-  id,
-  likes: 1000 - i * 50,
-  trendingScore: 100 - i * 5,
-  private: false,
-  config: { architectures: ['GraniteForCausalLM'], model_type: 'granite' },
-  downloads: 500000 - i * 10000,
-  tags: ['text-generation', 'transformers'],
-  pipeline_tag: 'text-generation',
-  library_name: 'transformers',
-  createdAt: new Date(2025, 0, 1).toISOString(),
-  modelId: id,
-}))
-
 export async function getHFModels(search = '', limit = 10): Promise<HuggingFaceModel[]> {
-  const term = search.toLowerCase()
-  const results = term ? MOCK_HF_MODELS.filter((m) => m.id.toLowerCase().includes(term)) : MOCK_HF_MODELS
-  return delay(results.slice(0, limit))
+  const params = new URLSearchParams({ search, limit: String(limit), config: 'true' })
+  const { data } = await axios.get<{ models: HuggingFaceModel[] } | HuggingFaceModel[]>(
+    `https://huggingface.co/api/models?${params.toString()}`
+  )
+  return Array.isArray(data) ? data : []
 }
 
 export async function getHFModelCard(modelId: string): Promise<string> {
-  return delay(
-    `---\nlicense: apache-2.0\n---\n\n# ${modelId}\n\nThis is a mock model card (AutoTuneX backend integration not wired up yet).\n\n## Model Details\n\n- **Model ID**: ${modelId}\n- **Pipeline**: text-generation\n`,
-    150
-  )
+  const { data } = await axios.get<string>(`https://huggingface.co/${modelId}/raw/main/README.md`, {
+    responseType: 'text',
+  })
+  return data
 }
 
 // ── DMF models ─────────────────────────────────────────────────────────────────
@@ -208,13 +180,75 @@ export interface UploadDatasetChunkedOptions {
   onProgress?: (percent: number) => void
 }
 
-/** Simulates the real tus-resumable chunked upload's progress callback. */
 export async function uploadDatasetChunked(datasetId: string, opts: UploadDatasetChunkedOptions): Promise<void> {
-  const steps = 10
-  for (let i = 1; i <= steps; i++) {
-    await delay(null, 80)
-    opts.onProgress?.(Math.round((i / steps) * 100))
+  const { Upload } = await import('tus-js-client')
+  const endpoint = autotunexApiBase('/datasets/tus')
+  const chunkSize = 16 * 1024 * 1024
+
+  const hasValidation = !!opts.validationFile
+  const files: Array<{ file: File; role: 'source' | 'train' | 'validation' }> = hasValidation
+    ? [
+        { file: opts.trainFile, role: 'train' },
+        { file: opts.validationFile as File, role: 'validation' },
+      ]
+    : [{ file: opts.trainFile, role: 'source' }]
+  const expects = files.map((f) => f.role).join(',')
+
+  const totalBytes = files.reduce((sum, f) => sum + f.file.size, 0)
+  const uploaded: Record<string, number> = {}
+  const reportProgress = () => {
+    if (!opts.onProgress) return
+    const done = Object.values(uploaded).reduce((a, b) => a + b, 0)
+    opts.onProgress(Math.min(100, Math.round((done / Math.max(1, totalBytes)) * 100)))
   }
+
+  const uploadOne = (file: File, role: string): Promise<void> =>
+    new Promise<void>((resolve, reject) => {
+      const metadata: Record<string, string> = {
+        dataset_id: datasetId,
+        filename: file.name,
+        filetype: file.type || 'application/octet-stream',
+        role,
+        expects,
+      }
+      if (opts.columnMapping) metadata.column_mapping = JSON.stringify(opts.columnMapping)
+      if (!hasValidation && opts.trainSetPercentage != null) {
+        metadata.train_set_percentage = String(opts.trainSetPercentage)
+      }
+
+      const upload = new Upload(file, {
+        endpoint,
+        chunkSize,
+        retryDelays: [0, 3000, 5000, 10000, 20000],
+        removeFingerprintOnSuccess: true,
+        metadata,
+        onBeforeRequest: (req) => {
+          const xhr = req.getUnderlyingObject() as XMLHttpRequest
+          xhr.withCredentials = true
+        },
+        onError: (error) => reject(error),
+        onProgress: (bytesUploaded) => {
+          uploaded[role] = bytesUploaded
+          reportProgress()
+        },
+        onSuccess: () => {
+          uploaded[role] = file.size
+          reportProgress()
+          resolve()
+        },
+      })
+
+      upload
+        .findPreviousUploads()
+        .then((previous) => {
+          if (previous.length) upload.resumeFromPreviousUpload(previous[0])
+          upload.start()
+        })
+        .catch(() => upload.start())
+    })
+
+  await Promise.all(files.map((f) => uploadOne(f.file, f.role)))
+  opts.onProgress?.(100)
 }
 
 // ── Job estimation & launch ───────────────────────────────────────────────────
