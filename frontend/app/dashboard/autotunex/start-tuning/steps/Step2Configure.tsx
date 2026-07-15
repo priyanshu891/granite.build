@@ -181,7 +181,11 @@ export function Step2Configure({
         name: fullConfig.name,
         tuner_type: fullConfig.tuner_type,
         rl_tuner_type: fullConfig.rl_tuner_type || '',
-        ...fullConfig.config_data,
+        // getConfiguration(id) always returns populated config_data in
+        // practice (only the list endpoint, GET /configs, nulls it) — this
+        // fallback exists purely to satisfy ConfigForm's required ConfigData
+        // fields at the type level.
+        ...(fullConfig.config_data ?? ({} as ConfigData)),
       })
     } catch {
       setEditSaveError('Failed to load configuration details for editing.')
