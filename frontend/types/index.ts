@@ -307,9 +307,19 @@ export interface Dataset {
   artifact_url: string
   created_at: string
   updated_at: string
+  // Only present on single-dataset fetches (GET /dataset/{id}), not on GET /datasets.
+  data_format?: 'jsonl' | 'parquet'
+  associated_jobs?: unknown[]
   // Small preview slices, populated when a single dataset is fetched by id
   train_data?: Record<string, any>[]
   validation_data?: Record<string, any>[]
+}
+
+export interface DatasetInfo {
+  id: string
+  user_id: string
+  name: string
+  description: string
 }
 
 export type HpoStrategy = 'choice' | 'loguniform' | 'uniform'

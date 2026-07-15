@@ -14,6 +14,7 @@ import type {
   ConfigData,
   ConfigMutationResult,
   Dataset,
+  DatasetInfo,
   Estimation,
   HuggingFaceModel,
   LogEntry,
@@ -162,61 +163,42 @@ export async function updateConfiguration(
 
 // ── Datasets ───────────────────────────────────────────────────────────────────
 
-const MOCK_DATASET_PREVIEW_ROWS = Array.from({ length: 8 }, (_, i) => ({
-  input: `Sample instruction #${i + 1}`,
-  output: `Sample response #${i + 1}`,
-}))
-
-const MOCK_DATASETS: Dataset[] = [
-  {
-    id: 'ds-instructions',
-    user_id: 'mock-user',
-    name: 'Instruction pairs (sample)',
-    description: 'A small sample instruction-following dataset.',
-    train_file: 'train.jsonl',
-    train_records: 4800,
-    train_file_size: 2_400_000,
-    validation_file: 'validation.jsonl',
-    validation_records: 1200,
-    validation_file_size: 600_000,
-    artifact_id: '',
-    artifact_url: '',
-    created_at: new Date(2025, 4, 12).toISOString(),
-    updated_at: new Date(2025, 4, 12).toISOString(),
-    train_data: MOCK_DATASET_PREVIEW_ROWS,
-    validation_data: MOCK_DATASET_PREVIEW_ROWS.slice(0, 3),
-  },
-]
+function adaptDataset(raw: Record<string, unknown>): Dataset {
+  return {
+    id: raw.id as string,
+    user_id: raw.user_id as string,
+    name: raw.name as string,
+    description: raw.description as string,
+    train_file: (raw.train_file as string) ?? '',
+    train_records: (raw.train_records as number) ?? 0,
+    train_file_size: (raw.train_file_size as number) ?? 0,
+    validation_file: (raw.validation_file as string) ?? '',
+    validation_records: (raw.validation_records as number) ?? 0,
+    validation_file_size: (raw.validation_file_size as number) ?? 0,
+    artifact_id: (raw.artifact_id as string) ?? '',
+    artifact_url: (raw.artifact_url as string) ?? '',
+    created_at: raw.created_at as string,
+    updated_at: raw.updated_at as string,
+    data_format: raw.data_format as Dataset['data_format'],
+    associated_jobs: (raw.associated_jobs as unknown[]) ?? [],
+    train_data: raw.train_data as Record<string, any>[] | undefined,
+    validation_data: raw.validation_data as Record<string, any>[] | undefined,
+  }
+}
 
 export async function getDatasets(): Promise<Dataset[]> {
-  return delay(MOCK_DATASETS)
+  const { data } = await client.get<Record<string, unknown>[]>('/datasets')
+  return (data ?? []).map(adaptDataset)
 }
 
 export async function getDataset(id: string): Promise<Dataset> {
-  const found = MOCK_DATASETS.find((d) => d.id === id)
-  if (!found) throw new Error(`Dataset ${id} not found`)
-  return delay(found)
+  const { data } = await client.get<Record<string, unknown>>(`/dataset/${id}`)
+  return adaptDataset(data)
 }
 
-export async function createDataset(payload: { name: string; description: string }): Promise<Dataset> {
-  const dataset: Dataset = {
-    id: generateId('ds'),
-    user_id: 'mock-user',
-    name: payload.name,
-    description: payload.description,
-    train_file: '',
-    train_records: 0,
-    train_file_size: 0,
-    validation_file: '',
-    validation_records: 0,
-    validation_file_size: 0,
-    artifact_id: '',
-    artifact_url: '',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }
-  MOCK_DATASETS.push(dataset)
-  return delay(dataset, 500)
+export async function createDataset(payload: { name: string; description: string }): Promise<DatasetInfo> {
+  const { data } = await client.post<DatasetInfo>('/dataset', payload)
+  return data
 }
 
 export interface UploadDatasetChunkedOptions {
