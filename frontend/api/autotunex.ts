@@ -91,15 +91,14 @@ export interface DmfModel {
   open: boolean
 }
 
-const MOCK_DMF_MODELS: DmfModel[] = [
-  { model_id: 'granite-4.0-micro', model_label: 'Granite 4.0 Micro', base_model: 'granite-4.0-micro', namespace: 'ibm', revision: 'main', open: true },
-  { model_id: 'granite-3.3-8b', model_label: 'Granite 3.3 8B', base_model: 'granite-3.3-8b', namespace: 'ibm', revision: 'main', open: true },
-]
-
 export async function searchDMFModels(query: string): Promise<{ data: DmfModel[] }> {
-  const term = query.toLowerCase()
-  const data = term ? MOCK_DMF_MODELS.filter((m) => m.model_id.toLowerCase().includes(term)) : MOCK_DMF_MODELS
-  return delay({ data })
+  const { data } = await client.post<{ data: DmfModel[] } | DmfModel[]>('/dmf/search', { query })
+  // Real response envelope is unconfirmed from source — accept either a bare
+  // array or a {data: [...]} wrapper so an unexpected shape degrades to an
+  // empty result instead of throwing.
+  if (Array.isArray(data)) return { data }
+  if (data && Array.isArray((data as { data: DmfModel[] }).data)) return data as { data: DmfModel[] }
+  return { data: [] }
 }
 
 // ── Configurations ────────────────────────────────────────────────────────────
