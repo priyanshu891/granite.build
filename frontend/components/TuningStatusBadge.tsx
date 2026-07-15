@@ -39,6 +39,7 @@ const STATUS_CONFIG: Record<TuningStatus, { label: string; color: string; shape:
   TERMINATED: { label: 'Terminated', color: GRAY,  shape: 'prohibit' },
   PENDING:    { label: 'Pending',    color: GRAY,  shape: 'circle-outline' },
   SUBMITTED:  { label: 'Submitted',  color: BLUE,  shape: 'square' },
+  PAUSED:     { label: 'Paused',     color: GRAY,  shape: 'triangle-outline' },
 }
 
 interface Props {
