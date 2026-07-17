@@ -3,6 +3,7 @@
 import { PageHeader } from '@/components/PageHeader'
 import { AutotunexTabs } from '@/components/AutotunexTabs'
 import { ConfigurationsTable } from '@/components/ConfigurationsTable'
+import { DatasetsTable } from '@/components/DatasetsTable'
 import styles from './Settings.module.scss'
 
 export default function SettingsPage() {
@@ -18,7 +19,7 @@ export default function SettingsPage() {
 
       <section className={styles.section}>
         <h4 className={styles.sectionHeading}>Data sets</h4>
-        <p>Datasets table coming soon.</p>
+        <DatasetsTable />
       </section>
     </div>
   )
