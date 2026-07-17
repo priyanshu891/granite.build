@@ -367,6 +367,14 @@ export async function deleteJob(id: string): Promise<void> {
   await client.delete(`/job/${id}`)
 }
 
+export async function deleteDataset(id: string): Promise<void> {
+  await client.delete(`/dataset/${id}`)
+}
+
+export async function deleteConfiguration(id: string): Promise<void> {
+  await client.delete(`/config/${id}`)
+}
+
 // ── Trials (autotune jobs only) ───────────────────────────────────────────────
 
 function adaptTrial(raw: Record<string, unknown>): Trial {
