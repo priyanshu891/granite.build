@@ -53,6 +53,8 @@ export function ConfigurationsTable() {
   const [deleteError, setDeleteError] = useState<string | undefined>(undefined)
   const [createOpen, setCreateOpen] = useState(false)
   const [viewId, setViewId] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
 
   const { data: configs = [], isLoading } = useQuery({
     queryKey: ['autotunex', 'configurations'],
@@ -95,13 +97,19 @@ export function ConfigurationsTable() {
     created_at: c.created_at ?? '',
   }))
 
+  // Clamp the current page in case rows shrank (e.g. after a delete) so we
+  // never land on an empty page past the end.
+  const lastPage = Math.max(1, Math.ceil(rows.length / pageSize))
+  const safePage = Math.min(page, lastPage)
+  const pagedRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize)
+
   if (isLoading) {
     return <DataTableSkeleton headers={HEADERS} rowCount={5} showHeader={false} showToolbar={false} />
   }
 
   return (
     <>
-      <DataTable rows={rows} headers={HEADERS} isSortable>
+      <DataTable rows={pagedRows} headers={HEADERS} isSortable>
         {({ rows: tableRows, headers, getTableProps, getHeaderProps, getRowProps, getSelectionProps, getBatchActionProps }) => {
           const batchActionProps = getBatchActionProps()
           return (
@@ -171,7 +179,13 @@ export function ConfigurationsTable() {
                   })}
                 </TableBody>
               </Table>
-              <Pagination totalItems={rows.length} pageSize={10} page={1} pageSizes={[10, 20, 50]} onChange={() => {}} />
+              <Pagination
+                totalItems={rows.length}
+                pageSize={pageSize}
+                page={safePage}
+                pageSizes={[10, 20, 50]}
+                onChange={({ page: p, pageSize: ps }) => { setPage(p); setPageSize(ps) }}
+              />
             </TableContainer>
           )
         }}

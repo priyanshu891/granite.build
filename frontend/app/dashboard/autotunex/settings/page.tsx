@@ -12,15 +12,17 @@ export default function SettingsPage() {
       <PageHeader crumbs={[{ label: 'AutoTuneX', to: '/dashboard/autotunex' }, { label: 'Settings' }]} />
       <AutotunexTabs active="settings" />
 
-      <section className={styles.section}>
-        <h4 className={styles.sectionHeading}>Configurations</h4>
-        <ConfigurationsTable />
-      </section>
+      <div className={styles.grid}>
+        <section className={styles.section}>
+          <h4 className={styles.sectionHeading}>Configurations</h4>
+          <ConfigurationsTable />
+        </section>
 
-      <section className={styles.section}>
-        <h4 className={styles.sectionHeading}>Data sets</h4>
-        <DatasetsTable />
-      </section>
+        <section className={styles.section}>
+          <h4 className={styles.sectionHeading}>Data sets</h4>
+          <DatasetsTable />
+        </section>
+      </div>
     </div>
   )
 }
