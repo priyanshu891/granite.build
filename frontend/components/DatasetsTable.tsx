@@ -21,7 +21,6 @@ import {
   Pagination,
   Button,
   Link as CarbonLink,
-  Modal,
   InlineNotification,
 } from '@carbon/react'
 import { Add, TrashCan } from '@carbon/icons-react'
@@ -31,6 +30,7 @@ import type { Dataset } from '@/types'
 import { getDatasets, deleteDataset } from '@/api/autotunex'
 import { SettingsDeleteModal } from './SettingsDeleteModal'
 import { SettingsDatasetView } from './SettingsDatasetView'
+import { SettingsDatasetCreate } from './SettingsDatasetCreate'
 
 const HEADERS = [
   { key: 'name', header: 'Name' },
@@ -195,10 +195,11 @@ export function DatasetsTable() {
         onConfirm={() => deleteMutation.mutate(selectedIds)}
       />
 
-      {/* Create modal — replaced by SettingsDatasetCreate in Task 9 */}
-      <Modal open={createOpen} passiveModal modalHeading="Create New Dataset" size="lg" onRequestClose={() => setCreateOpen(false)}>
-        <p>Dataset create form coming soon.</p>
-      </Modal>
+      <SettingsDatasetCreate
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={() => setCreateOpen(false)}
+      />
 
       <SettingsDatasetView open={viewId != null} datasetId={viewId} onClose={() => setViewId(null)} />
     </>
