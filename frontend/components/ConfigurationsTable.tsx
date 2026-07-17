@@ -31,6 +31,7 @@ import axios from 'axios'
 import type { Configuration } from '@/types'
 import { getConfigurations, deleteConfiguration, getConfiguration } from '@/api/autotunex'
 import { SettingsDeleteModal } from './SettingsDeleteModal'
+import { SettingsConfigCreate } from './SettingsConfigCreate'
 import { ConfigDisplay } from '../app/dashboard/autotunex/start-tuning/ConfigDisplay'
 
 const SYSTEM_CONFIG_USER_ID = '00000000-0000-0000-0000-000000000001'
@@ -197,10 +198,11 @@ export function ConfigurationsTable() {
         onConfirm={() => deleteMutation.mutate(selectedIds)}
       />
 
-      {/* Create modal — replaced by SettingsConfigCreate in Task 8 */}
-      <Modal open={createOpen} passiveModal modalHeading="Create New Configuration" size="lg" onRequestClose={() => setCreateOpen(false)}>
-        <p>Config create form coming soon.</p>
-      </Modal>
+      <SettingsConfigCreate
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={() => setCreateOpen(false)}
+      />
 
       <Modal
         open={viewId != null}
