@@ -30,6 +30,7 @@ import axios from 'axios'
 import type { Dataset } from '@/types'
 import { getDatasets, deleteDataset } from '@/api/autotunex'
 import { SettingsDeleteModal } from './SettingsDeleteModal'
+import { SettingsDatasetView } from './SettingsDatasetView'
 
 const HEADERS = [
   { key: 'name', header: 'Name' },
@@ -199,10 +200,7 @@ export function DatasetsTable() {
         <p>Dataset create form coming soon.</p>
       </Modal>
 
-      {/* View modal — replaced by SettingsDatasetView in Task 7 */}
-      <Modal open={viewId != null} passiveModal modalHeading="Dataset" size="lg" onRequestClose={() => setViewId(null)}>
-        <p>Dataset view coming soon.</p>
-      </Modal>
+      <SettingsDatasetView open={viewId != null} datasetId={viewId} onClose={() => setViewId(null)} />
     </>
   )
 }

@@ -23,13 +23,15 @@ import {
   Link as CarbonLink,
   Modal,
   InlineNotification,
+  InlineLoading,
 } from '@carbon/react'
 import { Add, TrashCan } from '@carbon/icons-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import type { Configuration } from '@/types'
-import { getConfigurations, deleteConfiguration } from '@/api/autotunex'
+import { getConfigurations, deleteConfiguration, getConfiguration } from '@/api/autotunex'
 import { SettingsDeleteModal } from './SettingsDeleteModal'
+import { ConfigDisplay } from '../app/dashboard/autotunex/start-tuning/ConfigDisplay'
 
 const SYSTEM_CONFIG_USER_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -54,6 +56,12 @@ export function ConfigurationsTable() {
   const { data: configs = [], isLoading } = useQuery({
     queryKey: ['autotunex', 'configurations'],
     queryFn: getConfigurations,
+  })
+
+  const { data: viewedConfig, isLoading: isViewLoading } = useQuery({
+    queryKey: ['autotunex-config', viewId],
+    queryFn: () => getConfiguration(viewId as string),
+    enabled: viewId != null,
   })
 
   const byId = useMemo(() => new Map(configs.map((c) => [c.id, c])), [configs])
@@ -194,9 +202,18 @@ export function ConfigurationsTable() {
         <p>Config create form coming soon.</p>
       </Modal>
 
-      {/* View modal — replaced by ConfigDisplay wiring in Task 7 */}
-      <Modal open={viewId != null} passiveModal modalHeading="Configuration" size="lg" onRequestClose={() => setViewId(null)}>
-        <p>Config view coming soon.</p>
+      <Modal
+        open={viewId != null}
+        passiveModal
+        modalHeading={viewedConfig ? `Configuration: ${viewedConfig.name}` : 'Configuration'}
+        size="lg"
+        onRequestClose={() => setViewId(null)}
+      >
+        {isViewLoading || !viewedConfig ? (
+          <InlineLoading description="Loading configuration…" />
+        ) : (
+          <ConfigDisplay configuration={viewedConfig} />
+        )}
       </Modal>
     </>
   )
