@@ -20,11 +20,11 @@ export function AutotunexTabs({ active }: Props) {
     <Tabs selectedIndex={selectedIndex}>
       <TabList aria-label="AutoTuneX sections">
         {/* @ts-expect-error Carbon Tab's as prop expects href to be passed through */}
-        <Tab as={Link as any} href="/dashboard/autotunex">
+        <Tab as={Link} href="/dashboard/autotunex">
           Tunings
         </Tab>
         {/* @ts-expect-error Carbon Tab's as prop expects href to be passed through */}
-        <Tab as={Link as any} href="/dashboard/autotunex/settings">
+        <Tab as={Link} href="/dashboard/autotunex/settings">
           Settings
         </Tab>
       </TabList>
