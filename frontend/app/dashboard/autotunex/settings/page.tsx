@@ -2,6 +2,7 @@
 
 import { PageHeader } from '@/components/PageHeader'
 import { AutotunexTabs } from '@/components/AutotunexTabs'
+import { ConfigurationsTable } from '@/components/ConfigurationsTable'
 import styles from './Settings.module.scss'
 
 export default function SettingsPage() {
@@ -12,7 +13,7 @@ export default function SettingsPage() {
 
       <section className={styles.section}>
         <h4 className={styles.sectionHeading}>Configurations</h4>
-        <p>Configurations table coming soon.</p>
+        <ConfigurationsTable />
       </section>
 
       <section className={styles.section}>
