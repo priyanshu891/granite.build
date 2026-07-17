@@ -7,6 +7,7 @@ import type { ConfigForm, ConfigData, Configuration, PendingConfigData, TuningGo
 import { getConfigurationTemplate, createConfiguration, getConfigurations } from '@/api/autotunex'
 import { ALGORITHM_DETAILS } from '@/config/autotunexAlgorithms'
 import { CreateConfigForm } from '../app/dashboard/autotunex/start-tuning/CreateConfigForm'
+import { normalizeTokenizerListFields } from '../app/dashboard/autotunex/start-tuning/wizardUtils'
 
 interface Props {
   open: boolean
@@ -50,6 +51,7 @@ export function SettingsConfigCreate({ open, onClose, onCreated }: Props) {
       setName('')
       setNameError('')
       setSelectedAlgorithm('lora')
+      createMutation.reset()
     }
   }, [open, template, configForm])
 
@@ -78,6 +80,7 @@ export function SettingsConfigCreate({ open, onClose, onCreated }: Props) {
       rl_tuner_type: rl_tuner_type || null,
       config_data: configSections as ConfigData,
     }
+    normalizeTokenizerListFields(pendingData.config_data)
     createMutation.mutate(pendingData)
   }
 
