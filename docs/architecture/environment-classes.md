@@ -92,6 +92,28 @@ Retry is controlled at two levels:
 
 `retry_transparently=True` deduplicates `NEWARTIFACT` events across retry iterations using `RetryArtifactFilterQueue`, so downstream consumers don't see duplicate artifact events.
 
+### Built-in asset stores (`env://`, `mem://`)
+
+Two stores are provided by the base class, so **every** environment supports them with no per-environment
+configuration:
+
+| Store | Methods (on `Environment`) | Behaviour |
+|-------|----------------------------|-----------|
+| `env://` (env-local) | `pullasset_envstore` / `pushasset_envstore` | Shared-filesystem no-op: pull reconstructs the path from the `EnvURI` into the binding; push registers the URI. No transfer. |
+| `mem://` (in-memory) | `pullasset_memstore` / `pushasset_memstore` | Passes a producer's binding value verbatim through the build's shared in-memory dict. |
+
+Because these live on the base class, subclasses inherit them automatically — no subclass needs its own
+`*_envstore` / `*_memstore` methods, and `env://` / `mem://` do **not** need an `assetstores` entry in
+`environment.yaml`. `_load_assetstores` calls `_register_default_envstore()` and
+`_register_default_memstore()`, each of which ensures its store is registered using the same three-tier
+resolution order: (1) an explicit `environment.yaml` store for that scheme wins; otherwise (2) a
+space-provided `space://assetstores/env-local` / `space://assetstores/mem-local` store *if one exists*;
+otherwise (3) the bundled
+[`builtins/assetstores/env-local`](../../src/gbserver/builtins/assetstores/env-local/store.yaml) /
+[`builtins/assetstores/mem-local`](../../src/gbserver/builtins/assetstores/mem-local/store.yaml) default.
+No shipped space defines an `env-local`/`mem-local` store, so tier 3 (the bundled default) is what's used
+out of the box; tier 2 is an optional per-space customization hook.
+
 ### Abstract Method
 
 ```python
@@ -210,7 +232,10 @@ themselves (URI schemes, secrets, configuration), see [Asset stores](../asset-st
 | `pushasset_lhstore` | Lakehouse | Injects a `lhpush` built-in step |
 | `pullasset_cosstore` | IBM COS | `cos_pull` — injects a `cosrclone` built-in step |
 | `pushasset_cosstore` | IBM COS | Injects a `cosrclone` built-in step |
-| `pullasset_envstore` | Env (local path) | Returns the path directly as a binding |
+
+`Lsf` also supports `env://` (`pullasset_envstore` / `pushasset_envstore`), but those are
+[inherited from the base class](#built-in-asset-stores-env-mem) rather than defined here — as they are
+for every environment.
 
 For Lakehouse and COS stores, loading/pushing is delegated to built-in steps that run as additional LSF jobs in the pipeline.
 
