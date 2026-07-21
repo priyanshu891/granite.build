@@ -19,10 +19,12 @@ import {
   TableBatchAction,
   Pagination,
   Link as CarbonLink,
+  Button,
 } from '@carbon/react'
-import { Compare, TrashCan } from '@carbon/icons-react'
+import { Compare, Launch, Rocket, TrashCan } from '@carbon/icons-react'
 import type { TuningJob } from '@/types'
 import { TuningStatusBadge } from './TuningStatusBadge'
+import Link from 'next/link'
 
 interface Props {
   jobs: TuningJob[]
@@ -137,7 +139,10 @@ export function TuningsTable({
         const batchActionProps = getBatchActionProps()
 
         return (
-          <TableContainer>
+          <TableContainer
+            title="Tunings"
+            description="Shows your past tunings along with their status and performance metrics."
+          >
             <TableToolbar>
               <TableBatchActions {...batchActionProps} onCancel={() => onSelectedIdsChange([])}>
                 <TableBatchAction renderIcon={TrashCan} onClick={onDeleteSelected}>
@@ -150,7 +155,10 @@ export function TuningsTable({
                 )}
               </TableBatchActions>
               <TableToolbarContent>
-                <TableToolbarSearch placeholder="Search tunings…" onChange={(_e, value) => onSearch(value ?? '')} />
+                <TableToolbarSearch persistent placeholder="Search tunings…" onChange={(_e, value) => onSearch(value ?? '')} />
+                  <Button as={Link} href="/dashboard/autotunex/start-tuning" renderIcon={Rocket}>
+                    Start Tuning
+                  </Button>
               </TableToolbarContent>
             </TableToolbar>
             <Table {...getTableProps()} size="md">

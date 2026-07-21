@@ -128,7 +128,7 @@ export function ConfigurationsTable() {
                   </TableBatchAction>
                 </TableBatchActions>
                 <TableToolbarContent>
-                  <TableToolbarSearch placeholder="Search configurations…" onChange={() => {}} />
+                  <TableToolbarSearch persistent placeholder="Search configurations…" onChange={() => {}} />
                   <Button renderIcon={Add} onClick={() => setCreateOpen(true)}>
                     Create New Configuration
                   </Button>

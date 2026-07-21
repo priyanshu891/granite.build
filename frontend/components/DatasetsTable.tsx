@@ -125,7 +125,7 @@ export function DatasetsTable() {
                   </TableBatchAction>
                 </TableBatchActions>
                 <TableToolbarContent>
-                  <TableToolbarSearch placeholder="Search datasets…" onChange={() => {}} />
+                  <TableToolbarSearch persistent placeholder="Search datasets…" onChange={() => {}} />
                   <Button renderIcon={Add} onClick={() => setCreateOpen(true)}>
                     Create New Dataset
                   </Button>
