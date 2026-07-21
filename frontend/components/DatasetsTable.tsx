@@ -110,7 +110,10 @@ export function DatasetsTable() {
         {({ rows: tableRows, headers, getTableProps, getHeaderProps, getRowProps, getSelectionProps, getBatchActionProps }) => {
           const batchActionProps = getBatchActionProps()
           return (
-            <TableContainer>
+            <TableContainer
+              title="Data sets"
+              description="Uploaded data sets available for tuning, with their training and validation sample counts."
+            >
               <TableToolbar>
                 <TableBatchActions {...batchActionProps} onCancel={() => setSelectedIds([])}>
                   <TableBatchAction

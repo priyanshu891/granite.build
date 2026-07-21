@@ -14,12 +14,10 @@ export default function SettingsPage() {
 
       <div className={styles.grid}>
         <section className={styles.section}>
-          <h4 className={styles.sectionHeading}>Configurations</h4>
           <ConfigurationsTable />
         </section>
 
         <section className={styles.section}>
-          <h4 className={styles.sectionHeading}>Data sets</h4>
           <DatasetsTable />
         </section>
       </div>

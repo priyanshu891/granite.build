@@ -113,7 +113,10 @@ export function ConfigurationsTable() {
         {({ rows: tableRows, headers, getTableProps, getHeaderProps, getRowProps, getSelectionProps, getBatchActionProps }) => {
           const batchActionProps = getBatchActionProps()
           return (
-            <TableContainer>
+            <TableContainer
+              title="Configurations"
+              description="Reusable tuning configurations you can select when starting a new tuning."
+            >
               <TableToolbar>
                 <TableBatchActions {...batchActionProps} onCancel={() => setSelectedIds([])}>
                   <TableBatchAction
