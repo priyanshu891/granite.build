@@ -62,12 +62,6 @@ export default function AutoTuneXPage() {
     <div style={{ padding: '1.5rem' }}>
       <PageHeader crumbs={[{ label: 'AutoTuneX' }]} />
       <AutotunexTabs active="tunings" />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <h4>Tunings</h4>
-        <Button as={Link} href="/dashboard/autotunex/start-tuning" renderIcon={Rocket}>
-          Start Tuning
-        </Button>
-      </div>
 
       {error && (
         <InlineNotification

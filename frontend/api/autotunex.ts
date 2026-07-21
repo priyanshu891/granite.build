@@ -444,3 +444,19 @@ export async function getJobLogs(
     hasMore: Boolean(data.has_more),
   }
 }
+
+// Mirrors the reference AutoTuneX endpoint: /job/trial/{trialId}/logs — keyed
+// on trialId only (no jobId in the path), same shape/pagination as job logs.
+export async function getTrialLogs(
+  trialId: string,
+  opts?: { beforeId?: number; limit?: number }
+): Promise<{ logs: LogEntry[]; hasMore: boolean }> {
+  const { data } = await client.get<{ logs: Record<string, unknown>[]; has_more: boolean }>(
+    `/job/trial/${trialId}/logs`,
+    { params: { before_id: opts?.beforeId ?? 0, limit: opts?.limit ?? 50 } }
+  )
+  return {
+    logs: (data.logs ?? []).map(adaptLogEntry),
+    hasMore: Boolean(data.has_more),
+  }
+}

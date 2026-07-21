@@ -149,6 +149,40 @@ function MyBuildsTile() {
     </BaseTile>
   );
 }
+// ── AutoTuneX tiles ─────────────────────────────────────────────────────
+
+// Placeholder counts until AutoTuneX job stats are wired to a real API.
+const AUTOTUNEX_STUB_STATS = {
+  total: 12,
+  running: 2,
+  pending: 1,
+  completed: 8,
+  failed: 1,
+};
+
+function AutoTuneXTile() {
+  const startTuningLink = (
+    <Link
+      href="/dashboard/autotunex/start-tuning"
+      className="cds--link"
+      style={{ fontSize: "0.875rem" }}
+    >
+      Start tuning
+    </Link>
+  );
+
+  return (
+    <BaseTile title="AutoTuneX" action={startTuningLink}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+        <StatRow label="Total tunings" value={AUTOTUNEX_STUB_STATS.total} />
+        <StatRow label="Running" value={AUTOTUNEX_STUB_STATS.running} />
+        <StatRow label="Pending" value={AUTOTUNEX_STUB_STATS.pending} />
+        <StatRow label="Completed" value={AUTOTUNEX_STUB_STATS.completed} />
+        <StatRow label="Failed" value={AUTOTUNEX_STUB_STATS.failed} />
+      </div>
+    </BaseTile>
+  );
+}
 
 function ClusterStatusTile() {
   const { data: todayData, isFetching, refetch } = useQuery({
@@ -605,13 +639,14 @@ export default function HomePage() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
+          gridTemplateColumns: "repeat(5, 1fr)",
           gap: "1rem",
           marginBottom: "1rem",
           alignItems: "stretch",
         }}
       >
         <MyBuildsTile />
+        <AutoTuneXTile />
         <ClusterStatusTile />
         <SpacesOverviewTile />
         <BuildStatsTile />
