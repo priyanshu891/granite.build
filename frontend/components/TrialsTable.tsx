@@ -21,13 +21,16 @@ import {
   TabPanels,
   TabPanel,
   CodeSnippet,
+  Button,
   ProgressBar,
   InlineNotification,
 } from '@carbon/react'
+import { ArrowLeft } from '@carbon/icons-react'
 import { RadarChart } from '@carbon/charts-react'
 import { getJobTrials } from '@/api/autotunex'
 import { useChartsTheme } from '@/hooks/useTheme'
 import { TrialLogViewer } from '@/components/TrialLogViewer'
+import { TrialCompare } from '@/components/TrialCompare'
 import type { Trial } from '@/types'
 
 const HEADERS = [
@@ -98,6 +101,7 @@ interface Props {
 
 export function TrialsTable({ jobId }: Props) {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [showCompare, setShowCompare] = useState(false)
   const theme = useChartsTheme()
 
   const { data: trials = [], isLoading } = useQuery({
@@ -111,6 +115,25 @@ export function TrialsTable({ jobId }: Props) {
 
   if (trials.length === 0) {
     return <InlineNotification kind="info" title="No trial data available" hideCloseButton />
+  }
+
+  // Full-screen compare view: replaces the table + radar, mirroring AutoTuneX.
+  const selectedForCompare = trials.filter((t) => selectedIds.includes(t.id) && t.status === 'COMPLETED' && t.score)
+  if (showCompare && selectedForCompare.length > 0) {
+    return (
+      <div>
+        <Button
+          kind="ghost"
+          size="sm"
+          renderIcon={ArrowLeft}
+          onClick={() => setShowCompare(false)}
+          style={{ marginBottom: '1rem' }}
+        >
+          Back to trials
+        </Button>
+        <TrialCompare trials={selectedForCompare} />
+      </div>
+    )
   }
 
   const rows = trials.map((t) => ({
@@ -129,12 +152,21 @@ export function TrialsTable({ jobId }: Props) {
   // A radar needs at least 2 axes (distinct metrics) to render; a single axis
   // makes Carbon's RadarChart reject.
   const axisCount = new Set(radarData.map((d) => d.feature)).size
-  const canCompare = comparableTrials.length >= 2 && axisCount >= 2
+  const canShowRadar = comparableTrials.length >= 2 && axisCount >= 2
+  // The diff-table only needs 2+ completed trials with a score — no axis constraint.
+  const canOpenCompare = comparableTrials.length >= 2
 
   const trialsById = new Map(trials.map((t) => [t.id, t]))
 
   return (
     <div>
+      {canOpenCompare && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+          <Button size="sm" onClick={() => setShowCompare(true)}>
+            Compare {comparableTrials.length} trials
+          </Button>
+        </div>
+      )}
       <DataTable rows={rows} headers={HEADERS} isSortable>
         {({ rows: tableRows, headers, getTableProps, getHeaderProps, getRowProps, getExpandedRowProps, getSelectionProps }) => (
           <Table {...getTableProps()} size="sm">
@@ -210,7 +242,7 @@ export function TrialsTable({ jobId }: Props) {
         )}
       </DataTable>
 
-      {canCompare && (
+      {canShowRadar && (
         <div style={{ height: '420px', marginTop: '1.5rem' }}>
           <RadarChart
             data={radarData}
