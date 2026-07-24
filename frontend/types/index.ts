@@ -566,6 +566,7 @@ export interface TuningJob {
   dataset: string
   seed: number
   precision: string
+  tuning_type?: string
   autotune: boolean
   created_at: string
   updated_at: string

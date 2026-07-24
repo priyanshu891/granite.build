@@ -348,6 +348,7 @@ function adaptJob(raw: Record<string, unknown>): TuningJob {
     autotune: Boolean(raw.autotune),
     created_at: raw.created_at as string,
     updated_at: raw.updated_at as string,
+    tuning_type: raw.tuning_type as string | undefined,
   }
 }
 
@@ -361,6 +362,23 @@ export async function getJob(id: string): Promise<TuningJob> {
     params: { include_logs: false },
   })
   return adaptJob(data)
+}
+
+/**
+ * Fetches the tuning job linked to a gbserver build. Returns null when no job
+ * is associated with the build (404), so callers can render nothing for builds
+ * that merely carry the "autotunex" tag without a real linked job.
+ */
+export async function getJobByBuildId(buildId: string): Promise<TuningJob | null> {
+  try {
+    const { data } = await client.get<Record<string, unknown>>(`/job/by_build_id/${buildId}`, {
+      params: { include_logs: false },
+    })
+    return adaptJob(data)
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) return null
+    throw err
+  }
 }
 
 export async function deleteJob(id: string): Promise<void> {

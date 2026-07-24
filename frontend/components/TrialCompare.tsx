@@ -134,12 +134,32 @@ function CompareValue({
   return isOdd ? <strong>{display}</strong> : <>{display}</>
 }
 
+// The "loss" a trial is judged on — its primary metric (score.metric), matching
+// the Loss column in the trials table, falling back to a literal `loss` metric.
+function lossOf(trial: Trial): number | null {
+  const metrics = trial.score?.metrics
+  if (!metrics) return null
+  const primary = trial.score?.metric ? metrics[trial.score.metric] : undefined
+  const value = typeof primary === 'number' ? primary : metrics.loss
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
 interface Props {
   trials: Trial[]
 }
 
 export function TrialCompare({ trials }: Props) {
-  const rows = trials.map(toCompareRow)
+  // Sort by loss ascending — lowest loss first; trials without a loss sink to the end.
+  const sortedTrials = [...trials].sort((a, b) => {
+    const la = lossOf(a)
+    const lb = lossOf(b)
+    if (la === null && lb === null) return 0
+    if (la === null) return 1
+    if (lb === null) return -1
+    return la - lb
+  })
+
+  const rows = sortedTrials.map(toCompareRow)
   if (rows.length === 0) return null
 
   const differing = findDifferingKeys(rows)
