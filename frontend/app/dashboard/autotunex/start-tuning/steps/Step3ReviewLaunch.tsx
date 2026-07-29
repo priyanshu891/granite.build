@@ -4,6 +4,7 @@ import { Tile, TextInput, Tag, Button, ProgressBar } from '@carbon/react'
 import { DataBase, Settings, ModelTuned, Checkmark, Edit } from '@carbon/icons-react'
 import type { ColumnMetadata, Configuration, Dataset, DatasetForm, LaunchPhase, ModelSource, Resources } from '@/types'
 import { getConfigSummary } from '../wizardUtils'
+import { MODEL_SOURCE_LABELS } from '../../modelSources'
 import styles from './Step3ReviewLaunch.module.scss'
 import layoutStyles from '../layout.module.scss'
 
@@ -131,7 +132,7 @@ export function Step3ReviewLaunch({
               <div className={styles.cardRow}>
                 <span className={styles.cardLabel}>Source</span>
                 <span className={styles.cardValue}>
-                  {modelSource === 'dmf' ? 'Data Model Factory' : modelSource === 'custom_path' ? 'Custom Path' : 'HuggingFace'}
+                  {MODEL_SOURCE_LABELS[modelSource]}
                 </span>
               </div>
               <div className={styles.cardRow}>

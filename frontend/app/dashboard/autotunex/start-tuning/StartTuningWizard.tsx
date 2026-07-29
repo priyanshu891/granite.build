@@ -34,7 +34,7 @@ import {
   createConfiguration as apiCreateConfiguration,
   uploadDatasetChunked,
 } from '@/api/autotunex'
-import { getRequiredColumns, normalizeTokenizerListFields, overlayColumnMapping } from './wizardUtils'
+import { getRequiredColumns, isModelSelectionValid, normalizeTokenizerListFields, overlayColumnMapping } from './wizardUtils'
 import { ALGORITHM_DETAILS, ALGORITHM_OPTIONS } from '@/config/autotunexAlgorithms'
 import { clearDraft, saveDraft } from './wizardDraft'
 import { Step0GetStarted } from './steps/Step0GetStarted'
@@ -166,7 +166,7 @@ export function StartTuningWizard() {
   const canProceed = useMemo(() => {
     switch (currentStep) {
       case 0:
-        return selectedGoal !== null && selectedAlgorithm !== '' && selectedModel.trim() !== ''
+        return selectedGoal !== null && selectedAlgorithm !== '' && isModelSelectionValid(modelSource, selectedModel)
       case 1: {
         const hasDataset = existingDatasetId !== null || parsedData.length > 0
         const hasName = datasetForm.name.trim() !== ''
@@ -192,6 +192,7 @@ export function StartTuningWizard() {
     selectedGoal,
     selectedAlgorithm,
     selectedModel,
+    modelSource,
     existingDatasetId,
     parsedData.length,
     datasetForm.name,
@@ -389,7 +390,7 @@ export function StartTuningWizard() {
       const tuningForm: TuningForm = {
         config_id: finalConfigId!,
         dataset_id: (datasetId || existingDatasetId)!,
-        model: selectedModel,
+        model: selectedModel.trim(),
         model_source: modelSource,
         experiment_name: experimentName.trim().replace(/\s+/g, '_'),
         autotune: autotuneEnabled,

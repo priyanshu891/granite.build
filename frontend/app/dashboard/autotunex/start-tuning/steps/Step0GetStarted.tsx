@@ -15,6 +15,7 @@ import {
   Tile,
   Link,
   InlineLoading,
+  TextInput,
 } from '@carbon/react'
 import { Education, Compare, Growth, View, Launch } from '@carbon/icons-react'
 import ReactMarkdown from 'react-markdown'
@@ -22,6 +23,7 @@ import remarkBreaks from 'remark-breaks'
 import type { HuggingFaceModel, ModelSource, TuningGoal } from '@/types'
 import { GOAL_OPTIONS } from '@/config/autotunexAlgorithms'
 import { getDefaultAlgorithmForGoal } from '../wizardUtils'
+import { MODEL_SOURCE_LABELS, MODEL_SOURCE_OPTIONS } from '../../modelSources'
 import { getHFModelCard, getHFModels, searchDMFModels, type DmfModel } from '@/api/autotunex'
 import styles from './Step0GetStarted.module.scss'
 import layoutStyles from '../layout.module.scss'
@@ -191,7 +193,9 @@ export function Step0GetStarted({
 
   async function fetchModelCard(modelId: string) {
     try {
-      if (modelSource === 'dmf' || !modelId) {
+      // Model cards are a HuggingFace-only concept — neither a registry entry
+      // nor a filesystem path has one.
+      if (modelSource !== 'huggingface' || !modelId) {
         setModelCard(null)
         return
       }
@@ -213,6 +217,12 @@ export function Step0GetStarted({
     if (modelSource === 'dmf') {
       setSelectedModel('granite-4.0-micro')
       fetchDefaultDmfModel()
+    } else if (modelSource === 'custom_path') {
+      // No default and nothing to search — the user types a path. Clearing the
+      // model also disables Next until they do (see isModelSelectionValid).
+      setSelectedModel('')
+      setSuggestions([])
+      setModelCard(null)
     } else {
       setSelectedModel('ibm-granite/granite-4.0-h-micro')
       setSuggestions(models.map((m) => ({ id: m.id, text: m.id })))
@@ -354,15 +364,27 @@ export function Step0GetStarted({
                   valueSelected={modelSource}
                   onChange={(value) => setModelSource(value as ModelSource)}
                 >
-                  <RadioButton labelText="Huggingface" value="huggingface" id="model-source-hf" />
-                  <RadioButton labelText="Data Model Factory" value="dmf" id="model-source-dmf" />
+                  {MODEL_SOURCE_OPTIONS.map((o) => (
+                    <RadioButton key={o.value} labelText={MODEL_SOURCE_LABELS[o.value]} value={o.value} id={o.id} />
+                  ))}
                 </RadioButtonGroup>
               </FormGroup>
 
               <FormGroup legendText="">
                 <div className={styles.modelComboRow}>
                   <div className={styles.modelComboField}>
-                    {comboBoxReady ? (
+                    {modelSource === 'custom_path' ? (
+                      <TextInput
+                        id="model-path"
+                        labelText="Model path"
+                        placeholder="/mnt/models/granite-4.0-micro"
+                        helperText="Absolute path to a model directory on the tuning host."
+                        value={selectedModel}
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                        invalid={selectedModel.trim() !== '' && !selectedModel.trim().startsWith('/')}
+                        invalidText="Must be an absolute path"
+                      />
+                    ) : comboBoxReady ? (
                       <>
                         <ComboBox
                           id="model-combo"
@@ -380,13 +402,13 @@ export function Step0GetStarted({
                             }
                           }}
                         />
-                        {isSearching && modelSource === 'dmf' && <InlineLoading description="Searching DMF models..." />}
+                        {isSearching && modelSource === 'dmf' && <InlineLoading description="Searching PVC models..." />}
                       </>
                     ) : (
                       <InlineLoading description="Loading models..." />
                     )}
                   </div>
-                  {selectedModel && (
+                  {selectedModel && modelSource !== 'custom_path' && (
                     <Button
                       kind="ghost"
                       size="md"

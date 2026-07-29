@@ -2,6 +2,7 @@ import type {
   ColumnMapping,
   ColumnMetadata,
   DatasetFormatType,
+  ModelSource,
   ParsedDataRow,
   TuningGoal,
 } from '@/types'
@@ -330,4 +331,19 @@ export function overlayColumnMapping(rows: ParsedDataRow[], mapping: ColumnMappi
     }
     return overlay
   })
+}
+
+/**
+ * Whether the Step 0 model selection is complete enough to proceed.
+ *
+ * The "Local" source (`custom_path`) additionally requires an absolute path:
+ * the value is handed to the tuning runner verbatim as --model_name_or_path, so
+ * a relative path would resolve against the runner's working directory rather
+ * than against anything the user had in mind.
+ */
+export function isModelSelectionValid(source: ModelSource, model: string): boolean {
+  const trimmed = model.trim()
+  if (!trimmed) return false
+  if (source === 'custom_path') return trimmed.startsWith('/')
+  return true
 }

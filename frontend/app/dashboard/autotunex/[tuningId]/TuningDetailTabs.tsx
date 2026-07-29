@@ -9,6 +9,7 @@ import { TuningLogViewer } from '@/components/TuningLogViewer'
 import { TrialsTable } from '@/components/TrialsTable'
 import { TuningResultsPanel } from '@/components/TuningResultsPanel'
 import { ConfigDisplay } from '../start-tuning/ConfigDisplay'
+import { modelSourceLabel } from '../modelSources'
 
 function formatTime(seconds: number): string {
   if (seconds <= 0) return '0 s'
@@ -38,7 +39,7 @@ function DetailsPanel({ job }: { job: TuningJob }) {
   const fields: { label: string; value: React.ReactNode }[] = [
     { label: 'Status', value: job.status },
     { label: 'Model', value: job.model },
-    { label: 'Model source', value: job.model_source },
+    { label: 'Model source', value: modelSourceLabel(job.model_source) },
     {
       label: 'Configuration',
       value: (
