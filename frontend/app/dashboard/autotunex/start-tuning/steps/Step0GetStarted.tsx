@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type ComponentType } from 'react'
+import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import {
   SelectableTile,
   FormGroup,
@@ -25,6 +25,7 @@ import { GOAL_OPTIONS } from '@/config/autotunexAlgorithms'
 import { getDefaultAlgorithmForGoal } from '../wizardUtils'
 import { MODEL_SOURCE_LABELS, MODEL_SOURCE_OPTIONS } from '../../modelSources'
 import { getHFModelCard, getHFModels, searchDMFModels, type DmfModel } from '@/api/autotunex'
+import { resolveModelComboItem, type ModelSuggestion } from '../modelComboSelection'
 import styles from './Step0GetStarted.module.scss'
 import layoutStyles from '../layout.module.scss'
 
@@ -45,8 +46,6 @@ const RESOURCE_PANEL_CLASS: Record<TuningGoal, string> = {
   offline_rl: styles.resourcePanelOfflineRl,
   online_rl: styles.resourcePanelOnlineRl,
 }
-
-type ModelSuggestion = { id: string; text: string; isOpen?: boolean; rawModel?: DmfModel }
 
 /** Strips YAML front matter from a HuggingFace README so it doesn't render as visible text. */
 function stripFrontMatter(raw: string): string {
@@ -114,6 +113,12 @@ export function Step0GetStarted({
   const [showModelCardModal, setShowModelCardModal] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const previousModelSource = useRef(modelSource)
+
+  // Must not be derived from `suggestions` — see resolveModelComboItem.
+  const comboSelectedItem = useMemo(
+    () => resolveModelComboItem(modelSource, selectedModel, selectedDmfModel),
+    [modelSource, selectedModel, selectedDmfModel],
+  )
 
   function selectGoal(goal: TuningGoal) {
     setSelectedGoal(goal)
@@ -392,7 +397,7 @@ export function Step0GetStarted({
                           placeholder="Search for a model..."
                           items={suggestions}
                           itemToString={(item) => item?.text ?? ''}
-                          selectedItem={suggestions.find((s) => s.id === selectedModel) ?? null}
+                          selectedItem={comboSelectedItem}
                           shouldFilterItem={() => true}
                           onInputChange={handleComboBoxInputChange}
                           onChange={({ selectedItem }) => handleComboBoxChange(selectedItem)}
