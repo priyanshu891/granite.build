@@ -66,7 +66,7 @@ config:                 # Environment-type-specific config — see the per-type 
   ...
 assetstores:            # Asset stores accessible from this environment (see below).
   - store_uri: <uri>
-    load:
+    pull:
       - mode: <mode>
         config: {}
     push:
@@ -116,17 +116,20 @@ restriction holds regardless of which tier finds the file.
 
 ### Asset stores
 
-`assetstores` map a store URI to the **load** (input) and **push** (output) behaviour for this
-environment. Each `load`/`push` entry has a `mode` (e.g. `hf_pull`/`hf_push`, `cos_rclone`, `env_local`,
-`default`) and an optional `config`. Modes are implemented by `pullasset_*` / `pushasset_*` methods on the
-environment class, which may queue a built-in step (e.g. `hf_pull` injects an
-[hfpull](../../src/gbserver/builtins/) step); the exact set is per-type — see each page.
+`assetstores` map a store URI to the **pull** (input) and **push** (output) behaviour for this
+environment. Each `pull`/`push` entry has a `mode` and an optional `config`. The input key is `pull`
+(it pairs with `push` and matches the `pullasset_*` handler); the former name `load` is still accepted
+as a **deprecated alias** (parsing it logs a warning recommending `pull`). Modes are implemented by
+`pullasset_*` / `pushasset_*` methods on the environment class, which may queue a built-in step; the
+exact set is per-type — see each page.
 
 The env-local (`env://`) and in-memory (`mem://`) stores are the exceptions: each is registered
 implicitly for **every** environment (their push/pull transfer nothing — env:// is a shared-filesystem
 no-op, mem:// passes a value through the build's shared memory — handled by the base class), so `env://`
 and `mem://` inputs and outputs work without an `assetstores` entry here. Declare one only to override
-its default `load`/`push` mode.
+its default `load`/`push` mode. The `file:` store is **not** implicit — an environment that supports it
+declares `space://assetstores/file/` (the builtin File store) here with the modes it implements (e.g.
+`bash` = load+push; `docker` = push only, since it has no `pullasset_filestore`).
 
 For the full list of modes and the store types themselves (URI schemes, secrets, configuration), see
 [Asset stores](../asset-stores/README.md#load-and-push-modes).
@@ -153,6 +156,21 @@ environment_configs:
         config:
           event_configs: [ ... ]  # Log-line parsing rules (see below).
 ```
+
+A monitor entry may instead **reference** a shared monitor from the library rather than inline
+`type`/`config`:
+
+```yaml
+    monitors:
+      <monitor_name>:
+        ref: space://monitors/<name>   # e.g. bash, docker, skypilot
+        config: { ... }                # Optional overlay deep-merged over the referenced monitor.
+```
+
+The referenced monitor lives at `src/gbserver/builtins/monitors/<name>/monitor.yaml` and already
+carries the standard `LLMB_ARTIFACT_*` rules. See
+[Referencing a shared monitor](../steps/monitoring-and-artifact-events.md#referencing-a-shared-monitor-the-monitor-library)
+for the overlay rules (`extra_event_configs`, same-type constraint).
 
 ## `event_configs` — log-line parsing rules
 

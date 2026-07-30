@@ -611,7 +611,11 @@ class Environment(ABC):
         and :meth:`_register_default_memstore` ensure the ``env://`` (Envstore)
         and ``mem://`` (Memstore) stores are available even when they are not
         declared, so env:// / mem:// input/output work on all backends without an
-        ``assetstores`` entry in each ``environment.yaml``.
+        ``assetstores`` entry in each ``environment.yaml``. The ``file:``
+        (Filestore) store is NOT auto-registered — an environment that supports
+        it declares ``space://assetstores/file`` in its ``environment.yaml`` with
+        only the modes it implements (e.g. bash: load+push; docker: push only),
+        so it never advertises a transfer direction it can't service.
         """
         if self.config is not None and self.config.assetstores is not None:
             for storeenv in self.config.assetstores:
@@ -654,7 +658,7 @@ class Environment(ABC):
             return
         self.supported_assetstores[assetstore] = AssetStoreEnvironmentConfig(
             store_uri="env://",
-            load=[StoreLoad(mode="default")],
+            pull=[StoreLoad(mode="default")],
             push=[StorePush(mode="default")],
         )
 
@@ -743,7 +747,7 @@ class Environment(ABC):
             return
         self.supported_assetstores[assetstore] = AssetStoreEnvironmentConfig(
             store_uri="mem://",
-            load=[StoreLoad(mode="default")],
+            pull=[StoreLoad(mode="default")],
             push=[StorePush(mode="default")],
         )
 
@@ -1156,6 +1160,30 @@ class Environment(ABC):
                 )
         return t1, t2
 
+    def _warn_non_default_mode(self: Self, store_config: Any, uri: Any) -> None:
+        """Warn (do not fail) when a non-k8s assetstore declares a special mode.
+
+        Outside k8s the assetstore ``mode`` field is not meaningful: dispatch is
+        by store *type*, not ``mode``, so any value behaves identically. The
+        preferred value is ``"default"`` (or unset); anything else is accepted for
+        backwards compatibility with existing space configs (which may still carry
+        legacy values like ``hf_pull``/``dmf_pull``/``cos_pull``) but logs a
+        deprecation warning recommending ``"default"``. Mode-specific behavior only
+        exists in k8s.
+
+        :param store_config: the StoreLoad/StorePush entry (or None).
+        :param uri: the asset uri, for the warning message.
+        """
+        if store_config is not None and store_config.mode not in (None, "default"):
+            logger.warning(
+                "assetstore '%s' declares mode '%s', which %s ignores (dispatch is "
+                "by store type, not mode). Set mode to 'default' (or omit it); "
+                "non-default modes are deprecated outside k8s.",
+                uri,
+                store_config.mode,
+                type(self).__name__,
+            )
+
     def pullasset(
         self: Self, task_group: TaskGroup, uri: URI, binding: Optional[Any] = None
     ) -> Task[Tuple[Dict, Optional[BuildTargetStepConfig]]]:
@@ -1176,10 +1204,10 @@ class Environment(ABC):
             assetstore_type = assetstore.type.lower()
             try:
                 storeload_config = (
-                    assetstoreenv_config.load[0]
+                    assetstoreenv_config.pull[0]
                     if (
-                        assetstoreenv_config.load is not None
-                        and len(assetstoreenv_config.load) > 0
+                        assetstoreenv_config.pull is not None
+                        and len(assetstoreenv_config.pull) > 0
                     )
                     else None
                 )
@@ -1629,6 +1657,7 @@ class Environment(ABC):
         survives intact — unlike env://, which reconstructs the path from the
         URI string and would mangle it. Returns the consumer-facing binding.
         """
+        self._warn_non_default_mode(storeload_config, uri)
         state = self.shared_mem_store.get(str(uri))
         logger.info("pullasset_memstore: uri=%s state=%s", uri, state)
         binding_config = {"binding": {"state": state}}
@@ -1653,6 +1682,7 @@ class Environment(ABC):
         to pass values (e.g. a service URL) that must not go through filesystem
         URI normalisation.
         """
+        self._warn_non_default_mode(storepush_config, uri)
         if not uri:
             raise ValueError(
                 f"pushasset_memstore: empty uri for binding={binding_id!r}; "
@@ -1697,6 +1727,7 @@ class Environment(ABC):
         # avoids any import-order risk and matches the lazy-import style used here.
         from gbcommon.uri.env import EnvURI
 
+        self._warn_non_default_mode(storeload_config, uri)
         assert uri is not None, "pullasset_envstore requires a non-empty env:// uri"
         envuri = uri if isinstance(uri, URI) else URI.get_uri(uri)
         assert isinstance(envuri, EnvURI), f"invalid envuri: {envuri}"
@@ -1744,6 +1775,7 @@ class Environment(ABC):
             normally rejects these at load; this guards paths reaching the store
             another way).
         """
+        self._warn_non_default_mode(storepush_config, uri)
         if not uri:
             raise ValueError(
                 f"pushasset_envstore: empty uri for binding={binding_id!r}; "
