@@ -58,7 +58,6 @@ export function StartTuningWizard() {
   const [selectedAlgorithm, setSelectedAlgorithm] = useState('lora')
   const [selectedModel, setSelectedModel] = useState('ibm-granite/granite-4.0-h-micro')
   const [modelSource, setModelSource] = useState<ModelSource>('huggingface')
-  const [additionalInfo, setAdditionalInfo] = useState<any>(null)
   const [autotuneEnabled, setAutotuneEnabled] = useState(true)
 
   // Step 1: Dataset
@@ -394,7 +393,6 @@ export function StartTuningWizard() {
         model_source: modelSource,
         experiment_name: experimentName.trim().replace(/\s+/g, '_'),
         autotune: autotuneEnabled,
-        additional_info: additionalInfo,
         ...(hasRewardStep && rewardFunctionCode.trim()
           ? { reward_function_code: rewardFunctionCode, reward_function_name: rewardFunctionName || 'compute_score' }
           : {}),
@@ -472,8 +470,6 @@ export function StartTuningWizard() {
             setSelectedModel={setSelectedModel}
             modelSource={modelSource}
             setModelSource={setModelSource}
-            additionalInfo={additionalInfo}
-            setAdditionalInfo={setAdditionalInfo}
             autotuneEnabled={autotuneEnabled}
             setAutotuneEnabled={setAutotuneEnabled}
             prefetchedModels={prefetchedModels ?? null}

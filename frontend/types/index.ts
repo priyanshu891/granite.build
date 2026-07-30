@@ -228,7 +228,12 @@ export interface PaginatedResponse<T> {
 
 export type TuningGoal = 'sft' | 'offline_rl' | 'online_rl'
 
-export type ModelSource = 'huggingface' | 'dmf' | 'custom_path'
+/**
+ * Sources a base model can be selected from. `dmf` (surfaced as "PVC") was
+ * retired — see modelSources.ts for how historical jobs that still carry it are
+ * labelled on read-back.
+ */
+export type ModelSource = 'huggingface' | 'custom_path'
 
 export type DatasetFormatType =
   | 'preference_pairs'
@@ -500,7 +505,6 @@ export interface TuningForm {
   model_source: ModelSource
   experiment_name: string
   autotune: boolean
-  additional_info?: any
   reward_function_code?: string
   reward_function_name?: string
 }

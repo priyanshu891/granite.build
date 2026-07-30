@@ -50,27 +50,6 @@ export async function getHFModelCard(modelId: string): Promise<string> {
   return data
 }
 
-// ── DMF models ─────────────────────────────────────────────────────────────────
-
-export interface DmfModel {
-  model_id: string
-  model_label: string
-  base_model: string
-  namespace: string
-  revision: string
-  open: boolean
-}
-
-export async function searchDMFModels(query: string): Promise<{ data: DmfModel[] }> {
-  const { data } = await client.post<{ data: DmfModel[] } | DmfModel[]>('/dmf/search', { query })
-  // Real response envelope is unconfirmed from source — accept either a bare
-  // array or a {data: [...]} wrapper so an unexpected shape degrades to an
-  // empty result instead of throwing.
-  if (Array.isArray(data)) return { data }
-  if (data && Array.isArray((data as { data: DmfModel[] }).data)) return data as { data: DmfModel[] }
-  return { data: [] }
-}
-
 // ── Configurations ────────────────────────────────────────────────────────────
 
 function adaptConfiguration(raw: Record<string, unknown>): Configuration {

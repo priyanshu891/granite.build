@@ -115,8 +115,7 @@ describe('model ComboBox selection (Start Tuning wizard)', () => {
 
   it('keeps what the user typed while the search results come back', () => {
     const memo = createMemo()
-    const resolved = ({ selectedModel }) =>
-      memo([selectedModel], () => resolveModelComboItem('huggingface', selectedModel, null))
+    const resolved = ({ selectedModel }) => memo([selectedModel], () => resolveModelComboItem(selectedModel))
 
     assert.equal(runEditScenario(resolved), 'ibm-granite/granite')
   })
@@ -124,39 +123,14 @@ describe('model ComboBox selection (Start Tuning wizard)', () => {
 
 describe('resolveModelComboItem', () => {
   it('never returns null while a model is selected', () => {
-    for (const source of ['huggingface', 'dmf', 'custom_path']) {
-      assert.notEqual(resolveModelComboItem(source, DEFAULT_HF_MODEL, null), null, `null for ${source}`)
-    }
+    assert.notEqual(resolveModelComboItem(DEFAULT_HF_MODEL), null)
   })
 
   it('returns null once the selection is cleared', () => {
-    assert.equal(resolveModelComboItem('huggingface', '', null), null)
+    assert.equal(resolveModelComboItem(''), null)
   })
 
-  it('shows a HuggingFace model by its id', () => {
-    assert.deepEqual(resolveModelComboItem('huggingface', DEFAULT_HF_MODEL, null), {
-      id: DEFAULT_HF_MODEL,
-      text: DEFAULT_HF_MODEL,
-    })
-  })
-
-  it('prefers the fetched PVC record so its label is displayed', () => {
-    const record = { id: 'granite-4.0-micro', text: 'Granite 4.0 Micro', isOpen: true }
-    assert.equal(resolveModelComboItem('dmf', 'granite-4.0-micro', record), record)
-  })
-
-  it('falls back to the raw id while the PVC record is still loading', () => {
-    assert.deepEqual(resolveModelComboItem('dmf', 'granite-4.0-micro', null), {
-      id: 'granite-4.0-micro',
-      text: 'granite-4.0-micro',
-    })
-  })
-
-  it('ignores a stale PVC record left over from a previous selection', () => {
-    const stale = { id: 'granite-3.3-8b', text: 'Granite 3.3 8B' }
-    assert.deepEqual(resolveModelComboItem('dmf', 'granite-4.0-micro', stale), {
-      id: 'granite-4.0-micro',
-      text: 'granite-4.0-micro',
-    })
+  it('shows the model by its id', () => {
+    assert.deepEqual(resolveModelComboItem(DEFAULT_HF_MODEL), { id: DEFAULT_HF_MODEL, text: DEFAULT_HF_MODEL })
   })
 })

@@ -24,7 +24,7 @@ import type { HuggingFaceModel, ModelSource, TuningGoal } from '@/types'
 import { GOAL_OPTIONS } from '@/config/autotunexAlgorithms'
 import { getDefaultAlgorithmForGoal } from '../wizardUtils'
 import { MODEL_SOURCE_LABELS, MODEL_SOURCE_OPTIONS } from '../../modelSources'
-import { getHFModelCard, getHFModels, searchDMFModels, type DmfModel } from '@/api/autotunex'
+import { getHFModelCard, getHFModels } from '@/api/autotunex'
 import { resolveModelComboItem, type ModelSuggestion } from '../modelComboSelection'
 import styles from './Step0GetStarted.module.scss'
 import layoutStyles from '../layout.module.scss'
@@ -81,8 +81,6 @@ interface Step0GetStartedProps {
   setSelectedModel: (v: string) => void
   modelSource: ModelSource
   setModelSource: (v: ModelSource) => void
-  additionalInfo: any
-  setAdditionalInfo: (v: any) => void
   autotuneEnabled: boolean
   setAutotuneEnabled: (v: boolean) => void
   prefetchedModels: HuggingFaceModel[] | null
@@ -97,8 +95,6 @@ export function Step0GetStarted({
   setSelectedModel,
   modelSource,
   setModelSource,
-  additionalInfo,
-  setAdditionalInfo,
   autotuneEnabled,
   setAutotuneEnabled,
   prefetchedModels,
@@ -106,93 +102,29 @@ export function Step0GetStarted({
   const [models, setModels] = useState<HuggingFaceModel[]>([])
   const [suggestions, setSuggestions] = useState<ModelSuggestion[]>([])
   const [modelCard, setModelCard] = useState<string | null>(null)
-  const [isSearching, setIsSearching] = useState(false)
-  const [selectedDmfModel, setSelectedDmfModel] = useState<ModelSuggestion | null>(null)
-  const [hasFetchedDefaultDmfModel, setHasFetchedDefaultDmfModel] = useState(false)
   const [comboBoxReady, setComboBoxReady] = useState(false)
   const [showModelCardModal, setShowModelCardModal] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const previousModelSource = useRef(modelSource)
 
   // Must not be derived from `suggestions` — see resolveModelComboItem.
-  const comboSelectedItem = useMemo(
-    () => resolveModelComboItem(modelSource, selectedModel, selectedDmfModel),
-    [modelSource, selectedModel, selectedDmfModel],
-  )
+  const comboSelectedItem = useMemo(() => resolveModelComboItem(selectedModel), [selectedModel])
 
   function selectGoal(goal: TuningGoal) {
     setSelectedGoal(goal)
     setSelectedAlgorithm(getDefaultAlgorithmForGoal(goal))
   }
 
-  function dedupeDmfModels(data: DmfModel[]): ModelSuggestion[] {
-    const unique = new Map<string, ModelSuggestion>()
-    for (const model of data) {
-      if (!model.namespace || !model.base_model || !model.revision) continue
-      if (model.base_model.includes('"') || model.base_model.includes('/')) continue
-      if (!unique.has(model.model_id)) {
-        unique.set(model.model_id, {
-          id: model.model_id,
-          text: model.model_label || model.model_id || model.base_model,
-          isOpen: model.open === true,
-          rawModel: model,
-        })
-      }
-    }
-    return Array.from(unique.values())
-  }
-
-  async function fetchDefaultDmfModel() {
-    try {
-      setIsSearching(true)
-      const { data } = await searchDMFModels('granite-4.0-micro')
-      if (data.length > 0) {
-        const deduped = dedupeDmfModels(data)
-        setSuggestions(deduped)
-        const defaultModel =
-          data.find((m) => m.model_id === 'granite-4.0-micro' || m.base_model === 'granite-4.0-micro') ?? data[0]
-        setSelectedDmfModel({
-          id: defaultModel.model_id,
-          text: defaultModel.model_label || defaultModel.model_id,
-          isOpen: defaultModel.open === true,
-          rawModel: defaultModel,
-        })
-        setSelectedModel(defaultModel.model_id)
-        setAdditionalInfo(defaultModel)
-      } else {
-        setSuggestions([{ id: 'granite-4.0-micro', text: 'granite-4.0-micro' }])
-      }
-    } catch {
-      setSuggestions([{ id: 'granite-4.0-micro', text: 'granite-4.0-micro' }])
-    } finally {
-      setIsSearching(false)
-      setHasFetchedDefaultDmfModel(true)
-    }
-  }
-
   async function fetchSuggestions(term: string) {
     if (!term.trim()) {
-      setIsSearching(false)
-      setSuggestions(modelSource === 'dmf' ? [] : models.map((m) => ({ id: m.id, text: m.id })))
+      setSuggestions(models.map((m) => ({ id: m.id, text: m.id })))
       return
     }
     try {
-      if (modelSource === 'dmf') {
-        setIsSearching(true)
-        const { data } = await searchDMFModels(term)
-        let deduped = dedupeDmfModels(data)
-        if (selectedDmfModel && !deduped.some((s) => s.id === selectedDmfModel.id)) {
-          deduped = [selectedDmfModel, ...deduped]
-        }
-        setSuggestions(deduped)
-      } else {
-        const response = await getHFModels(term.replace(/(\w+)[-/]\1(?=[-/])/g, '$1'))
-        setSuggestions(response.map((model) => ({ id: model.id, text: model.id })))
-      }
+      const response = await getHFModels(term.replace(/(\w+)[-/]\1(?=[-/])/g, '$1'))
+      setSuggestions(response.map((model) => ({ id: model.id, text: model.id })))
     } catch {
       setSuggestions([])
-    } finally {
-      setIsSearching(false)
     }
   }
 
@@ -211,18 +143,12 @@ export function Step0GetStarted({
     }
   }
 
-  // Reset dependent state when the model source changes (HuggingFace <-> DMF)
+  // Reset dependent state when the model source changes (HuggingFace <-> Local)
   useEffect(() => {
     if (modelSource === previousModelSource.current) return
     previousModelSource.current = modelSource
-    setSelectedDmfModel(null)
-    setHasFetchedDefaultDmfModel(false)
-    setAdditionalInfo(null)
 
-    if (modelSource === 'dmf') {
-      setSelectedModel('granite-4.0-micro')
-      fetchDefaultDmfModel()
-    } else if (modelSource === 'custom_path') {
+    if (modelSource === 'custom_path') {
       // No default and nothing to search — the user types a path. Clearing the
       // model also disables Next until they do (see isModelSelectionValid).
       setSelectedModel('')
@@ -289,23 +215,11 @@ export function Step0GetStarted({
     if (!selectedItem?.id) {
       // Cleared
       setSelectedModel('')
-      if (modelSource === 'dmf') {
-        setSuggestions([])
-        setSelectedDmfModel(null)
-        setAdditionalInfo(null)
-      } else {
-        setSuggestions(models.map((m) => ({ id: m.id, text: m.id })))
-      }
+      setSuggestions(models.map((m) => ({ id: m.id, text: m.id })))
       return
     }
     setSelectedModel(selectedItem.id)
-    if (modelSource === 'dmf') {
-      setSelectedDmfModel(selectedItem)
-      setAdditionalInfo(selectedItem.rawModel)
-    } else {
-      setAdditionalInfo(undefined)
-      fetchModelCard(selectedItem.id)
-    }
+    fetchModelCard(selectedItem.id)
   }
 
   return (
@@ -390,30 +304,22 @@ export function Step0GetStarted({
                         invalidText="Must be an absolute path"
                       />
                     ) : comboBoxReady ? (
-                      <>
-                        <ComboBox
-                          id="model-combo"
-                          titleText="Model"
-                          placeholder="Search for a model..."
-                          items={suggestions}
-                          itemToString={(item) => item?.text ?? ''}
-                          selectedItem={comboSelectedItem}
-                          shouldFilterItem={() => true}
-                          onInputChange={handleComboBoxInputChange}
-                          onChange={({ selectedItem }) => handleComboBoxChange(selectedItem)}
-                          onFocus={() => {
-                            if (modelSource === 'dmf' && !hasFetchedDefaultDmfModel && selectedModel) {
-                              fetchSuggestions(selectedModel)
-                            }
-                          }}
-                        />
-                        {isSearching && modelSource === 'dmf' && <InlineLoading description="Searching PVC models..." />}
-                      </>
+                      <ComboBox
+                        id="model-combo"
+                        titleText="Model"
+                        placeholder="Search for a model..."
+                        items={suggestions}
+                        itemToString={(item) => item?.text ?? ''}
+                        selectedItem={comboSelectedItem}
+                        shouldFilterItem={() => true}
+                        onInputChange={handleComboBoxInputChange}
+                        onChange={({ selectedItem }) => handleComboBoxChange(selectedItem)}
+                      />
                     ) : (
                       <InlineLoading description="Loading models..." />
                     )}
                   </div>
-                  {selectedModel && modelSource !== 'custom_path' && (
+                  {selectedModel && modelSource === 'huggingface' && (
                     <Button
                       kind="ghost"
                       size="md"
@@ -421,7 +327,7 @@ export function Step0GetStarted({
                       iconDescription="View model details"
                       hasIconOnly={false}
                       onClick={() => {
-                        if (modelSource === 'huggingface' && !modelCard) fetchModelCard(selectedModel)
+                        if (!modelCard) fetchModelCard(selectedModel)
                         setShowModelCardModal(true)
                       }}
                     >
@@ -444,30 +350,11 @@ export function Step0GetStarted({
       <Modal
         open={showModelCardModal}
         onRequestClose={() => setShowModelCardModal(false)}
-        modalHeading={modelSource === 'dmf' ? 'Model Details' : 'Model Card'}
+        modalHeading="Model Card"
         passiveModal
         size="lg"
       >
-        {modelSource === 'dmf' && selectedDmfModel?.rawModel ? (
-          <div>
-            <div className={styles.modelInfoRow}>
-              <span className={styles.modelInfoLabel}>Model ID:</span>
-              <span>{selectedDmfModel.rawModel.model_id}</span>
-            </div>
-            <div className={styles.modelInfoRow}>
-              <span className={styles.modelInfoLabel}>Base Model:</span>
-              <span>{selectedDmfModel.rawModel.base_model}</span>
-            </div>
-            <div className={styles.modelInfoRow}>
-              <span className={styles.modelInfoLabel}>Namespace:</span>
-              <span>{selectedDmfModel.rawModel.namespace}</span>
-            </div>
-            <div className={styles.modelInfoRow}>
-              <span className={styles.modelInfoLabel}>Revision:</span>
-              <span>{selectedDmfModel.rawModel.revision}</span>
-            </div>
-          </div>
-        ) : modelCard ? (
+        {modelCard ? (
           <div className={styles.modelCardContent}>
             <ReactMarkdown remarkPlugins={[remarkBreaks]}>{modelCard}</ReactMarkdown>
           </div>
