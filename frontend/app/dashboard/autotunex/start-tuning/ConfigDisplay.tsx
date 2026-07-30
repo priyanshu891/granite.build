@@ -5,7 +5,6 @@ import { Information } from '@carbon/icons-react'
 import type { Configuration } from '@/types'
 import { toUpperCase } from './wizardUtils'
 import styles from './ConfigDisplay.module.scss'
-import layoutStyles from './layout.module.scss'
 
 const GENERAL_CONFIG_KEYS = [
   'num_gpus_per_trial',
@@ -51,6 +50,15 @@ function FieldTile({ label, description, children }: { label: string; descriptio
   )
 }
 
+function SubField({ label, className, children }: { label: string; className?: string; children: React.ReactNode }) {
+  return (
+    <div className={className ? `${styles.subField} ${className}` : styles.subField}>
+      <FormLabel>{label}</FormLabel>
+      <span className={styles.fieldValue}>{children}</span>
+    </div>
+  )
+}
+
 /**
  * Read-only configuration preview (this wizard never renders it in edit mode —
  * the source component also supports inline editing, but Step2Configure only
@@ -85,8 +93,7 @@ export function ConfigDisplay({ configuration }: { configuration: Configuration 
   return (
     <div>
       <div className={styles.section}>
-        <h5 className={styles.sectionHeading}>Overview</h5>
-        <div className={layoutStyles.rowWrap}>
+        <div className={styles.fieldGrid}>
           {tuner && (
             <FieldTile label="Tuner type" description={tuner.description}>
               {toUpperCase(tuner.title)}
@@ -106,7 +113,7 @@ export function ConfigDisplay({ configuration }: { configuration: Configuration 
 
       <div className={styles.section}>
         <h5 className={styles.sectionHeading}>Training config</h5>
-        <div className={layoutStyles.rowWrap}>
+        <div className={styles.fieldGrid}>
           {trainingConfigEntries.map(([key, value]) => (
             <FieldTile key={key} label={key} description={(value as any).description}>
               {String((value as any).default)}
@@ -118,7 +125,7 @@ export function ConfigDisplay({ configuration }: { configuration: Configuration 
       {isRlConfig && trainingRlConfigEntries.length > 0 && (
         <div className={styles.section}>
           <h5 className={styles.sectionHeading}>Training RL config</h5>
-          <div className={layoutStyles.rowWrap}>
+          <div className={styles.fieldGrid}>
             {trainingRlConfigEntries.map(([key, value]) => (
               <FieldTile key={key} label={key} description={(value as any).description}>
                 {String((value as any).default ?? 'N/A')}
@@ -130,7 +137,7 @@ export function ConfigDisplay({ configuration }: { configuration: Configuration 
 
       <div className={styles.section}>
         <h5 className={styles.sectionHeading}>Tune config</h5>
-        <div className={layoutStyles.rowWrap}>
+        <div className={styles.fieldGrid}>
           {tuneConfigEntries.map(([key, value]) => (
             <FieldTile key={key} label={key} description={(value as any).description}>
               {String((value as any).default)}
@@ -142,7 +149,7 @@ export function ConfigDisplay({ configuration }: { configuration: Configuration 
       {hasTokenizerConfig && (
         <div className={styles.section}>
           <h5 className={styles.sectionHeading}>Tokenizer config</h5>
-          <div className={layoutStyles.rowWrap}>
+          <div className={styles.fieldGrid}>
             {tokenizerEntries.map(([key, field]: [string, any]) => (
               <FieldTile key={key} label={key} description={field.description}>
                 {field.type === 'list' ? displayListValue(field.default) : String(field.default ?? 'N/A')}
@@ -155,53 +162,31 @@ export function ConfigDisplay({ configuration }: { configuration: Configuration 
       {tuner && (
         <div className={styles.section}>
           <h5 className={styles.sectionHeading}>{tuner.title} Configuration</h5>
-          <div className={layoutStyles.rowWrap}>
+          <div className={styles.tunerParamList}>
             {Object.entries(hyperparams)
               .filter(([key]) => !NON_INCLUDED_KEYS.includes(key))
               .map(([key, value]: [string, any]) => (
-                <div className={styles.tunerParamCard} key={key}>
-                  <div className={styles.tunerParamRow}>
-                    <FormLabel>
-                      <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{toUpperCase(value.description)}</span>
-                    </FormLabel>
-                    <div className={layoutStyles.row}>
-                      {value.type === 'str' && value.values?.length === 1 ? (
-                        <div>
-                          <FormLabel style={{ display: 'block' }}>Value</FormLabel>
-                          <span className={styles.fieldValue}>{value.default}</span>
-                        </div>
-                      ) : (
-                        <>
-                          <div>
-                            <FormLabel style={{ display: 'block' }}>Strategy</FormLabel>
-                            <span className={styles.fieldValue}>{value.strategy}</span>
-                          </div>
-                          <div>
-                            <FormLabel style={{ display: 'block' }}>Default</FormLabel>
-                            <span className={styles.fieldValue}>{value.default}</span>
-                          </div>
-                          {value.strategy === 'uniform' ? (
-                            <>
-                              <div>
-                                <FormLabel style={{ display: 'block' }}>Min value</FormLabel>
-                                <span className={styles.fieldValue}>{value.min_val}</span>
-                              </div>
-                              <div>
-                                <FormLabel style={{ display: 'block' }}>Max value</FormLabel>
-                                <span className={styles.fieldValue}>{value.max_val}</span>
-                              </div>
-                            </>
-                          ) : (
-                            <div>
-                              <FormLabel style={{ display: 'block' }}>Values</FormLabel>
-                              <span className={styles.fieldValue}>
-                                {Array.isArray(value.values) && value.values.length > 1 ? value.values.join(', ') : value.values}
-                              </span>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
+                <div className={styles.tunerParam} key={key}>
+                  <h6 className={styles.tunerParamTitle}>{toUpperCase(value.description)}</h6>
+                  <div className={styles.tunerParamGrid}>
+                    {value.type === 'str' && value.values?.length === 1 ? (
+                      <SubField label="Value">{value.default}</SubField>
+                    ) : (
+                      <>
+                        <SubField label="Strategy">{value.strategy}</SubField>
+                        <SubField label="Default">{value.default}</SubField>
+                        {value.strategy === 'uniform' ? (
+                          <>
+                            <SubField label="Min value">{value.min_val}</SubField>
+                            <SubField label="Max value">{value.max_val}</SubField>
+                          </>
+                        ) : (
+                          <SubField label="Values" className={styles.tunerParamValues}>
+                            {Array.isArray(value.values) && value.values.length > 1 ? value.values.join(', ') : value.values}
+                          </SubField>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
