@@ -51,8 +51,40 @@ mkdir -p "$(dirname '{{ fname }}')"
 printf '%s' '{{ fcontents | b64encode }}' | base64 -d > '{{ fname }}'
 {%- endfor %}
 
-# ---- S2: obtain repo (added in Task 3) ------------------------------------
+# ---- S2: obtain the repo --------------------------------------------------
+{%- set github_url = ccc.github_url | default('') %}
+{%- set dir_to_save = ccc.dir_to_save | default('.') %}
+{%- if github_url %}
+SRC="${LLMB_BASH_ASSET_DIR}/autotunex-src"
+rm -rf "$SRC"
+mkdir -p "$SRC"
+REPO_SPEC='{{ github_url }}'
+case "$REPO_SPEC" in
+  file://*) LOCAL_PATH="${REPO_SPEC#file://}" ;;
+  /*)       LOCAL_PATH="$REPO_SPEC" ;;
+  *)        LOCAL_PATH="" ;;
+esac
+if [ -n "$LOCAL_PATH" ]; then
+  # Copy, never run in place: setup_command typically does `git checkout <ref>`,
+  # which would destructively mutate the developer's own working tree.
+  if [ ! -d "$LOCAL_PATH" ]; then
+    echo "autotunex: ERROR local repo path not found: $LOCAL_PATH" >&2
+    exit 3
+  fi
+  echo "autotunex: copying local repo $LOCAL_PATH -> $SRC"
+  cp -R "$LOCAL_PATH/." "$SRC/"
+else
+  echo "autotunex: cloning $REPO_SPEC -> $SRC"
+  case "$REPO_SPEC" in
+    http://*|https://*|git@*) git clone "$REPO_SPEC" "$SRC" ;;
+    *)                        git clone "https://$REPO_SPEC" "$SRC" ;;
+  esac || { echo "autotunex: ERROR git clone failed for $REPO_SPEC" >&2; exit 3; }
+fi
+WORKDIR="$SRC/{{ dir_to_save }}"
+{%- else %}
 WORKDIR="${LLMB_BASH_ASSET_DIR:-$PWD}"
+echo "autotunex: no github_url set — running in $WORKDIR"
+{%- endif %}
 
 # ---- S3: venv + setup_command (added in Task 4) ---------------------------
 

@@ -164,3 +164,56 @@ class TestAdditionalFiles:
         assert rendered.index("/tmp/autotunex-lora-new.yaml") < rendered.index(
             "START_CMD="
         )
+
+
+class TestRepoAcquisition:
+    def _cfg(self, github_url: str, dir_to_save: str = ".") -> dict:
+        return {
+            "custom_code_config": {
+                "start_command": "echo hi",
+                "github_url": github_url,
+                "dir_to_save": dir_to_save,
+            }
+        }
+
+    def test_clones_scheme_less_git_url_over_https(self):
+        rendered = self._render_url("github.ibm.com/ibm-research/fm-tune.git")
+        assert 'git clone "https://$REPO_SPEC"' in rendered
+
+    def _render_url(self, url: str) -> str:
+        return _render(self._cfg(url))
+
+    def test_repo_spec_is_embedded(self):
+        assert (
+            "REPO_SPEC='github.ibm.com/ibm-research/fm-tune.git'"
+            in self._render_url("github.ibm.com/ibm-research/fm-tune.git")
+        )
+
+    def test_copies_local_path_instead_of_cloning(self):
+        # A local path or file:// URI lets the real payload run on a machine with
+        # no github.ibm.com auth.
+        rendered = self._render_url("/Users/dev/fm-tune")
+        assert "file://*)" in rendered
+        assert 'cp -R "$LOCAL_PATH/." "$SRC/"' in rendered
+
+    def test_copies_never_uses_in_place(self):
+        # setup_command runs `git checkout stage`; in place that would mutate the
+        # developer's own working tree.
+        rendered = self._render_url("/Users/dev/fm-tune")
+        assert 'cd "$LOCAL_PATH"' not in rendered
+
+    def test_src_lives_under_asset_dir(self):
+        rendered = self._render_url("/Users/dev/fm-tune")
+        assert 'SRC="${LLMB_BASH_ASSET_DIR}/autotunex-src"' in rendered
+
+    def test_dir_to_save_selects_subdir(self):
+        rendered = _render(self._cfg("/Users/dev/fm-tune", "subproj"))
+        assert 'WORKDIR="$SRC/subproj"' in rendered
+
+    def test_missing_local_path_fails_with_exit_3(self):
+        assert "exit 3" in self._render_url("/Users/dev/fm-tune")
+
+    def test_no_repo_block_when_github_url_absent(self):
+        rendered = _render(MINIMAL)
+        assert "git clone" not in rendered
+        assert 'WORKDIR="${LLMB_BASH_ASSET_DIR:-$PWD}"' in rendered
