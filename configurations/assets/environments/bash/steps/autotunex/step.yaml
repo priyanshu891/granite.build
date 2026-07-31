@@ -1,0 +1,59 @@
+name: autotunex
+version: v1
+type: custom
+# Runs an AutoTuneX-generated payload on the bash backend. AutoTuneX emits a
+# Kubernetes-shaped step config (custom_code_config + k8s.additional_files);
+# this step consumes those keys VERBATIM so a generated build.yaml needs only
+# `environment_uri` and `step_uri` changed. The builtin `gbstep` cannot run on
+# bash at all — it declares environment_configs for k8s and Lsf only, so it
+# fails validation with "Environment config for 'Bash' not found in
+# environment_configs". The Bash block below is precisely what it is missing.
+config:
+  bash:
+    # command.sh prints its own LLMB_ARTIFACT_ID marker. The wrapper's
+    # single_output_artifact would instead emit id "outputs" (the basename of
+    # LLMB_BASH_OUTPUT_DIR), which cannot bind to the target's outputs.custom.
+    skip_finding_output_artifacts: true
+  custom_code_config:
+    github_url: ""        # git URL, or a local path / file:// URI (copied, not cloned)
+    setup_command: ""     # run in the repo inside a cached venv
+    start_command: ""     # the workload; the step's exit status is this command's
+    dir_to_save: "."      # subdir of the repo to run in
+    output_binding_id: custom   # target output name the artifact marker binds to
+
+# I/O schema — deliberately permissive so AutoTuneX generator variants (e.g. the
+# DMF branch, which adds a model_to_tune input) do not fail validation. Nothing
+# is required: the plumbing target binds no inputs at all.
+inputs:
+  allow_unknown: true
+  optional:
+    # Tuning data. Exposed by the jobsub as $LLMB_BASH_INPUT_DATASET_FILES, and
+    # bridged to $INPUT_PATH by command.sh.
+    dataset_files:
+      type: dataset
+      accept: [uri, binding]
+    # Base model for the DMF/PVC branch of AutoTuneX's generator.
+    model_to_tune:
+      type: model
+      accept: [uri, binding]
+outputs:
+  allow_unknown: true
+  optional:
+    custom:
+      type: model
+
+environment_configs:
+  Bash:
+    launchers:
+      autotunex:
+        # No `script_path`: the launcher defaults to command.sh.
+        # No launcher `env:` either — command.sh reads config through Jinja
+        # directly, which avoids an env round-trip entirely.
+        type: nohup
+        monitors:
+          - log_monitor
+    monitors:
+      # Shared monitor library: streams every line as a MESSAGE_EVENT and parses
+      # the anchored LLMB_ARTIFACT_ID/PATH marker command.sh prints.
+      log_monitor:
+        ref: space://monitors/bash
