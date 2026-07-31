@@ -40,7 +40,16 @@ echo "autotunex: INPUT_PATH=$INPUT_PATH"
 
 echo "autotunex: OUTPUT_PATH=$OUTPUT_PATH"
 
-# ---- S1: additional files (added in Task 2) -------------------------------
+# ---- S1: materialize config.k8s.additional_files --------------------------
+# AutoTuneX emits its tune config here. The shipped wrapper implements the same
+# feature but keyed config.gb.additional_files, so entries under `k8s:` are
+# never written — hence this local copy. Same base64 technique as the wrapper.
+{%- set add_files = config.k8s.additional_files if config is defined and config.k8s is defined and config.k8s.additional_files is defined else {} %}
+{%- for fname, fcontents in add_files.items() %}
+echo "autotunex: writing additional file {{ fname }}"
+mkdir -p "$(dirname '{{ fname }}')"
+printf '%s' '{{ fcontents | b64encode }}' | base64 -d > '{{ fname }}'
+{%- endfor %}
 
 # ---- S2: obtain repo (added in Task 3) ------------------------------------
 WORKDIR="${LLMB_BASH_ASSET_DIR:-$PWD}"

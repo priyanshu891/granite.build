@@ -132,3 +132,35 @@ class TestAutotunexCommandSh:
 
     def test_no_input_path_when_dataset_unbound(self):
         assert "INPUT_PATH" not in _render(MINIMAL)
+
+
+class TestAdditionalFiles:
+    CFG = {
+        "custom_code_config": {"start_command": "echo hi"},
+        "k8s": {
+            "additional_files": {
+                "/tmp/autotunex-lora-new.yaml": "tune_config:\n  marker: ok\n"
+            }
+        },
+    }
+
+    def test_writes_file_from_k8s_key_verbatim(self):
+        # AutoTuneX files these under k8s:; the step reads that key as-is rather
+        # than making the generator rename it to gb:.
+        rendered = _render(self.CFG)
+        assert "/tmp/autotunex-lora-new.yaml" in rendered
+        assert _b64("tune_config:\n  marker: ok\n") in rendered
+        assert "base64 -d" in rendered
+
+    def test_creates_parent_directory(self):
+        assert "mkdir -p" in _render(self.CFG)
+
+    def test_no_additional_files_block_when_key_absent(self):
+        # strict=True must not trip on a missing config.k8s.
+        assert "base64 -d >" not in _render(MINIMAL)
+
+    def test_written_before_start_command(self):
+        rendered = _render(self.CFG)
+        assert rendered.index("/tmp/autotunex-lora-new.yaml") < rendered.index(
+            "START_CMD="
+        )
