@@ -27,8 +27,14 @@ config:
 inputs:
   allow_unknown: true
   optional:
+    # The documented bring-your-own-step single input (docs/steps/bring-your-own-step.md
+    # and the k8s chart's values.yaml both bind it). command.sh PREFERS this one
+    # when bridging $INPUT_PATH.
+    input_artifact_path:
+      type: fileset
+      accept: [uri, binding]
     # Tuning data. Exposed by the jobsub as $LLMB_BASH_INPUT_DATASET_FILES, and
-    # bridged to $INPUT_PATH by command.sh.
+    # bridged to $INPUT_PATH by command.sh when input_artifact_path is unbound.
     dataset_files:
       type: dataset
       accept: [uri, binding]

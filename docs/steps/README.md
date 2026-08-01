@@ -34,7 +34,7 @@ These steps ship with gbserver in `src/gbserver/builtins/steps/`:
 
 | Step | Description |
 |------|-------------|
-| `gbstep` | Base step runner. Default when `step_uri` is omitted. Supports `setup_command`, `start_command`, and `cleanup_command`. |
+| `gbstep` | Base step runner. Default when `step_uri` is omitted. Supports `setup_command`, `start_command`, and `cleanup_command`. **Not available on the Bash environment:** it declares `environment_configs` for `k8s` and `Lsf` only, so a Bash target using it fails validation with `Environment config for 'Bash' not found in environment_configs` — use the `command` step, or the [`autotunex`](#bash-example-steps) step for a `custom_code_config`-shaped payload. |
 | `hfpull` | Pull a model or dataset from HuggingFace Hub. |
 | `hfpush` | Push artifacts to HuggingFace Hub. |
 | `s3pull` | Pull files from an S3-compatible object store. |
@@ -54,6 +54,7 @@ receives inputs/config and reports outputs.
 | `inference` | Generate a response to a prompt with any causal LM. | [README](../../configurations/assets/environments/bash/steps/inference/README.md) |
 | `inference-lora` | Inference with an optional LoRA adapter (target + control prompt). | [README](../../configurations/assets/environments/bash/steps/inference-lora/README.md) |
 | `lora-finetune` | Train a LoRA adapter (synthetic or supplied dataset). | [README](../../configurations/assets/environments/bash/steps/lora-finetune/README.md) |
+| `autotunex` | Run a `custom_code_config` payload (AutoTuneX-shaped: `github_url` + `setup_command` + `start_command`) on bash — the Bash equivalent of what `gbstep` does on k8s/LSF. | [README](../../configurations/assets/environments/bash/steps/autotunex/README.md) |
 
 ## `step.yaml` structure
 
