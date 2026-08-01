@@ -1,0 +1,34 @@
+granite.build:
+  name: autotunex_bash_plumbing
+  # Plumbing fixture for the autotunex bash step. Deliberately network-free and
+  # credential-free: no github_url (so S2/S3 no-op), an env:// output whose push
+  # is a shared-FS no-op, and no inputs. It proves the S1 -> S4 -> S5 chain:
+  # additional_files writes a config file, start_command reads it back and writes
+  # into $OUTPUT_PATH, and the artifact marker registers outputs.custom.
+  targets:
+    custom:
+      allow_unknown: true
+      environment_uri: space://environments/bash
+      inputs: {}
+      outputs:
+        custom:
+          # env:// push is a no-op (no existence check), so no real file needed.
+          uri: "env:///tmp/gb-autotunex-out"
+          type: fileset
+      steps:
+        - step_uri: space://steps/autotunex
+          config:
+            custom_code_config:
+              # NOTE: folded (>-) scalar — an inline `#` would fold into the one
+              # command line and comment out everything after it.
+              start_command: >-
+                cat /tmp/gb-autotunex-plumbing.yaml;
+                echo "plumbing ok" > "$OUTPUT_PATH/result.txt"
+            k8s:
+              # Read verbatim from the k8s key, exactly as AutoTuneX emits it.
+              additional_files:
+                /tmp/gb-autotunex-plumbing.yaml: |
+                  tune_config:
+                    marker: plumbing-ok
+            compute_config:
+              num_nodes: 1

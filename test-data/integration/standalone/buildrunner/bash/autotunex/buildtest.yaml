@@ -1,0 +1,19 @@
+# Expectations for the autotunex bash step plumbing fixture. One step, no
+# inputs, one output (registered inline from the step's LLMB_ARTIFACT marker —
+# env:// push adds no extra step).
+targets:
+  - custom
+target_expectations:
+  - target_name: custom
+    step_count: 1
+    input_artifact_count: 0
+    output_artifact_count: 1
+    jobstats_count: 1
+# Shared standalone space so space:// URIs (the bash env, the autotunex step)
+# resolve locally without cloning. Relative to this YAML's directory.
+space_uri: ../../../../../../configurations/spaces/local
+# Skip the cancellation run: start_command has no sleep, so it finishes
+# near-instantly and cancellation can't reliably catch the build RUNNING.
+# Mirrors the 1step and 2target fixtures' same-shaped note.
+tests:
+  - runner
