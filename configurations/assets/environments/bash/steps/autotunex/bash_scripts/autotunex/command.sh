@@ -88,6 +88,7 @@ echo "autotunex: no github_url set — running in $WORKDIR"
 
 # ---- S3: cached venv + setup_command --------------------------------------
 {%- set setup_command = ccc.setup_command | default('') %}
+{%- set venv_key = (ccc.github_url | default('')) ~ '|' ~ (ccc.setup_command | default('')) %}
 # Cache the venv under the GB home (recovered from LLMB_BASH_OUTPUT_DIR, not
 # $HOME which the launcher does not pass) so it survives across reruns. Same
 # derivation as the sibling lora-finetune / inference steps.
@@ -100,11 +101,10 @@ mkdir -p "$VENV_BASE"
 
 PY="${LLMB_BASH_PYTHON_DIR:-}/python3"
 [ -x "$PY" ] || PY="python3"
-VENV="$VENV_BASE/autotunex"
+VENV="$VENV_BASE/autotunex-{{ venv_key | short_hash }}"
 if [ ! -x "$VENV/bin/python" ]; then
   echo "autotunex: creating venv at $VENV using $PY"
   "$PY" -m venv "$VENV"
-  "$VENV/bin/pip" install --quiet --upgrade pip
 fi
 export VIRTUAL_ENV="$VENV"
 export PATH="$VENV/bin:$PATH"

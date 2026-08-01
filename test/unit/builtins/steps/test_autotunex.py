@@ -255,3 +255,40 @@ class TestSetupCommand:
     def test_venv_created_even_without_setup_command(self):
         # start_command is a python invocation; it needs the venv regardless.
         assert "VENV=" in _render(MINIMAL)
+
+    def test_pip_upgrade_is_not_included(self):
+        # Finding 1: pip upgrade reaches PyPI and breaks the offline contract.
+        # The venv's bundled pip is sufficient; setup_command does its own installs.
+        assert "--upgrade pip" not in _render(self.CFG)
+
+    def test_venv_path_keyed_by_config(self):
+        # Finding 2: different configs should have different venv directories to
+        # avoid stale site-packages from unrelated earlier builds.
+        import re
+        cfg_1 = {
+            "custom_code_config": {
+                "start_command": "python main.py",
+                "setup_command": "pip install A",
+            }
+        }
+        cfg_2 = {
+            "custom_code_config": {
+                "start_command": "python main.py",
+                "setup_command": "pip install B",
+            }
+        }
+        rendered_1 = _render(cfg_1)
+        rendered_2 = _render(cfg_2)
+        # Extract VENV= lines
+        venv_1 = re.search(r'VENV="[^"]*"', rendered_1).group(0)
+        venv_2 = re.search(r'VENV="[^"]*"', rendered_2).group(0)
+        assert venv_1 != venv_2
+
+    def test_venv_path_is_stable_for_identical_config(self):
+        # Same config should hash to the same venv directory (deterministic).
+        import re
+        rendered_1 = _render(self.CFG)
+        rendered_2 = _render(self.CFG)
+        venv_1 = re.search(r'VENV="[^"]*"', rendered_1).group(0)
+        venv_2 = re.search(r'VENV="[^"]*"', rendered_2).group(0)
+        assert venv_1 == venv_2
