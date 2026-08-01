@@ -217,3 +217,41 @@ class TestRepoAcquisition:
         rendered = _render(MINIMAL)
         assert "git clone" not in rendered
         assert 'WORKDIR="${LLMB_BASH_ASSET_DIR:-$PWD}"' in rendered
+
+
+class TestSetupCommand:
+    CFG = {
+        "custom_code_config": {
+            "start_command": "python main.py",
+            "setup_command": 'git checkout stage && pip install -e ".[full]"',
+        }
+    }
+
+    def test_setup_command_is_base64_embedded(self):
+        rendered = _render(self.CFG)
+        assert _b64('git checkout stage && pip install -e ".[full]"') in rendered
+        assert 'git checkout stage && pip install -e ".[full]"' not in rendered
+
+    def test_setup_runs_in_workdir_before_start(self):
+        rendered = _render(self.CFG)
+        assert rendered.index("SETUP_CMD=") < rendered.index("START_CMD=")
+
+    def test_venv_base_derived_from_output_dir_not_home(self):
+        # The launcher does not pass $HOME, so the venv cache is keyed off the
+        # output dir (same approach as the lora-finetune step).
+        rendered = _render(self.CFG)
+        assert 'case "$OUTPUT_PATH" in' in rendered
+        assert ".gb-venvs" in rendered
+
+    def test_venv_is_reused_when_present(self):
+        assert '[ ! -x "$VENV/bin/python" ]' in _render(self.CFG)
+
+    def test_venv_leads_path(self):
+        assert 'export PATH="$VENV/bin:$PATH"' in _render(self.CFG)
+
+    def test_no_setup_block_when_command_empty(self):
+        assert "SETUP_CMD=" not in _render(MINIMAL)
+
+    def test_venv_created_even_without_setup_command(self):
+        # start_command is a python invocation; it needs the venv regardless.
+        assert "VENV=" in _render(MINIMAL)

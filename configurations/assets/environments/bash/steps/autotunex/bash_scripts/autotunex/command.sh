@@ -86,7 +86,36 @@ WORKDIR="${LLMB_BASH_ASSET_DIR:-$PWD}"
 echo "autotunex: no github_url set — running in $WORKDIR"
 {%- endif %}
 
-# ---- S3: venv + setup_command (added in Task 4) ---------------------------
+# ---- S3: cached venv + setup_command --------------------------------------
+{%- set setup_command = ccc.setup_command | default('') %}
+# Cache the venv under the GB home (recovered from LLMB_BASH_OUTPUT_DIR, not
+# $HOME which the launcher does not pass) so it survives across reruns. Same
+# derivation as the sibling lora-finetune / inference steps.
+case "$OUTPUT_PATH" in
+  */workdir/*) VENV_BASE="${OUTPUT_PATH%%/workdir/*}/.gb-venvs" ;;
+  ?*)          VENV_BASE="$OUTPUT_PATH/.gb-venvs" ;;
+  *)           VENV_BASE="${TMPDIR:-/tmp}/.gb-venvs" ;;
+esac
+mkdir -p "$VENV_BASE"
+
+PY="${LLMB_BASH_PYTHON_DIR:-}/python3"
+[ -x "$PY" ] || PY="python3"
+VENV="$VENV_BASE/autotunex"
+if [ ! -x "$VENV/bin/python" ]; then
+  echo "autotunex: creating venv at $VENV using $PY"
+  "$PY" -m venv "$VENV"
+  "$VENV/bin/pip" install --quiet --upgrade pip
+fi
+export VIRTUAL_ENV="$VENV"
+export PATH="$VENV/bin:$PATH"
+
+cd "$WORKDIR"
+{%- if setup_command %}
+SETUP_CMD="$(printf '%s' '{{ setup_command | b64encode }}' | base64 -d)"
+echo "autotunex: setup_command: $SETUP_CMD"
+sh -c "$SETUP_CMD"
+echo "autotunex: setup_command finished"
+{%- endif %}
 
 # ---- S4: run the workload -------------------------------------------------
 # Base64 + `sh -c`: start_command carries `&&`, `$OUTPUT_PATH` and nested
