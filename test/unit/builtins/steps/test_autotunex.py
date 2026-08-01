@@ -105,11 +105,15 @@ class TestAutotunexCommandSh:
         assert _b64("a && b $X") in rendered
         assert "a && b $X" not in rendered
 
-    def test_emits_artifact_marker_at_column_zero(self):
+    def test_emits_artifact_marker_unprefixed(self):
+        # The monitor anchors ^LLMB_ARTIFACT_ID: on the LOG line, so nothing may
+        # precede the marker inside the echo. Source indentation is irrelevant.
         rendered = _render(MINIMAL)
         assert (
-            'echo "LLMB_ARTIFACT_ID:custom LLMB_ARTIFACT_PATH:$OUTPUT_PATH"' in rendered
+            'echo "LLMB_ARTIFACT_ID:$OUTPUT_BINDING_ID LLMB_ARTIFACT_PATH:$OUTPUT_PATH"'
+            in rendered
         )
+        assert _b64("custom") in rendered
 
     def test_artifact_id_is_overridable(self):
         rendered = _render(
@@ -120,7 +124,9 @@ class TestAutotunexCommandSh:
                 }
             }
         )
-        assert "LLMB_ARTIFACT_ID:adapter" in rendered
+        # b64-encoded and decoded into $OUTPUT_BINDING_ID (see TestShellInjection).
+        assert _b64("adapter") in rendered
+        assert _b64("custom") not in rendered
 
     def test_exits_with_start_command_status(self):
         assert "exit $RC" in _render(MINIMAL)
@@ -336,6 +342,29 @@ class TestSetupCommand:
         venv_2 = re.search(r'VENV="[^"]*"', rendered_2).group(0)
         assert venv_1 == venv_2
 
+    def test_venv_hash_is_shell_safe_without_b64(self):
+        # VENV="$VENV_BASE/autotunex-{{ venv_key | short_hash }}" is the one
+        # remaining raw splice. short_alphanumeric_lower_hash b64s a sha256 digest
+        # then drops every non-alnum char and lowercases, so its output is
+        # [a-z0-9]{8} by construction and needs no b64 hardening. This pins that:
+        # hostile config must not survive into the VENV path.
+        import re
+
+        rendered = _render(
+            {
+                "custom_code_config": {
+                    "start_command": "echo hi",
+                    "github_url": '/tmp/x"; touch /tmp/gb-autotunex-pwned; echo "y',
+                    "setup_command": "$(id) && rm -rf /",
+                }
+            }
+        )
+        venv = re.search(r'^VENV="(.*)"$', rendered, re.MULTILINE).group(1)
+        assert venv.startswith("$VENV_BASE/autotunex-")
+        assert re.fullmatch(
+            r"[a-z0-9]{1,8}", venv.rsplit("autotunex-", 1)[1]
+        ), f"venv hash is not [a-z0-9]: {venv!r}"
+
     def test_cd_to_workdir_reports_its_own_error(self):
         # Without the `||` block this is the one failure path that surfaces as
         # bash's bare "No such file or directory" with no autotunex: prefix.
@@ -443,6 +472,7 @@ RENDER_MATRIX: list[tuple[str, dict, dict | None]] = [
                 "start_command": "echo hi",
                 "github_url": "/Users/dev/it's-a-repo",
                 "dir_to_save": "$(touch /tmp/gb-autotunex-pwned)",
+                "output_binding_id": 'x"; touch /tmp/gb-autotunex-pwned; echo "y',
             },
             "k8s": {"additional_files": {"/tmp/it's a config.yaml": "a: 1"}},
         },
@@ -477,6 +507,9 @@ class TestShellInjection:
     DANGEROUS_DIR = "$(touch /tmp/gb-autotunex-pwned)"
     QUOTED_FNAME = "/tmp/it's a config.yaml"
     QUOTED_URL = "/Users/dev/it's-a-repo"
+    # Worse than the $(...) payloads: the `"` closes the echo's own quoting, so
+    # the rest is a fresh command list rather than a substitution.
+    QUOTE_BREAKING_ID = 'x"; touch /tmp/gb-autotunex-pwned; echo "y'
 
     def test_dir_to_save_substitution_is_not_interpolated(self):
         # This was the executable one: WORKDIR="$SRC/{{ dir_to_save }}" sat in
@@ -519,6 +552,26 @@ class TestShellInjection:
         assert self.QUOTED_URL not in rendered
         assert _b64(self.QUOTED_URL) in rendered
 
+    def test_output_binding_id_cannot_break_the_marker_quoting(self):
+        # The marker echo is double-quoted, so a `"` in output_binding_id used to
+        # close it and run the remainder: `x"; touch /tmp/pwn; echo "y` really did
+        # create the file. Now it only ever reaches $OUTPUT_BINDING_ID.
+        rendered = _render(
+            {
+                "custom_code_config": {
+                    "start_command": "echo hi",
+                    "output_binding_id": self.QUOTE_BREAKING_ID,
+                }
+            }
+        )
+        assert self.QUOTE_BREAKING_ID not in rendered
+        assert "touch /tmp/gb-autotunex-pwned" not in rendered
+        assert _b64(self.QUOTE_BREAKING_ID) in rendered
+        assert (
+            'echo "LLMB_ARTIFACT_ID:$OUTPUT_BINDING_ID LLMB_ARTIFACT_PATH:$OUTPUT_PATH"'
+            in rendered
+        )
+
     @pytest.mark.skipif(BASH is None, reason="bash not available on PATH")
     def test_injected_values_still_parse(self, tmp_path):
         script = tmp_path / "injected.sh"
@@ -529,6 +582,7 @@ class TestShellInjection:
                         "start_command": "echo hi",
                         "github_url": self.QUOTED_URL,
                         "dir_to_save": self.DANGEROUS_DIR,
+                        "output_binding_id": self.QUOTE_BREAKING_ID,
                     },
                     "k8s": {"additional_files": {self.QUOTED_FNAME: "a: 1"}},
                 }
@@ -542,7 +596,14 @@ class TestShellInjection:
     @pytest.mark.skipif(BASH is None, reason="bash not available on PATH")
     @pytest.mark.parametrize(
         "raw",
-        [DANGEROUS_DIR, QUOTED_FNAME, QUOTED_URL, "trailing\nnewline", "a\\'b"],
+        [
+            DANGEROUS_DIR,
+            QUOTED_FNAME,
+            QUOTED_URL,
+            QUOTE_BREAKING_ID,
+            "trailing\nnewline",
+            "a\\'b",
+        ],
     )
     def test_b64_decode_idiom_recovers_the_value_exactly(self, raw):
         # The decode side of the contract: whatever went in comes back out byte
@@ -574,8 +635,26 @@ class TestOutputArtifactGating:
         lines = self._lines()
         guard = lines.index(self.GUARD)
         els = lines.index("else", guard)
-        marker = next(i for i, ln in enumerate(lines) if "LLMB_ARTIFACT_ID:" in ln)
+        # Match the echo itself, not a comment that merely names the marker.
+        marker = next(
+            i for i, ln in enumerate(lines) if ln.strip().startswith('echo "LLMB_')
+        )
         assert guard < marker < els
+
+    def test_binding_id_decode_is_inside_the_guard(self):
+        # Deliberate placement: the decode does no work on the failure path.
+        lines = self._lines()
+        guard = lines.index(self.GUARD)
+        els = lines.index("else", guard)
+        decode = next(
+            i
+            for i, ln in enumerate(lines)
+            if ln.strip().startswith("OUTPUT_BINDING_ID=")
+        )
+        marker = next(
+            i for i, ln in enumerate(lines) if ln.strip().startswith('echo "LLMB_')
+        )
+        assert guard < decode < marker < els
 
     def test_failure_branch_says_it_is_not_registering(self):
         rendered = _render(MINIMAL)

@@ -169,7 +169,13 @@ if [ "$RC" -eq 0 ]; then
   if [ -z "$(ls -A "$OUTPUT_PATH" 2>/dev/null)" ]; then
     echo "autotunex: WARNING $OUTPUT_PATH is empty — registering it anyway"
   fi
-  echo "LLMB_ARTIFACT_ID:{{ output_binding_id }} LLMB_ARTIFACT_PATH:$OUTPUT_PATH"
+  # b64 like every other config value: spliced raw into this double-quoted echo,
+  # an output_binding_id containing `"` would close the quote and execute. The
+  # decode lives inside this branch so the failure path does no work at all.
+  # The marker text stays unprefixed: the bash monitor anchors its regex at the
+  # start of the LOG line, which this source indentation does not affect.
+  OUTPUT_BINDING_ID="$(printf '%s' '{{ output_binding_id | b64encode }}' | base64 -d)"
+  echo "LLMB_ARTIFACT_ID:$OUTPUT_BINDING_ID LLMB_ARTIFACT_PATH:$OUTPUT_PATH"
 else
   echo "autotunex: start_command failed ($RC) — not registering an output artifact"
 fi
