@@ -12,6 +12,7 @@ BASH_STEP = REPO_ROOT / "configurations/assets/environments/bash/steps/autotune"
 DOCKER_STEP = REPO_ROOT / "configurations/assets/environments/docker/steps/autotune"
 RUN_PY = BASH_STEP / "bash_scripts/autotune/run.py"
 COMMAND_SH = BASH_STEP / "bash_scripts/autotune/command.sh"
+SAMPLES = REPO_ROOT / "samples/autotune"
 
 SAMPLE_AUTOTUNE_CONFIG = {
     "training_config": {"tuning_algorithm": {"default": "lora"}},
@@ -179,3 +180,30 @@ class TestDockerStep:
     def test_command_sh_copy_is_executable(self):
         import os
         assert os.access(DOCKER_STEP / "bash_scripts/autotune/command.sh", os.X_OK)
+
+
+class TestReferenceBuilds:
+    def test_bash_build_shape(self):
+        b = yaml.safe_load((SAMPLES / "build.bash.yaml").read_text())["granite.build"]
+        target = b["targets"]["custom"]
+        assert "bash" in target["environment_uri"]
+        step = target["steps"][0]
+        assert step["step_uri"] == "space://steps/autotune"
+        assert target["inputs"]["model"]["uri"].startswith("hf:")
+        assert "dataset_files" in target["inputs"]
+        assert "autotune-config" in step["config"]
+        env = step["config"]["bash"]["env"]
+        assert env["BACKEND"] == "mlx"
+        assert "FM_TUNE_ROOT" in env
+
+    def test_k8s_build_uses_custom_code_and_files_to_create(self):
+        b = yaml.safe_load((SAMPLES / "build.k8s.yaml").read_text())["granite.build"]
+        step = b["targets"]["custom"]["steps"][0]
+        assert step["step_uri"] == "space://steps/custom_code"
+        ftc = step["config"]["gb"]["files_to_create"]
+        # a [{filename: configKey}] entry mapping the tmp path to the autotune-config section
+        assert any(v == "autotune-config" for entry in ftc for v in entry.values())
+        cfg_path = [k for entry in ftc for k, v in entry.items() if v == "autotune-config"][0]
+        assert "autotune-config" in step["config"]
+        assert cfg_path in step["config"]["custom_code_config"]["start_command"]
+        assert "--config_file " + cfg_path in step["config"]["custom_code_config"]["start_command"]

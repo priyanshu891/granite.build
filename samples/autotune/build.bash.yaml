@@ -1,0 +1,70 @@
+# Local (bash / Apple-Silicon MLX) AutoTune run using space://steps/autotune.
+# Structural reference — set FM_TUNE_ROOT to your fm-tune checkout before running.
+granite.build:
+  name: autotune-bash-local
+  version: 0.0.1
+  targets:
+    custom:
+      environment_uri: space://environments/bash
+      inputs:
+        model:
+          uri: hf:///ibm-granite/granite-4.1-3b
+        dataset_files:
+          uri: file:datasets/finance-classification/
+      outputs:
+        custom:
+          uri: "file:outputs/autotune_{{ run_metadata.build_id }}/"
+      steps:
+        - step_uri: space://steps/autotune
+          config:
+            bash:
+              env:
+                FM_TUNE_ROOT: /Users/priyanshu.rai/Documents/Research-Lab/Projects_2025/fm-tune_forked
+                BACKEND: mlx
+                NO_AUTOTUNE: "true"
+                RUN_NAME: autotune-bash-local
+                JOB_ID: "{{ run_metadata.build_id }}"
+            compute_config:
+              num_nodes: 1
+            # Inline tuning config — materialized to $LLMB_BASH_OUTPUT_DIR/autotune_config.yaml
+            # by command.sh and passed to main.py --config_file.
+            autotune-config:
+              tune_config:
+                num_samples:
+                  type: int
+                  default: 2
+                  min_val: 1
+                  max_val: 10000
+                  required: true
+                  description: Number of HPO samples
+              training_config:
+                tuning_algorithm:
+                  type: str
+                  default: lora
+                  values: [none, sft, lora]
+                  required: true
+                  description: Finetuning algorithm
+                num_train_epochs:
+                  type: int
+                  default: 1
+                  min_val: 1
+                  max_val: 100
+                  required: true
+                  description: Training epochs
+              tuners_config:
+                lora:
+                  title: LoRA
+                  tuner_name: tuner.lora
+                  description: Low rank adapter fine-tuning
+                  dataset_type: dataset_type_a
+                  hyperparams:
+                    r:
+                      type: int
+                      values: [8, 16]
+                      default: 16
+                      min_val: 0
+                      max_val: 64
+                      options: [choice]
+                      strategy: choice
+                      for_tuner: true
+                      description: Rank size
