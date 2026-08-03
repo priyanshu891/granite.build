@@ -4,10 +4,18 @@ from pathlib import Path
 
 import pytest
 
+from gbserver.utils.template import fill_template
+
 REPO_ROOT = Path(__file__).resolve().parents[4]
 BASH_STEP = REPO_ROOT / "configurations/assets/environments/bash/steps/autotune"
 DOCKER_STEP = REPO_ROOT / "configurations/assets/environments/docker/steps/autotune"
 RUN_PY = BASH_STEP / "bash_scripts/autotune/run.py"
+COMMAND_SH = BASH_STEP / "bash_scripts/autotune/command.sh"
+
+SAMPLE_AUTOTUNE_CONFIG = {
+    "training_config": {"tuning_algorithm": {"default": "lora"}},
+    "tuners_config": {"lora": {"title": "LoRA"}},
+}
 
 
 def _load_run_module():
@@ -77,3 +85,37 @@ class TestRunPyDriver:
         text = RUN_PY.read_text()
         for tok in ("{{", "{%", "{#"):
             assert tok not in text, f"run.py must not contain Jinja token {tok!r}"
+
+
+class TestCommandShRender:
+    def _render(self, config):
+        return fill_template(COMMAND_SH.read_text(), {"config": config}, strict=True)
+
+    def test_renders_with_inline_config(self):
+        out = self._render({"autotune-config": SAMPLE_AUTOTUNE_CONFIG})
+        assert "base64 -d" in out                       # materialization branch taken
+        assert "AUTOTUNE_CONFIG_FILE" in out
+        assert "run.py" in out                          # execs the driver
+
+    def test_base64_roundtrip_is_valid_yaml(self):
+        import base64
+        import re
+        import yaml
+        out = self._render({"autotune-config": SAMPLE_AUTOTUNE_CONFIG})
+        m = re.search(r"echo '([A-Za-z0-9+/=]+)' \| base64 -d", out)
+        assert m, "expected an `echo '<b64>' | base64 -d` line"
+        decoded = base64.b64decode(m.group(1)).decode()
+        assert yaml.safe_load(decoded)["training_config"]["tuning_algorithm"]["default"] == "lora"
+
+    def test_fallback_branch_when_no_inline_config(self):
+        out = self._render({})   # no autotune-config key
+        assert "LLMB_BASH_INPUT_HPO_CONFIG" in out       # fallback path rendered
+        assert "base64 -d" not in out                    # inline branch not taken
+
+    def test_leads_path_with_python_dir(self):
+        out = self._render({"autotune-config": SAMPLE_AUTOTUNE_CONFIG})
+        assert "LLMB_BASH_PYTHON_DIR" in out
+
+    def test_command_sh_is_executable(self):
+        import os
+        assert os.access(COMMAND_SH, os.X_OK), "command.sh must be committed with +x"
