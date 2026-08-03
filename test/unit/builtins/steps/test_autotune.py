@@ -3,6 +3,7 @@ import importlib.util
 from pathlib import Path
 
 import pytest
+import yaml
 
 from gbserver.utils.template import fill_template
 
@@ -119,3 +120,32 @@ class TestCommandShRender:
     def test_command_sh_is_executable(self):
         import os
         assert os.access(COMMAND_SH, os.X_OK), "command.sh must be committed with +x"
+
+
+class TestBashStepYaml:
+    def _load(self):
+        return yaml.safe_load((BASH_STEP / "step.yaml").read_text())
+
+    def test_identity_and_artifact_policy(self):
+        cfg = self._load()
+        assert cfg["name"] == "autotune"
+        assert cfg["type"] == "custom"
+        assert cfg["config"]["bash"]["skip_finding_output_artifacts"] is True
+
+    def test_io_schema(self):
+        cfg = self._load()
+        req = cfg["inputs"]["required"]
+        assert req["model"]["type"] == "model"
+        assert req["dataset_files"]["type"] == "dataset"
+        assert cfg["inputs"]["optional"]["hpo_config"]["type"] == "fileset"
+        assert cfg["outputs"]["optional"]["custom"]["type"] == "model"
+
+    def test_bash_launcher_and_monitor(self):
+        cfg = self._load()
+        bash = cfg["environment_configs"]["Bash"]
+        assert bash["launchers"]["autotune"]["type"] == "nohup"
+        assert bash["launchers"]["autotune"]["monitors"] == ["log_monitor"]
+        assert bash["monitors"]["log_monitor"]["ref"] == "space://monitors/bash"
+
+    def test_script_dir_matches_step_name(self):
+        assert (BASH_STEP / "bash_scripts/autotune/command.sh").exists()
