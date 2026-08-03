@@ -16,7 +16,8 @@ then runs the tuning pipeline against a local fm-tune checkout.
 | Param | Meaning | Default |
 |---|---|---|
 | `FM_TUNE_ROOT` | Path to the fm-tune checkout (required) | — |
-| `BACKEND` | `mlx` (Apple Silicon) or `torch` | `torch` |
+| `FM_TUNE_EXTRA` | pip extra installed into the venv — `core` (ray+datasets) or `full` (adds verl/vllm/flash-attn); empty = base only. `main.py` needs `ray`, which is only in these extras. | `core` |
+| `BACKEND` | Runtime `main.py --backend`: `mlx` (Apple Silicon) or `torch`. Note: this is a runtime flag, not a pip extra — deps come from `FM_TUNE_EXTRA`. | `torch` |
 | `NO_AUTOTUNE` | Skip HPO, single training run | `false` |
 | `CLEANUP` / `SAVE_HISTORY` | Pass-through flags | `false` |
 | `RUN_NAME` / `OUTPUT_MODEL_NAME` | Run / output-model name | `$JOB_ID` |

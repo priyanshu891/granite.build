@@ -43,8 +43,14 @@ if [ "${BASH_BUILD_VENV:-true}" = "true" ]; then
   PY="${LLMB_BASH_PYTHON_DIR:-}/python3"; [ -x "$PY" ] || PY=python3
   VENV="$VENV_BASE/autotune"
   [ -x "$VENV/bin/python" ] || { "$PY" -m venv "$VENV"; "$VENV/bin/pip" install --quiet --upgrade pip; }
-  if [ "${BACKEND:-torch}" = "mlx" ]; then
-    "$VENV/bin/pip" install --quiet -e "${FM_TUNE_ROOT}[mlx]"
+  # fm-tune's main.py imports `ray` unconditionally; ray lives in fm-tune's `core`
+  # and `full` extras, NOT the base package (fm-tune declares no mlx extra). Install a
+  # real extra via FM_TUNE_EXTRA (default `core`: light, ray+datasets; `full` adds
+  # verl/vllm/flash-attn for GPU). Set FM_TUNE_EXTRA= (empty) for a base-only install.
+  # BACKEND stays a runtime choice: run.py passes it to main.py --backend {torch,mlx}.
+  FM_TUNE_EXTRA="${FM_TUNE_EXTRA:-core}"
+  if [ -n "$FM_TUNE_EXTRA" ]; then
+    "$VENV/bin/pip" install --quiet -e "${FM_TUNE_ROOT}[${FM_TUNE_EXTRA}]"
   else
     "$VENV/bin/pip" install --quiet -e "$FM_TUNE_ROOT"
   fi

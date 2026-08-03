@@ -122,6 +122,16 @@ class TestCommandShRender:
         import os
         assert os.access(COMMAND_SH, os.X_OK), "command.sh must be committed with +x"
 
+    def test_installs_real_fm_tune_extra_for_ray(self):
+        # fm-tune's `ray` dep (imported unconditionally by main.py) lives in the
+        # [core]/[full] extras, NOT the base package. fm-tune has no [mlx] extra,
+        # so the venv install must use a real, param-driven extra defaulting to core.
+        out = self._render({"autotune-config": SAMPLE_AUTOTUNE_CONFIG})
+        assert "[mlx]" not in out                            # fm-tune has no mlx extra
+        assert "FM_TUNE_EXTRA" in out                        # extra is param-driven
+        assert "${FM_TUNE_EXTRA:-core}" in out               # defaults to core (provides ray)
+        assert "${FM_TUNE_ROOT}[${FM_TUNE_EXTRA}]" in out    # extra applied to the editable install
+
 
 class TestBashStepYaml:
     def _load(self):
