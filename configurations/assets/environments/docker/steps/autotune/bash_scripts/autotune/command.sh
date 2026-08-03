@@ -43,7 +43,11 @@ if [ "${BASH_BUILD_VENV:-true}" = "true" ]; then
   PY="${LLMB_BASH_PYTHON_DIR:-}/python3"; [ -x "$PY" ] || PY=python3
   VENV="$VENV_BASE/autotune"
   [ -x "$VENV/bin/python" ] || { "$PY" -m venv "$VENV"; "$VENV/bin/pip" install --quiet --upgrade pip; }
-  "$VENV/bin/pip" install --quiet -e "${FM_TUNE_ROOT}[mlx]"
+  if [ "${BACKEND:-torch}" = "mlx" ]; then
+    "$VENV/bin/pip" install --quiet -e "${FM_TUNE_ROOT}[mlx]"
+  else
+    "$VENV/bin/pip" install --quiet -e "$FM_TUNE_ROOT"
+  fi
   PYTHON="$VENV/bin/python"
 else
   PYTHON="$(command -v python3 || command -v python)"

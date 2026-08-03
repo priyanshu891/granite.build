@@ -3,6 +3,7 @@ version: v1
 type: custom
 config:
   bash:
+    # The step emits its own LLMB_ARTIFACT_ID marker; don't auto-scan the output dir.
     skip_finding_output_artifacts: true
 
 inputs:
@@ -33,7 +34,7 @@ environment_configs:
           - docker_log
         config:
           # fm-tune runtime image (CUDA + deps + fm-tune baked in).
-          image: us.icr.io/cil15-shared-registry/autotunex/build-runtime:21
+          image: <YOUR_REGISTRY>/autotunex/build-runtime:21
           # The step asset dir is bind-mounted at /gb-workspace (docs/environments/docker.md).
           command: "bash /gb-workspace/bash_scripts/autotune/command.sh"
           env:
