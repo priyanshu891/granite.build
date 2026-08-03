@@ -203,7 +203,8 @@ class TestReferenceBuilds:
         assert "dataset_files" in target["inputs"]
         assert "autotune-config" in step["config"]
         env = step["config"]["bash"]["env"]
-        assert env["BACKEND"] == "mlx"
+        assert env["BACKEND"] == "torch"
+        assert env["FM_TUNE_EXTRA"] == "core"   # extra that provides ray
         assert "FM_TUNE_ROOT" in env
 
     def test_k8s_build_uses_custom_code_and_files_to_create(self):
