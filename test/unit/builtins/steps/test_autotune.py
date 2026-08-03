@@ -149,3 +149,33 @@ class TestBashStepYaml:
 
     def test_script_dir_matches_step_name(self):
         assert (BASH_STEP / "bash_scripts/autotune/command.sh").exists()
+
+
+class TestDockerStep:
+    def _load(self):
+        return yaml.safe_load((DOCKER_STEP / "step.yaml").read_text())
+
+    def test_scripts_are_byte_identical_to_bash(self):
+        for rel in ("bash_scripts/autotune/command.sh", "bash_scripts/autotune/run.py"):
+            assert (DOCKER_STEP / rel).read_bytes() == (BASH_STEP / rel).read_bytes(), rel
+
+    def test_docker_launcher_and_monitor(self):
+        cfg = self._load()
+        d = cfg["environment_configs"]["Docker"]
+        launcher = d["launchers"]["autotune"]
+        assert launcher["type"] == "docker"
+        assert "command.sh" in launcher["config"]["command"]
+        assert launcher["config"]["image"]
+        assert d["monitors"]["docker_log"]["ref"] == "space://monitors/docker"
+
+    def test_docker_env_wires_inputs_and_backend(self):
+        cfg = self._load()
+        env = cfg["environment_configs"]["Docker"]["launchers"]["autotune"]["config"]["env"]
+        assert "bindings.model.binding.path" in env["LLMB_BASH_INPUT_MODEL"]
+        assert "bindings.dataset_files.binding.path" in env["LLMB_BASH_INPUT_DATASET_FILES"]
+        assert env["BASH_BUILD_VENV"] == "false"
+        assert env["BACKEND"] == "torch"
+
+    def test_command_sh_copy_is_executable(self):
+        import os
+        assert os.access(DOCKER_STEP / "bash_scripts/autotune/command.sh", os.X_OK)
