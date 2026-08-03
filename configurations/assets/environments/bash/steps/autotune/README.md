@@ -15,7 +15,8 @@ then runs the tuning pipeline against a local fm-tune checkout.
 ## Key params (`config.bash.env`)
 | Param | Meaning | Default |
 |---|---|---|
-| `FM_TUNE_ROOT` | Path to the fm-tune checkout (required) | — |
+| `FM_TUNE_ROOT` | fm-tune source: a local checkout path **or** a git remote (`ssh`/`https`/`*.git`). A remote is cloned once into the venv-base dir and used as the checkout (private repos need git creds on the runner). Required. | — |
+| `FM_TUNE_REF` | Branch or tag to clone when `FM_TUNE_ROOT` is a git remote (`git clone --depth 1 --branch`) | default branch |
 | `FM_TUNE_EXTRA` | pip extra installed into the venv — `core` (ray+datasets) or `full` (adds verl/vllm/flash-attn); empty = base only. `main.py` needs `ray`, which is only in these extras. | `core` |
 | `BACKEND` | Runtime `main.py --backend`: `mlx` (Apple Silicon) or `torch`. Note: this is a runtime flag, not a pip extra — deps come from `FM_TUNE_EXTRA`. | `torch` |
 | `NO_AUTOTUNE` | Skip HPO, single training run | `false` |

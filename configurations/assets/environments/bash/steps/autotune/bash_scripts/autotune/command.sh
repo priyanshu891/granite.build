@@ -40,6 +40,20 @@ if [ "${BASH_BUILD_VENV:-true}" = "true" ]; then
   esac
   mkdir -p "$VENV_BASE"
   export HF_HOME="$VENV_BASE/hf-cache"
+  # FM_TUNE_ROOT may be a git remote (ssh/https/*.git) rather than a local
+  # checkout: clone it once into VENV_BASE and repoint FM_TUNE_ROOT at the clone
+  # so the editable install and run.py's cwd both operate on a real tree.
+  # FM_TUNE_REF (optional) pins a branch or tag. Private repos need git creds on
+  # the runner. On docker (BASH_BUILD_VENV=false) FM_TUNE_ROOT is a baked image
+  # path, so this branch is skipped.
+  case "$FM_TUNE_ROOT" in
+    git@*|*://*|*.git)
+      FM_TUNE_SRC="$VENV_BASE/fm-tune-src"
+      [ -d "$FM_TUNE_SRC/.git" ] || \
+        git clone --depth 1 ${FM_TUNE_REF:+--branch "$FM_TUNE_REF"} "$FM_TUNE_ROOT" "$FM_TUNE_SRC"
+      export FM_TUNE_ROOT="$FM_TUNE_SRC"
+      ;;
+  esac
   PY="${LLMB_BASH_PYTHON_DIR:-}/python3"; [ -x "$PY" ] || PY=python3
   VENV="$VENV_BASE/autotune"
   [ -x "$VENV/bin/python" ] || { "$PY" -m venv "$VENV"; "$VENV/bin/pip" install --quiet --upgrade pip; }

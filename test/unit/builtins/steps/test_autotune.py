@@ -132,6 +132,19 @@ class TestCommandShRender:
         assert "${FM_TUNE_EXTRA:-core}" in out               # defaults to core (provides ray)
         assert "${FM_TUNE_ROOT}[${FM_TUNE_EXTRA}]" in out    # extra applied to the editable install
 
+    def test_clones_fm_tune_when_root_is_a_git_url(self):
+        # FM_TUNE_ROOT may be a git remote (ssh/https/*.git), not just a local
+        # checkout: command.sh detects a URL, clones it once to a local dir, and
+        # exports FM_TUNE_ROOT at the clone so the editable install and run.py's
+        # cwd both operate on a real tree. FM_TUNE_REF (optional) pins branch/tag.
+        out = self._render({"autotune-config": SAMPLE_AUTOTUNE_CONFIG})
+        assert "git clone" in out                            # clone branch present
+        assert "*://*" in out                                # URL detection pattern
+        assert "FM_TUNE_REF" in out                          # optional branch/tag pin
+        assert "export FM_TUNE_ROOT=" in out                 # repoint to the clone
+        # clone must precede the editable install that consumes FM_TUNE_ROOT
+        assert out.index("git clone") < out.index("${FM_TUNE_ROOT}[")
+
 
 class TestBashStepYaml:
     def _load(self):
