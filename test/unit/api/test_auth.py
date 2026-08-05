@@ -22,7 +22,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
-from gbserver.api.auth import AuthMiddleware
+from gbserver.api.auth import AuthMiddleware, _is_public_path
 
 
 def _make_app() -> FastAPI:
@@ -397,3 +397,51 @@ class TestAuthMiddlewareApiKeyMode:
             client = TestClient(app)
             response = client.post("/dashboard")
         assert response.status_code == 401
+
+
+def test_autotunex_proxy_prefix_is_public():
+    assert _is_public_path("/api/autotunex") is True
+    assert _is_public_path("/api/autotunex/job/by_build_id/abc") is True
+
+
+def test_other_api_paths_still_require_auth():
+    assert _is_public_path("/api/v1/builds") is False
+    assert _is_public_path("/api/autotunexxx") is False
+
+
+def test_autotunex_proxy_bypasses_auth_for_non_get_methods():
+    """The AutoTuneX proxy exemption must be method-agnostic — the proxied
+    server enforces its own cookie auth, so gbserver must not gate POST (or any
+    other verb) either. Regression guard for the GET/HEAD-only bypass in
+    dispatch: without the `_is_autotunex_proxy` carve-out, this POST would
+    401 despite /api/autotunex being in _PUBLIC_PATH_PREFIXES. Control:
+    POST /api/v1/thing (a non-public route) must still 401, proving auth is
+    otherwise enforced and it's specifically the autotunex prefix that's
+    exempt."""
+    app = FastAPI()
+    app.add_middleware(AuthMiddleware)
+
+    @app.post("/api/autotunex/{path:path}")
+    async def autotunex_proxy_endpoint(path: str):
+        return JSONResponse(content={"path": path})
+
+    @app.post("/api/v1/thing")
+    async def other_data_endpoint(request: Request):
+        user = request.state.data["user"]
+        return JSONResponse(content={"login": user.login})
+
+    env = {
+        "GBSERVER_AUTH_MODE": "apikey",
+        "GBSERVER_API_KEY": "secret",
+        # Fixed explicitly so this machine's local .env GBSERVER_API_USER
+        # can't leak in and change the outcome.
+        "GBSERVER_API_USER": "test-user",
+    }
+    with patch.dict(os.environ, env, clear=False):
+        client = TestClient(app)
+        # No Authorization header on either request.
+        proxy_response = client.post("/api/autotunex/jobs")
+        other_response = client.post("/api/v1/thing")
+
+    assert proxy_response.status_code == 200
+    assert other_response.status_code == 401
