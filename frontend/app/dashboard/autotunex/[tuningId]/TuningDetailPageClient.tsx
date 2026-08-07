@@ -34,7 +34,7 @@ function TuningDetailFallback() {
     <div style={{ padding: '2rem 1.5rem 1.5rem' }}>
       <PageHeader
         crumbs={[
-          { label: 'AutoTuneX', to: '/dashboard/autotunex' },
+          { label: 'Model Customisation', to: '/dashboard/autotunex' },
           { label: '…' },
         ]}
       />
@@ -96,7 +96,7 @@ function TuningDetailContent() {
       <div style={{ padding: '2rem 1.5rem 1.5rem' }}>
         <PageHeader
           crumbs={[
-            { label: 'AutoTuneX', to: '/dashboard/autotunex' },
+            { label: 'Model Customisation', to: '/dashboard/autotunex' },
             { label: job?.experiment_name ?? '…' },
           ]}
         />

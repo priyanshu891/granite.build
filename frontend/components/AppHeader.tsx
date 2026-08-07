@@ -174,7 +174,7 @@ export function AppHeader() {
                   : undefined
               }
             >
-              AutoTuneX
+              Model Customisation
             </SideNavLink>
           </SideNavItems>
         </SideNav>

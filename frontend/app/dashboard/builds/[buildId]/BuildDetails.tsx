@@ -50,7 +50,7 @@ export function BuildDetails({
   const logsHide = hasLogs ? undefined : 'none'
   const aiAnalysisHide = hasLogs ? 'none' : undefined
   const isActive = ACTIVE_STATUSES.has(build?.status ?? '')
-  const isAutotunex = build?.tags?.includes('autotunex') ?? false
+  const isAutotunex = (build?.tags?.includes('autotunex') || build?.tags?.includes('model-customisation')) ?? false
   const autotunexHide = isAutotunex ? undefined : 'none'
 
 

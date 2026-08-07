@@ -24,6 +24,21 @@ const STRIP_TRAINING_KEYS = [
   'validation_file',
   'resource_name',
 ]
+// Flattened keys always hidden from the comparison, regardless of value —
+// redundant with data shown elsewhere (model path) or only meaningful for
+// online RL trials (reward function name/path).
+const HIDDEN_KEYS = [
+  'training_config.model_name_or_path',
+  'training_rl_config.reward_function_name',
+  'training_rl_config.reward_function_path',
+]
+
+function isEmptyValue(value: unknown): boolean {
+  if (value === null || value === undefined) return true
+  if (typeof value === 'string') return value.trim() === ''
+  if (Array.isArray(value)) return value.length === 0
+  return false
+}
 
 function toUpperCase(text: string): string {
   if (!text) return ''
@@ -165,7 +180,16 @@ export function TrialCompare({ trials }: Props) {
   const differing = findDifferingKeys(rows)
   const oddOnes = getOddOnesOut(rows, [...differing].filter((k) => !['id', ...RESULT_KEYS].includes(k)))
 
-  const allKeys = Object.keys(rows[0])
+  // Fixed label column + data columns split evenly across the available width.
+  // Carbon's default auto table layout leaves large gaps when cell content is
+  // short (numbers, short strings), so we pin the layout explicitly instead.
+  const labelColWidth = '13rem'
+  const dataColMinWidth = '10rem'
+  const dataColWidth = `calc((100% - ${labelColWidth}) / ${rows.length})`
+
+  const allKeys = Object.keys(rows[0]).filter(
+    (k) => !HIDDEN_KEYS.includes(k) && !rows.every((row) => isEmptyValue(row[k]))
+  )
   const differingResultKeys = allKeys.filter((k) => RESULT_KEYS.includes(k) && differing.has(k))
   const differingConfigKeys = allKeys.filter(
     (k) => !IGNORE_KEYS.includes(k) && !RESULT_KEYS.includes(k) && differing.has(k)
@@ -175,7 +199,7 @@ export function TrialCompare({ trials }: Props) {
   const renderRows = (keys: string[]) =>
     keys.map((key) => (
       <StructuredListRow key={key}>
-        <StructuredListCell>
+        <StructuredListCell style={{ paddingRight: '2rem' }}>
           <strong>{toUpperCase(key)}</strong>
         </StructuredListCell>
         {rows.map((row) => (
@@ -197,12 +221,16 @@ export function TrialCompare({ trials }: Props) {
     ) : null
 
   return (
-    <StructuredListWrapper isCondensed isFlush>
+    <StructuredListWrapper isCondensed isFlush style={{ tableLayout: 'fixed', width: '100%' }}>
       <StructuredListHead>
         <StructuredListRow head>
-          <StructuredListCell head />
+          <StructuredListCell head style={{ width: labelColWidth, maxWidth: 'none' }} />
           {rows.map((row) => (
-            <StructuredListCell head key={row.id}>
+            <StructuredListCell
+              key={row.id}
+              head
+              style={{ width: dataColWidth, minWidth: dataColMinWidth, maxWidth: 'none' }}
+            >
               {row.id}
             </StructuredListCell>
           ))}

@@ -136,13 +136,21 @@ export function TrialsTable({ jobId }: Props) {
     )
   }
 
-  const rows = trials.map((t) => ({
-    id: t.id,
-    created_at: t.created_at,
-    status: t.status,
-    loss: t.score?.metrics[t.score.metric] ?? undefined,
-    total_time: t.score?.metrics.total_time,
-  }))
+  // Default order: lowest loss first — trials without a loss sink to the end.
+  const rows = trials
+    .map((t) => ({
+      id: t.id,
+      created_at: t.created_at,
+      status: t.status,
+      loss: t.score?.metrics[t.score.metric] ?? undefined,
+      total_time: t.score?.metrics.total_time,
+    }))
+    .sort((a, b) => {
+      if (a.loss === undefined && b.loss === undefined) return 0
+      if (a.loss === undefined) return 1
+      if (b.loss === undefined) return -1
+      return a.loss - b.loss
+    })
 
   const selectedTrials = trials.filter((t) => selectedIds.includes(t.id))
   // Only completed trials with a score can be plotted — the radar needs a full
@@ -180,10 +188,29 @@ export function TrialsTable({ jobId }: Props) {
                     setSelectedIds((e.target as HTMLInputElement).checked ? tableRows.map((r) => r.id) : [])
                   }}
                 />
-                {headers.map((h) => {
-                  const { key: _k, ...hProps } = getHeaderProps({ header: h })
-                  return <TableHeader key={h.key} {...hProps}>{h.header}</TableHeader>
-                })}
+                {(() => {
+                  const headerProps = headers.map((h) => getHeaderProps({ header: h }))
+                  // Carbon only marks a header as the active sort column once the user
+                  // clicks it — it has no notion that `rows` already arrived pre-sorted
+                  // by loss. Until the user actually sorts something, show the Loss
+                  // header as the (ascending) active sort column so the arrow matches
+                  // the real row order.
+                  const userHasSorted = headerProps.some((hp) => hp.isSortHeader)
+                  return headers.map((h, i) => {
+                    const { key: _k, ...hProps } = headerProps[i]
+                    const isDefaultLossSort = !userHasSorted && h.key === 'loss'
+                    return (
+                      <TableHeader
+                        key={h.key}
+                        {...hProps}
+                        isSortHeader={isDefaultLossSort ? true : hProps.isSortHeader}
+                        sortDirection={isDefaultLossSort ? 'ASC' : hProps.sortDirection}
+                      >
+                        {h.header}
+                      </TableHeader>
+                    )
+                  })
+                })()}
               </TableRow>
             </TableHead>
             <TableBody>

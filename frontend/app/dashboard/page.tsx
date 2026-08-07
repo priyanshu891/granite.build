@@ -151,14 +151,27 @@ function MyBuildsTile() {
 }
 // ── AutoTuneX tiles ─────────────────────────────────────────────────────
 
-// Placeholder counts until AutoTuneX job stats are wired to a real API.
-const AUTOTUNEX_STUB_STATS = {
-  total: 12,
-  running: 2,
-  pending: 1,
-  completed: 8,
-  failed: 1,
-};
+// Builds tagged either "autotunex" or "model-customisation" are both treated
+// as model-customisation activity elsewhere (see BuildDetails.tsx), and the
+// gbserver tags filter is AND-only — so we fetch both and dedupe by uuid.
+async function fetchModelCustomisationStats() {
+  const [autotunex, modelCustomisation] = await Promise.all([
+    listBuilds({ tags: ["autotunex"] }),
+    listBuilds({ tags: ["model-customisation"] }),
+  ]);
+  const byId = new Map<string, Build>();
+  for (const b of [...autotunex.items, ...modelCustomisation.items]) byId.set(b.uuid, b);
+  const builds = Array.from(byId.values());
+
+  return {
+    total: builds.length,
+    running: builds.filter((b) => b.status === "running").length,
+    pending: builds.filter((b) => b.status === "pending" || b.status === "submitted").length,
+    completed: builds.filter((b) => b.status === "success").length,
+    failed: builds.filter((b) => b.status === "failed").length,
+    cancelled: builds.filter((b) => b.status === "cancelled").length,
+  };
+}
 
 function AutoTuneXTile() {
   const startTuningLink = (
@@ -171,14 +184,25 @@ function AutoTuneXTile() {
     </Link>
   );
 
+  const { data: stats, isFetching, refetch } = useQuery({
+    queryKey: ["model-customisation-stats"],
+    queryFn: fetchModelCustomisationStats,
+  });
+  const [isRefreshing, markRefreshing] = useRefreshState(isFetching);
   return (
-    <BaseTile title="AutoTuneX" action={startTuningLink}>
+    <BaseTile
+      title="Model Customisation"
+      action={startTuningLink}
+      // onRefresh={() => { markRefreshing(); void refetch() }}
+      isRefreshing={isRefreshing}
+    >
       <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
-        <StatRow label="Total tunings" value={AUTOTUNEX_STUB_STATS.total} />
-        <StatRow label="Running" value={AUTOTUNEX_STUB_STATS.running} />
-        <StatRow label="Pending" value={AUTOTUNEX_STUB_STATS.pending} />
-        <StatRow label="Completed" value={AUTOTUNEX_STUB_STATS.completed} />
-        <StatRow label="Failed" value={AUTOTUNEX_STUB_STATS.failed} />
+        <StatRow label="Total tunings" value={stats?.total ?? "—"} />
+        <StatRow label="Running" value={stats?.running ?? "—"} />
+        <StatRow label="Pending" value={stats?.pending ?? "—"} />
+        <StatRow label="Completed" value={stats?.completed ?? "—"} />
+        <StatRow label="Cancelled" value={stats?.cancelled ?? "—"} />
+        <StatRow label="Failed" value={stats?.failed ?? "—"} />
       </div>
     </BaseTile>
   );

@@ -51,7 +51,7 @@ export function AutoTuneXPanel({ buildId }: AutoTuneXPanelProps) {
   if (isLoading) {
     return (
       <div style={{ padding: '0.5rem 1rem' }}>
-        <h5 style={{ marginBottom: '1rem' }}>AutoTuneX</h5>
+        <h5 style={{ marginBottom: '1rem' }}>Model Customisation</h5>
         <SkeletonText paragraph lineCount={5} />
       </div>
     )

@@ -7,7 +7,6 @@ import { Button, InlineNotification } from '@carbon/react'
 import { Rocket } from '@carbon/icons-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getJobs, deleteJob } from '@/api/autotunex'
-import { PageHeader } from '@/components/PageHeader'
 import { AutotunexTabs } from '@/components/AutotunexTabs'
 import { TuningsTable } from '@/components/TuningsTable'
 import { TuningDeleteModal } from '@/components/TuningDeleteModal'
@@ -60,7 +59,6 @@ export default function AutoTuneXPage() {
 
   return (
     <div style={{ padding: '1.5rem' }}>
-      <PageHeader crumbs={[{ label: 'AutoTuneX' }]} />
       <AutotunexTabs active="tunings" />
 
       {error && (

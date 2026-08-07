@@ -9,7 +9,7 @@ import styles from './Settings.module.scss'
 export default function SettingsPage() {
   return (
     <div style={{ padding: '1.5rem' }}>
-      <PageHeader crumbs={[{ label: 'AutoTuneX', to: '/dashboard/autotunex' }, { label: 'Settings' }]} />
+      <PageHeader crumbs={[{ label: 'Model Customisation', to: '/dashboard/autotunex' }, { label: 'Settings' }]} />
       <AutotunexTabs active="settings" />
 
       <div className={styles.grid}>

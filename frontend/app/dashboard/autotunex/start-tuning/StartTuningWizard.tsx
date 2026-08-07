@@ -401,7 +401,7 @@ export function StartTuningWizard() {
       await startJob(tuningForm)
       setCompletedSteps((prev) => prev.map((v, i) => (i === lastStepIndex ? true : v)))
       clearDraft()
-      router.push('/dashboard/autotunex')
+      router.push('/dashboard/builds')
     } catch (err: any) {
       setTransitionError(err.message || 'Launch failed. Please try again.')
     } finally {
