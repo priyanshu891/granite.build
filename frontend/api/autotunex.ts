@@ -30,6 +30,7 @@ import type {
 } from '@/types'
 import axios from 'axios'
 import { autotunexApiBase } from '@/api/client'
+import { normalizeVerlRows } from '@/app/dashboard/autotunex/start-tuning/verlNormalize'
 
 const client = axios.create({ baseURL: autotunexApiBase('') })
 
@@ -129,8 +130,12 @@ function adaptDataset(raw: Record<string, unknown>): Dataset {
     updated_at: raw.updated_at as string,
     data_format: raw.data_format as Dataset['data_format'],
     associated_jobs: (raw.associated_jobs as unknown[]) ?? [],
-    train_data: raw.train_data as Record<string, any>[] | undefined,
-    validation_data: raw.validation_data as Record<string, any>[] | undefined,
+    // Coerce json.dumps'd verl fields (prompt/reward_model/extra_info) back to
+    // native array/object so downstream consumers — notably the Reward Function
+    // step's verl-strict test-case pre-fill — see the declared types. No-op for
+    // already-native rows and non-RL datasets.
+    train_data: raw.train_data ? normalizeVerlRows(raw.train_data as Record<string, any>[]) : undefined,
+    validation_data: raw.validation_data ? normalizeVerlRows(raw.validation_data as Record<string, any>[]) : undefined,
   }
 }
 

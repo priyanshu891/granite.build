@@ -371,7 +371,7 @@ function ResourcePanel({ goal }: { goal: TuningGoal }) {
     return (
       <Tile className={`${styles.resourcePanel} ${RESOURCE_PANEL_CLASS.sft}`}>
         <p className={styles.resourcePanelIntro}>
-          Model Customisation uses <strong>PEFT</strong> (Parameter-Efficient Fine-Tuning) by HuggingFace under the hood for
+          Model Customization uses <strong>PEFT</strong> (Parameter-Efficient Fine-Tuning) by HuggingFace under the hood for
           all SFT training. Understanding PEFT&apos;s adapters and data format will help you prepare your datasets.
         </p>
         <Accordion size="sm">
@@ -406,7 +406,7 @@ function ResourcePanel({ goal }: { goal: TuningGoal }) {
     return (
       <Tile className={`${styles.resourcePanel} ${RESOURCE_PANEL_CLASS.offline_rl}`}>
         <p className={styles.resourcePanelIntro}>
-          Model Customisation uses <strong>TRL</strong> (Transformer Reinforcement Learning) by HuggingFace under the hood
+          Model Customization uses <strong>TRL</strong> (Transformer Reinforcement Learning) by HuggingFace under the hood
           for all Offline RL training.
         </p>
         <Accordion size="sm">
@@ -439,7 +439,7 @@ function ResourcePanel({ goal }: { goal: TuningGoal }) {
   return (
     <Tile className={`${styles.resourcePanel} ${RESOURCE_PANEL_CLASS.online_rl}`}>
       <p className={styles.resourcePanelIntro}>
-        Model Customisation uses <strong>VERL</strong> (Volcano Engine RL) under the hood for all Online RL training.
+        Model Customization uses <strong>VERL</strong> (Volcano Engine RL) under the hood for all Online RL training.
       </p>
       <Accordion size="sm">
         <AccordionItem title="What is VERL?" open>

@@ -6,7 +6,7 @@ export default function StartTuningPage() {
     <div style={{ padding: '1.5rem' }}>
       <PageHeader
         crumbs={[
-          { label: 'Model Customisation', to: '/dashboard/autotunex' },
+          { label: 'Model Customization', to: '/dashboard/autotunex' },
           { label: 'Start Tuning' },
         ]}
       />

@@ -174,7 +174,7 @@ export function AppHeader() {
                   : undefined
               }
             >
-              Model Customisation
+              Model Customization
             </SideNavLink>
           </SideNavItems>
         </SideNav>

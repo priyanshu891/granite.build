@@ -33,7 +33,7 @@ function NoJob() {
     <div style={{ padding: '1rem 1.5rem' }}>
       <InlineNotification
         kind="info"
-        title="No Model Customisation job linked to this build"
+        title="No Model Customization job linked to this build"
         hideCloseButton
         lowContrast
       />

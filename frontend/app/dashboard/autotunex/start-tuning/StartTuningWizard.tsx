@@ -35,6 +35,7 @@ import {
   uploadDatasetChunked,
 } from '@/api/autotunex'
 import { getRequiredColumns, isModelSelectionValid, normalizeTokenizerListFields, overlayColumnMapping } from './wizardUtils'
+import { normalizeVerlRows } from './verlNormalize'
 import { ALGORITHM_DETAILS, ALGORITHM_OPTIONS } from '@/config/autotunexAlgorithms'
 import { clearDraft, saveDraft } from './wizardDraft'
 import { Step0GetStarted } from './steps/Step0GetStarted'
@@ -533,7 +534,7 @@ export function StartTuningWizard() {
             allTestsPassed={allTestsPassed}
             setAllTestsPassed={setAllTestsPassed}
             datasetId={datasetId || existingDatasetId}
-            parsedData={parsedData.length > 0 && !existingDatasetId ? overlayColumnMapping(parsedData, columnMapping) : []}
+            parsedData={parsedData.length > 0 && !existingDatasetId ? normalizeVerlRows(overlayColumnMapping(parsedData, columnMapping)) : []}
           />
         )}
         {currentStep === lastStepIndex && (

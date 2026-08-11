@@ -155,12 +155,11 @@ function MyBuildsTile() {
 // as model-customisation activity elsewhere (see BuildDetails.tsx), and the
 // gbserver tags filter is AND-only — so we fetch both and dedupe by uuid.
 async function fetchModelCustomisationStats() {
-  const [autotunex, modelCustomisation] = await Promise.all([
-    listBuilds({ tags: ["autotunex"] }),
-    listBuilds({ tags: ["model-customisation"] }),
+  const [modelCustomization] = await Promise.all([
+    listBuilds({ tags: ["model-customization"] }),
   ]);
   const byId = new Map<string, Build>();
-  for (const b of [...autotunex.items, ...modelCustomisation.items]) byId.set(b.uuid, b);
+  for (const b of [...modelCustomization.items]) byId.set(b.uuid, b);
   const builds = Array.from(byId.values());
 
   return {
@@ -191,9 +190,8 @@ function AutoTuneXTile() {
   const [isRefreshing, markRefreshing] = useRefreshState(isFetching);
   return (
     <BaseTile
-      title="Model Customisation"
+      title="Model Customization"
       action={startTuningLink}
-      // onRefresh={() => { markRefreshing(); void refetch() }}
       isRefreshing={isRefreshing}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
