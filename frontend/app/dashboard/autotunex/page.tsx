@@ -1,10 +1,8 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Button, InlineNotification } from '@carbon/react'
-import { Rocket } from '@carbon/icons-react'
+import { InlineNotification } from '@carbon/react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getJobs, deleteJob } from '@/api/autotunex'
 import { AutotunexTabs } from '@/components/AutotunexTabs'
@@ -80,7 +78,7 @@ export default function AutoTuneXPage() {
         onSelectedIdsChange={setSelectedIds}
         onPageChange={handlePageChange}
         onSearch={handleSearch}
-        onRowClick={(id) => router.push(`/dashboard/autotunex/${id}/?id=${id}`)}
+        onRowClick={(id) => router.push(`/dashboard/autotunex/_/?id=${id}`)}
         onDeleteSelected={() => setDeleteOpen(true)}
         onCompareSelected={() => setCompareOpen(true)}
       />
