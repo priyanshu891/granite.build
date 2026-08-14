@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableBody,
   TableCell,
+  InlineNotification,
 } from '@carbon/react'
 import { useQuery } from '@tanstack/react-query'
 import { getDataset } from '@/api/autotunex'
@@ -64,8 +65,8 @@ function PreviewTable({ rows }: { rows: Record<string, any>[] }) {
 
 export function SettingsDatasetView({ open, datasetId, onClose }: Props) {
   const { data: dataset, isLoading } = useQuery<Dataset>({
-    queryKey: ['autotunex-dataset', datasetId],
-    queryFn: () => getDataset(datasetId as string),
+    queryKey: ['autotunex-dataset', datasetId, 'preview'],
+    queryFn: () => getDataset(datasetId as string, { preview: true, previewRows: 50 }),
     enabled: open && datasetId != null,
   })
 
@@ -81,6 +82,16 @@ export function SettingsDatasetView({ open, datasetId, onClose }: Props) {
         <InlineLoading description="Loading dataset…" />
       ) : (
         <div>
+          {dataset.status !== 'ready' && (
+            <InlineNotification
+              kind={dataset.status === 'error' ? 'error' : 'info'}
+              title={dataset.status === 'error' ? 'Dataset processing failed' : 'Dataset is still processing'}
+              subtitle={dataset.status_detail ?? (dataset.status === 'error' ? 'Please check the uploaded file and try again.' : 'Preview may be incomplete until processing finishes.')}
+              lowContrast
+              hideCloseButton
+              style={{ marginBottom: '1rem' }}
+            />
+          )}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', marginBottom: '1.5rem' }}>
             {([
               ['Training samples', dataset.train_records?.toLocaleString() ?? '0'],
@@ -104,10 +115,10 @@ export function SettingsDatasetView({ open, datasetId, onClose }: Props) {
             </TabList>
             <TabPanels>
               <TabPanel>
-                <PreviewTable rows={dataset.train_data ?? []} />
+                <PreviewTable rows={dataset.preview?.train ?? []} />
               </TabPanel>
               <TabPanel>
-                <PreviewTable rows={dataset.validation_data ?? []} />
+                <PreviewTable rows={dataset.preview?.validation ?? []} />
               </TabPanel>
             </TabPanels>
           </Tabs>

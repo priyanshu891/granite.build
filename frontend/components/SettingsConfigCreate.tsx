@@ -29,10 +29,13 @@ export function SettingsConfigCreate({ open, onClose, onCreated }: Props) {
     [selectedAlgorithm]
   )
 
-  const { data: configurations = [] } = useQuery({
-    queryKey: ['autotunex', 'configurations'],
-    queryFn: getConfigurations,
+  // Fetched only to check for duplicate names before submit; a generous
+  // pageSize keeps this a single request for the (own-scope) common case.
+  const { data: configsResult } = useQuery({
+    queryKey: ['autotunex', 'configurations', 'for-validation'],
+    queryFn: () => getConfigurations({ page: 1, pageSize: 100, scope: 'own' }),
   })
+  const configurations = configsResult?.items ?? []
 
   // Seed the ConfigForm from the backend template when the modal opens.
   const { data: template, isLoading: templateLoading } = useQuery({

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   DataTable,
   DataTableSkeleton,
@@ -20,6 +20,7 @@ import {
   TableBatchAction,
   Pagination,
   Button,
+  Toggle,
   Link as CarbonLink,
   Modal,
   InlineNotification,
@@ -30,6 +31,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import type { Configuration } from '@/types'
 import { getConfigurations, deleteConfiguration, getConfiguration } from '@/api/autotunex'
+import { listSpaces } from '@/api/gbserver'
 import { SettingsDeleteModal } from './SettingsDeleteModal'
 import { SettingsConfigCreate } from './SettingsConfigCreate'
 import { ConfigDisplay } from '../app/dashboard/autotunex/start-tuning/ConfigDisplay'
@@ -55,31 +57,62 @@ export function ConfigurationsTable() {
   const [viewId, setViewId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [searchInput, setSearchInput] = useState('')
+  const [q, setQ] = useState('')
+  const [scope, setScope] = useState<'own' | 'all'>('own')
 
-  const { data: configs = [], isLoading } = useQuery({
-    queryKey: ['autotunex', 'configurations'],
-    queryFn: getConfigurations,
+  // Debounce free-text search into `q` and reset to page 1 on change.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setQ(searchInput)
+      setPage(1)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  // No "current active space" concept exists in this dashboard (no space
+  // context/provider), so the own/all scope toggle is gated on the viewer
+  // being an admin of at least one space — same convention used by the
+  // tunings list. Shared `["spaces"]` queryKey avoids a duplicate fetch.
+  const { data: spaces = [] } = useQuery({
+    queryKey: ['spaces'],
+    queryFn: listSpaces,
   })
+  const isSpaceAdmin = spaces.some((s) => s.is_admin)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['autotunex', 'configurations', page, pageSize, q, scope],
+    queryFn: () => getConfigurations({ page, pageSize, q: q || undefined, scope }),
+    placeholderData: (prev) => prev,
+  })
+  const items = data?.items ?? []
+  const total = data?.total ?? 0
 
   const { data: viewedConfig, isLoading: isViewLoading } = useQuery({
     queryKey: ['autotunex-config', viewId],
-    queryFn: () => getConfiguration(viewId as string),
+    queryFn: () => getConfiguration(viewId as string, scope),
     enabled: viewId != null,
   })
 
-  const byId = useMemo(() => new Map(configs.map((c) => [c.id, c])), [configs])
+  const byId = useMemo(() => new Map(items.map((c) => [c.id, c])), [items])
   const selectedConfigs = selectedIds.map((id) => byId.get(id)).filter(Boolean) as Configuration[]
   const anyUndeletable = selectedConfigs.some(isUndeletable)
 
   const deleteMutation = useMutation({
     mutationFn: async (ids: string[]) => {
-      for (const id of ids) await deleteConfiguration(id)
+      for (const id of ids) await deleteConfiguration(id, scope)
     },
-    onSuccess: () => {
+    onSuccess: (_data, ids) => {
       queryClient.invalidateQueries({ queryKey: ['autotunex', 'configurations'] })
       setSelectedIds([])
       setDeleteOpen(false)
       setDeleteError(undefined)
+      // If the delete emptied the last page, clamp back onto the new last
+      // page and let the invalidated query above refetch it — no in-memory
+      // re-slicing of a locally-shrunk array.
+      const newTotal = Math.max(0, total - ids.length)
+      const lastPage = Math.max(1, Math.ceil(newTotal / pageSize))
+      if (page > lastPage) setPage(lastPage)
     },
     onError: (err) => {
       if (axios.isAxiosError(err) && err.response?.status === 409) {
@@ -90,18 +123,12 @@ export function ConfigurationsTable() {
     },
   })
 
-  const rows = configs.map((c) => ({
+  const rows = items.map((c) => ({
     id: c.id,
     name: c.name,
     tunings: c.associated_jobs?.length ?? 0,
     created_at: c.created_at ?? '',
   }))
-
-  // Clamp the current page in case rows shrank (e.g. after a delete) so we
-  // never land on an empty page past the end.
-  const lastPage = Math.max(1, Math.ceil(rows.length / pageSize))
-  const safePage = Math.min(page, lastPage)
-  const pagedRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize)
 
   if (isLoading) {
     return <DataTableSkeleton headers={HEADERS} rowCount={5} showHeader={false} showToolbar={false} />
@@ -109,7 +136,7 @@ export function ConfigurationsTable() {
 
   return (
     <>
-      <DataTable rows={pagedRows} headers={HEADERS} isSortable>
+      <DataTable rows={rows} headers={HEADERS} isSortable>
         {({ rows: tableRows, headers, getTableProps, getHeaderProps, getRowProps, getSelectionProps, getBatchActionProps }) => {
           const batchActionProps = getBatchActionProps()
           return (
@@ -128,7 +155,22 @@ export function ConfigurationsTable() {
                   </TableBatchAction>
                 </TableBatchActions>
                 <TableToolbarContent>
-                  <TableToolbarSearch persistent placeholder="Search configurations…" onChange={() => {}} />
+                  <TableToolbarSearch
+                    persistent
+                    placeholder="Search configurations…"
+                    onChange={(_e, value) => setSearchInput(value ?? '')}
+                  />
+                  {isSpaceAdmin && (
+                    <Toggle
+                      id="configurations-scope-toggle"
+                      labelText=""
+                      labelA="Mine"
+                      labelB="All"
+                      toggled={scope === 'all'}
+                      onToggle={(checked) => { setScope(checked ? 'all' : 'own'); setPage(1) }}
+                      size="sm"
+                    />
+                  )}
                   <Button renderIcon={Add} onClick={() => setCreateOpen(true)}>
                     Create New Configuration
                   </Button>
@@ -183,9 +225,9 @@ export function ConfigurationsTable() {
                 </TableBody>
               </Table>
               <Pagination
-                totalItems={rows.length}
+                totalItems={total}
                 pageSize={pageSize}
-                page={safePage}
+                page={page}
                 pageSizes={[10, 20, 50]}
                 onChange={({ page: p, pageSize: ps }) => { setPage(p); setPageSize(ps) }}
               />

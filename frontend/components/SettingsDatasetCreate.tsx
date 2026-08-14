@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   Modal,
   TextInput,
@@ -15,11 +15,12 @@ import {
   FormLabel,
   ProgressBar,
   InlineNotification,
+  InlineLoading,
 } from '@carbon/react'
 import { MagicWand } from '@carbon/icons-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import type { ColumnMapping, ColumnMetadata } from '@/types'
-import { createDataset, uploadDatasetChunked, getAutotuneDatasetTypes, suggestColumnMappingAI } from '@/api/autotunex'
+import type { ColumnMapping, ColumnMetadata, DatasetStatus } from '@/types'
+import { createDataset, uploadDataset, getDataset, getAutotuneDatasetTypes, suggestColumnMappingAI } from '@/api/autotunex'
 import { processUploadedFileAsync } from '../app/dashboard/autotunex/start-tuning/processUploadedFile'
 import { extractColumnMetadata, getColumnsFromTypes, getRequiredColumnsFromTypes } from '../app/dashboard/autotunex/start-tuning/wizardUtils'
 import { ALGORITHM_TO_DATASET_TYPE } from '@/config/autotunexAlgorithms'
@@ -53,8 +54,13 @@ export function SettingsDatasetCreate({ open, onClose, onCreated }: Props) {
   const [columnMapping, setColumnMapping] = useState<ColumnMapping>({})
   const [aiBusy, setAiBusy] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
+  const [polling, setPolling] = useState(false)
+  const [datasetStatus, setDatasetStatus] = useState<DatasetStatus | null>(null)
   const [error, setError] = useState('')
   const [createdId, setCreatedId] = useState<string | null>(null)
+  // Guards against touching state after the modal is closed mid upload/poll
+  // (the component stays mounted — only its `open` prop toggles).
+  const cancelledRef = useRef(false)
 
   const { data: datasetTypes = {} } = useQuery({
     queryKey: ['autotunex', 'datasetTypes'],
@@ -95,16 +101,22 @@ export function SettingsDatasetCreate({ open, onClose, onCreated }: Props) {
       const colSamples: Record<string, string[]> = {}
       for (const c of detectedColumns) colSamples[c.name] = c.sampleValues.slice(0, 3)
       const targetType = ALGORITHM_TO_DATASET_TYPE[algorithm]
-      const result = await suggestColumnMappingAI(sampleRows.slice(0, 8), colNames, colSamples, targetType)
+      const result = await suggestColumnMappingAI({
+        sample_data: sampleRows.slice(0, 8),
+        column_names: colNames,
+        column_samples: colSamples,
+        target_dataset_type: targetType,
+      })
 
-      // Map the AI's dataset-type-keyed suggestions onto our required column names.
+      // Map the AI's dataset-type-keyed suggestions (flat requiredCol -> sourceCol
+      // strings) onto our required column names.
       const typeCols = getColumnsFromTypes(algorithm, datasetTypes).map((c) => c.name)
       const newMapping: ColumnMapping = {}
-      for (const [aiKey, mapping] of Object.entries(result.column_mapping ?? {})) {
-        if (!mapping?.source_column || !colNames.includes(mapping.source_column)) continue
+      for (const [aiKey, sourceColumn] of Object.entries(result.column_mapping ?? {})) {
+        if (!sourceColumn || !colNames.includes(sourceColumn)) continue
         const normalized = aiKey.replace(/_col$/, '')
         const matched = typeCols.find((rc) => rc === aiKey || rc === normalized) ?? (requiredColumns.includes(normalized) ? normalized : '')
-        if (matched) newMapping[matched] = mapping.source_column
+        if (matched) newMapping[matched] = sourceColumn
       }
       if (Object.keys(newMapping).length > 0) setColumnMapping((prev) => ({ ...prev, ...newMapping }))
     } catch {
@@ -114,12 +126,30 @@ export function SettingsDatasetCreate({ open, onClose, onCreated }: Props) {
     }
   }
 
-  const canSubmit = name.trim().length > 0 && !!trainFile && (split || !!validationFile) && progress == null
+  const canSubmit = name.trim().length > 0 && !!trainFile && (split || !!validationFile) && progress == null && !polling
+
+  // Polls GET /datasets/{id} every ~3s until the server-side processing
+  // triggered by the multipart upload settles into 'ready' or 'error'.
+  async function pollUntilReady(datasetId: string): Promise<void> {
+    setPolling(true)
+    while (!cancelledRef.current) {
+      const ds = await getDataset(datasetId)
+      if (cancelledRef.current) return
+      setDatasetStatus(ds.status)
+      if (ds.status === 'ready') return
+      if (ds.status === 'error') {
+        throw new Error(ds.status_detail || 'Dataset processing failed. Please check the file and try again.')
+      }
+      await new Promise((resolve) => setTimeout(resolve, 3000))
+    }
+  }
 
   async function handleSubmit() {
     if (!trainFile) return
     setError('')
     setProgress(0)
+    setDatasetStatus(null)
+    cancelledRef.current = false
     try {
       let datasetId = createdId
       if (!datasetId) {
@@ -127,26 +157,37 @@ export function SettingsDatasetCreate({ open, onClose, onCreated }: Props) {
         datasetId = info.id
         setCreatedId(datasetId)
       }
-      await uploadDatasetChunked(datasetId, {
-        trainFile,
-        validationFile: split ? undefined : validationFile,
-        columnMapping: Object.keys(columnMapping).length > 0 ? columnMapping : undefined,
-        trainSetPercentage: split ? trainPercentage : undefined,
-        onProgress: (p) => setProgress(p),
-      })
+      await uploadDataset(
+        datasetId,
+        {
+          trainFile,
+          validationFile: split ? null : validationFile,
+          validationPercentage: split ? 100 - trainPercentage : null,
+          columnMapping: Object.keys(columnMapping).length > 0 ? columnMapping : null,
+        },
+        (p) => { if (!cancelledRef.current) setProgress(p) }
+      )
+      if (cancelledRef.current) return
+      setProgress(100)
+      await pollUntilReady(datasetId)
+      if (cancelledRef.current) return
       queryClient.invalidateQueries({ queryKey: ['autotunex', 'datasets'] })
       resetAndClose(true)
-    } catch {
+    } catch (err) {
+      if (cancelledRef.current) return
       setProgress(null)
-      setError('Upload failed. You can retry — the dataset was created and will be reused.')
+      setError(err instanceof Error && err.message ? err.message : 'Upload failed. You can retry — the dataset was created and will be reused.')
+    } finally {
+      if (!cancelledRef.current) setPolling(false)
     }
   }
 
   function resetAndClose(created: boolean) {
+    cancelledRef.current = true
     setName(''); setDescription(''); setAlgorithm('lora')
     setTrainFile(null); setValidationFile(null); setSplit(true); setTrainPercentage(80)
     setDetectedColumns([]); setSampleRows([]); setColumnMapping({})
-    setProgress(null); setError(''); setCreatedId(null)
+    setProgress(null); setPolling(false); setDatasetStatus(null); setError(''); setCreatedId(null)
     if (created) onCreated()
     onClose()
   }
@@ -156,7 +197,7 @@ export function SettingsDatasetCreate({ open, onClose, onCreated }: Props) {
       open={open}
       size="lg"
       modalHeading="Create New Dataset"
-      primaryButtonText={progress != null ? 'Uploading…' : 'Save'}
+      primaryButtonText={polling ? 'Processing…' : progress != null ? 'Uploading…' : 'Save'}
       secondaryButtonText="Cancel"
       primaryButtonDisabled={!canSubmit}
       onRequestClose={() => resetAndClose(false)}
@@ -250,9 +291,21 @@ export function SettingsDatasetCreate({ open, onClose, onCreated }: Props) {
         </div>
       )}
 
-      {progress != null && (
+      {progress != null && !polling && (
         <div className={styles.field}>
           <ProgressBar label="Uploading dataset" value={progress} max={100} />
+        </div>
+      )}
+
+      {polling && (
+        <div className={styles.field}>
+          <InlineLoading
+            description={
+              datasetStatus === 'uploading' || datasetStatus == null
+                ? 'Processing dataset…'
+                : `Processing dataset (${datasetStatus})…`
+            }
+          />
         </div>
       )}
 
