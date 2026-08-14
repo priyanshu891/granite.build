@@ -15,7 +15,7 @@ export const GOAL_OPTIONS: {
     sub_title: 'Teach the model a specific task or style',
     description:
       'Train your model to follow instructions, generate specific outputs, or adopt a writing style. Best for tasks with clear input/output pairs.',
-    dataDescription: 'Input/output pairs (e.g., instruction + response)',
+    dataDescription: 'Input/output pairs (e.g., instruction and response)',
   },
   {
     id: 'offline_rl',

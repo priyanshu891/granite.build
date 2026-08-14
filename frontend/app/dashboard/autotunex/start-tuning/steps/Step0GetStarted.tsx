@@ -241,7 +241,7 @@ export function Step0GetStarted({
               <SelectableTile
                 selected={isSelected}
                 onClick={() => selectGoal(goal.id)}
-                className={GOAL_TILE_CLASS[goal.id]}
+                className={`${styles.goalSelectableTile} ${GOAL_TILE_CLASS[goal.id]}`}
                 style={{ minHeight: 120, padding: '1.25rem' }}
               >
                 <div className={styles.goalTile}>
@@ -284,7 +284,7 @@ export function Step0GetStarted({
                   onChange={(value) => setModelSource(value as ModelSource)}
                 >
                   {MODEL_SOURCE_OPTIONS.map((o) => (
-                    <RadioButton key={o.value} labelText={MODEL_SOURCE_LABELS[o.value]} value={o.value} id={o.id} />
+                    <RadioButton key={o.value} labelText={MODEL_SOURCE_LABELS[o.value]} value={o.value} id={o.id}  disabled={o.disabled}/>
                   ))}
                 </RadioButtonGroup>
               </FormGroup>
@@ -342,7 +342,7 @@ export function Step0GetStarted({
               id="autotune-enabled"
               checked={autotuneEnabled}
               onChange={(_, { checked }) => setAutotuneEnabled(checked)}
-              labelText="AutoTune (use hyperparameter optimization)"
+              labelText="use hyperparameter optimization"
             />
         </>
       )}

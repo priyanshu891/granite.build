@@ -6,9 +6,9 @@ export const MODEL_SOURCE_LABELS: Record<ModelSource, string> = {
 }
 
 /** Render order of the model-source radios in Start Tuning step 1. */
-export const MODEL_SOURCE_OPTIONS: { value: ModelSource; id: string }[] = [
-  { value: 'huggingface', id: 'model-source-hf' },
-  { value: 'custom_path', id: 'model-source-local' },
+export const MODEL_SOURCE_OPTIONS: { value: ModelSource; id: string, disabled?: boolean }[] = [
+  { value: 'huggingface', id: 'model-source-hf', disabled: false },
+  { value: 'custom_path', id: 'model-source-local', disabled: true },
 ]
 
 /**

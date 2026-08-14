@@ -1,8 +1,8 @@
 .logViewer {
-  max-height: 500px;
+  max-height: 70vh;
   overflow-y: auto;
-  background-color: #161616;
-  color: #f4f4f4;
+  background-color: #f4f4f4;
+  color: #161616;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.75rem;
   line-height: 1.4;
@@ -12,5 +12,5 @@
 }
 
 .logLine {
-  padding: 1px 0;
+  padding: 2px 0;
 }
