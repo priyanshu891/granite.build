@@ -33,11 +33,11 @@ const nextConfig: NextConfig = {
             rules.push(
               {
                 source: '/api/autotunex/:path*/',
-                destination: `${autotunexApiUrl}/fmtune/api/:path*/`,
+                destination: `${autotunexApiUrl}/api/v1/:path*/`,
               },
               {
                 source: '/api/autotunex/:path*',
-                destination: `${autotunexApiUrl}/fmtune/api/:path*`,
+                destination: `${autotunexApiUrl}/api/v1/:path*`,
               }
             )
           }

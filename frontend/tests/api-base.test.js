@@ -39,7 +39,7 @@ describe('same-origin API base in standalone', () => {
     save('NODE_ENV'); save('AUTOTUNEX_API_URL')
     process.env.NODE_ENV = 'production'
     process.env.AUTOTUNEX_API_URL = 'http://example:8000'
-    assert.equal(autotunexApiBase('/job/x'), 'http://example:8000/fmtune/api/job/x')
+    assert.equal(autotunexApiBase('/job/x'), 'http://example:8000/api/v1/job/x')
   })
 
   it('apiBase is relative in production when GBSERVER_API_URL unset', () => {
