@@ -215,16 +215,21 @@ export interface Metric {
   recorded_at: string
 }
 
-// ── API response wrappers ─────────────────────────────────────────────────────
+// ── AutoTuneX / Start Tuning wizard ───────────────────────────────────────────
 
-export interface PaginatedResponse<T> {
-  items: T[]
-  total: number
+// Frontend-friendly page request; the client hides the offset/limit math the
+// v0.3.5 API expects (`?limit&offset` → `{items,total,limit,offset}`).
+export interface ListParams {
   page: number
-  page_size: number
+  pageSize: number
+  q?: string
+  scope?: 'own' | 'all'
 }
 
-// ── AutoTuneX / Start Tuning wizard ───────────────────────────────────────────
+export interface ListResult<T> {
+  items: T[]
+  total: number
+}
 
 export type TuningGoal = 'sft' | 'offline_rl' | 'online_rl'
 
@@ -265,12 +270,12 @@ export type ParsedDataRow = Record<string, any>
 export type ColumnMapping = Record<string, string>
 
 export interface AiMappingSuggestion {
-  dataset_type: string
-  dataset_type_desc: string
-  algorithm: string
+  dataset_format: string
+  tuning_type: string
   confidence: number
-  column_mapping: Record<string, { source_column: string; confidence: number }>
-  reasoning: string
+  column_mapping: Record<string, string>
+  column_confidence?: Record<string, number>
+  reasoning?: string
 }
 
 export interface AlgorithmOption {
@@ -297,11 +302,15 @@ export interface DatasetForm {
   trainSetPercentage?: number
 }
 
+export type DatasetStatus = 'empty' | 'uploading' | 'ready' | 'error'
+
 export interface Dataset {
   id: string
   user_id: string
   name: string
   description: string
+  status: DatasetStatus
+  status_detail?: string
   train_file: string
   train_records: number
   train_file_size: number
@@ -312,12 +321,15 @@ export interface Dataset {
   artifact_url: string
   created_at: string
   updated_at: string
-  // Only present on single-dataset fetches (GET /dataset/{id}), not on GET /datasets.
+  // Only present on single-dataset fetches (GET /datasets/{id}), not on GET /datasets.
   data_format?: 'jsonl' | 'parquet'
   associated_jobs?: unknown[]
-  // Small preview slices, populated when a single dataset is fetched by id
-  train_data?: Record<string, any>[]
-  validation_data?: Record<string, any>[]
+  // Small preview slices, populated when a single dataset is fetched with
+  // ?preview=true (GET /datasets/{id}?preview=true&preview_rows=N).
+  preview?: {
+    train: Record<string, any>[]
+    validation: Record<string, any>[]
+  }
 }
 
 export interface DatasetInfo {
@@ -466,28 +478,26 @@ export interface ConfigData {
   tokenizer_config?: Record<string, InputColumn>
 }
 
+export interface ConfigurationJobRef {
+  id: string
+  experiment_name?: string
+  status: TuningStatus
+}
+
 export interface Configuration {
   id: string
   user_id: string
   name: string
   tuner_type: string
   rl_tuner_type?: string | null
-  artifact_id: string
-  artifact_url: string
-  // Absent/null on list responses (GET /configs) — only populated on a
-  // single-config fetch (GET /config/{id}).
+  // Absent/null on list responses (GET /configurations) — only populated on a
+  // single-config fetch (GET /configurations/{id}).
   config_data?: ConfigData | null
   // Not returned by the real backend's single-config Pydantic response model —
   // may be absent even though the underlying row has them.
   created_at?: string
   updated_at?: string
-  associated_jobs?: unknown[]
-}
-
-export interface ConfigMutationResult {
-  id: string
-  status: string
-  message?: string
+  associated_jobs?: ConfigurationJobRef[]
 }
 
 // The editable form shape used by the config template/editor: a flat name +
@@ -499,12 +509,13 @@ export type ConfigForm = {
 } & ConfigData
 
 export interface TuningForm {
-  config_id: string | undefined
-  dataset_id: string | undefined
+  config_id: string
+  dataset_id: string
   model: string
   model_source: ModelSource
   experiment_name: string
   autotune: boolean
+  seed?: number
   reward_function_code?: string
   reward_function_name?: string
 }
@@ -556,29 +567,46 @@ export interface PendingConfigUpdate {
 
 // ── Tunings list / detail view ────────────────────────────────────────────────
 
-export type TuningStatus = 'COMPLETED' | 'ERROR' | 'RUNNING' | 'TERMINATED' | 'PENDING' | 'SUBMITTED' | 'PAUSED'
+export type TuningStatus = 'pending' | 'running' | 'paused' | 'terminated' | 'error' | 'completed'
 
-export interface TuningJob {
+// A GB build task embedded on the job detail record. The v0.3.5 API does not
+// publish a fixed schema for this field yet — kept as an open record until a
+// consumer needs specific fields off it.
+export type GbTask = Record<string, unknown>
+
+// List-row shape (GET /jobs). `TuningJob` aliases this for existing consumers
+// that only ever dealt with the list shape.
+export interface JobSummary {
   id: string
+  user_id: string
   status: TuningStatus
-  model: string
-  model_source: ModelSource
-  experiment_name: string
+  seed: number
   config_id: string
   config_name: string
   dataset_id: string
   dataset: string
-  seed: number
-  precision: string
-  tuning_type?: string
-  autotune: boolean
+  model: string
+  experiment_name: string
+  user: string
   created_at: string
   updated_at: string
 }
 
-export interface TrialScore {
-  metric: string
-  metrics: Record<string, number>
+export type TuningJob = JobSummary
+
+// Single-job fetch shape (GET /jobs/{id} / GET /jobs/by-build-id/{id}) — adds
+// the fields the detail page needs that the list envelope omits.
+export interface JobDetail extends JobSummary {
+  model_source: ModelSource
+  precision?: string
+  tuning_type?: string
+  rl_tuner_type?: string
+  autotune?: boolean
+  num_trials?: number
+  config_snapshot?: Record<string, unknown>
+  tasks: GbTask[]
+  output_artifacts: Record<string, unknown> | null
+  trials: Trial[]
 }
 
 export interface Trial {
@@ -586,7 +614,8 @@ export interface Trial {
   job_id: string
   status: TuningStatus
   config: Record<string, any>
-  score: TrialScore | null
+  metric?: string
+  metrics: Record<string, number>
   created_at: string
   updated_at: string
 }
