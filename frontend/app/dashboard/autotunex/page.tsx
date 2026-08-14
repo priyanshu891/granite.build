@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { InlineNotification } from '@carbon/react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getJobs, deleteJob } from '@/api/autotunex'
+import { listSpaces } from '@/api/gbserver'
 import { AutotunexTabs } from '@/components/AutotunexTabs'
 import { TuningsTable } from '@/components/TuningsTable'
 import { TuningDeleteModal } from '@/components/TuningDeleteModal'
@@ -16,15 +17,35 @@ export default function AutoTuneXPage() {
 
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
-  const [search, setSearch] = useState('')
+  const [q, setQ] = useState('')
+  const [scope, setScope] = useState<'own' | 'all'>('own')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
 
-  const { data: jobs = [], isLoading, error } = useQuery({
-    queryKey: ['autotunex-jobs'],
-    queryFn: getJobs,
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(searchDebounceRef.current), [])
+
+  // Reused verbatim from the builds/artifacts pages (`["spaces"]` queryKey) so
+  // this shares the same React Query cache entry rather than issuing a
+  // duplicate `listSpaces()` fetch. There's no "current active space" concept
+  // in this dashboard (no space context/provider — grepped for one), so the
+  // scope toggle is gated on "is admin of at least one space" rather than a
+  // single active space's `is_admin`.
+  const { data: spaces = [] } = useQuery({
+    queryKey: ['spaces'],
+    queryFn: listSpaces,
   })
+  const isSpaceAdmin = spaces.some((s) => s.is_admin)
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['autotunex-jobs', page, pageSize, q, scope],
+    queryFn: () => getJobs({ page, pageSize, q, scope }),
+    placeholderData: (prev) => prev,
+  })
+
+  const items = data?.items ?? []
+  const total = data?.total ?? 0
 
   const deleteMutation = useMutation({
     mutationFn: async (ids: string[]) => {
@@ -37,23 +58,25 @@ export default function AutoTuneXPage() {
     },
   })
 
-  const filtered = search
-    ? jobs.filter((j) => j.experiment_name.toLowerCase().includes(search.toLowerCase()))
-    : jobs
-
-  const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
-
   const handlePageChange = useCallback((p: number, ps: number) => {
     setPage(p)
     setPageSize(ps)
   }, [])
 
   const handleSearch = useCallback((term: string) => {
-    setSearch(term)
+    clearTimeout(searchDebounceRef.current)
+    searchDebounceRef.current = setTimeout(() => {
+      setQ(term)
+      setPage(1)
+    }, 300)
+  }, [])
+
+  const handleScopeChange = useCallback((newScope: 'own' | 'all') => {
+    setScope(newScope)
     setPage(1)
   }, [])
 
-  const selectedJobs = jobs.filter((j) => selectedIds.includes(j.id))
+  const selectedJobs = items.filter((j) => selectedIds.includes(j.id))
 
   return (
     <div style={{ padding: '1.5rem' }}>
@@ -69,8 +92,8 @@ export default function AutoTuneXPage() {
       )}
 
       <TuningsTable
-        jobs={paged}
-        total={filtered.length}
+        jobs={items}
+        total={total}
         page={page}
         pageSize={pageSize}
         isLoading={isLoading}
@@ -78,6 +101,9 @@ export default function AutoTuneXPage() {
         onSelectedIdsChange={setSelectedIds}
         onPageChange={handlePageChange}
         onSearch={handleSearch}
+        scope={scope}
+        onScopeChange={handleScopeChange}
+        showScopeToggle={isSpaceAdmin}
         onRowClick={(id) => router.push(`/dashboard/autotunex/_/?id=${id}`)}
         onDeleteSelected={() => setDeleteOpen(true)}
         onCompareSelected={() => setCompareOpen(true)}

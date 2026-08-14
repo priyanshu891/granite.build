@@ -20,6 +20,7 @@ import {
   Pagination,
   Link as CarbonLink,
   Button,
+  Toggle,
 } from '@carbon/react'
 import { Compare, Launch, Rocket, TrashCan } from '@carbon/icons-react'
 import type { TuningJob } from '@/types'
@@ -39,6 +40,11 @@ interface Props {
   onRowClick: (id: string) => void
   onDeleteSelected: () => void
   onCompareSelected: () => void
+  /** Current list scope. Only meaningful (and only shown as a control) when `showScopeToggle` is true. */
+  scope: 'own' | 'all'
+  onScopeChange: (scope: 'own' | 'all') => void
+  /** Show the own/all scope toggle — gate this on the viewer being a space admin. */
+  showScopeToggle: boolean
 }
 
 const HEADERS = [
@@ -65,7 +71,7 @@ function formatTime(seconds: number): string {
 
 function totalTimeSecondsFor(job: TuningJob): number {
   const start = new Date(job.created_at).getTime()
-  const end = job.status === 'RUNNING' ? Date.now() : new Date(job.updated_at).getTime()
+  const end = job.status === 'running' ? Date.now() : new Date(job.updated_at).getTime()
   return Math.floor((end - start) / 1000)
 }
 
@@ -106,6 +112,9 @@ export function TuningsTable({
   onRowClick,
   onDeleteSelected,
   onCompareSelected,
+  scope,
+  onScopeChange,
+  showScopeToggle,
 }: Props) {
   if (isLoading) {
     return <DataTableSkeleton headers={HEADERS} rowCount={6} showHeader={false} showToolbar={false} />
@@ -156,6 +165,19 @@ export function TuningsTable({
               </TableBatchActions>
               <TableToolbarContent>
                 <TableToolbarSearch persistent placeholder="Search tunings…" onChange={(_e, value) => onSearch(value ?? '')} />
+                  {showScopeToggle && (
+                    <div style={{ display: 'flex', alignItems: 'center', marginInline: '1rem' }}>
+                      <Toggle
+                        id="tunings-scope-toggle"
+                        size="sm"
+                        labelText="Scope"
+                        labelA="My tunings"
+                        labelB="All tunings"
+                        toggled={scope === 'all'}
+                        onToggle={(checked) => onScopeChange(checked ? 'all' : 'own')}
+                      />
+                    </div>
+                  )}
                   <Button as={Link} href="/dashboard/autotunex/start-tuning" renderIcon={Rocket}>
                     Start Tuning
                   </Button>
