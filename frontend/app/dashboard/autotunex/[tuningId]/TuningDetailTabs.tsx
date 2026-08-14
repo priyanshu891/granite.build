@@ -4,7 +4,7 @@ import { Tabs, TabList, Tab, TabPanels, TabPanel, FormLabel, Modal } from '@carb
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getConfiguration } from '@/api/autotunex'
-import type { TuningJob } from '@/types'
+import type { JobDetail } from '@/types'
 import { TuningLogViewer } from '@/components/TuningLogViewer'
 import { TrialsTable } from '@/components/TrialsTable'
 import { TuningResultsPanel } from '@/components/TuningResultsPanel'
@@ -23,7 +23,7 @@ function formatTime(seconds: number): string {
   return `${secs}s`
 }
 
-function DetailsPanel({ job }: { job: TuningJob }) {
+function DetailsPanel({ job }: { job: JobDetail }) {
   const [configOpen, setConfigOpen] = useState(false)
 
   const { data: configuration } = useQuery({
@@ -33,7 +33,7 @@ function DetailsPanel({ job }: { job: TuningJob }) {
   })
 
   const totalTimeSeconds = Math.floor(
-    ((job.status === 'RUNNING' ? Date.now() : new Date(job.updated_at).getTime()) - new Date(job.created_at).getTime()) / 1000
+    ((job.status === 'running' ? Date.now() : new Date(job.updated_at).getTime()) - new Date(job.created_at).getTime()) / 1000
   )
 
   const fields: { label: string; value: React.ReactNode }[] = [
@@ -82,7 +82,7 @@ function DetailsPanel({ job }: { job: TuningJob }) {
 }
 
 interface Props {
-  job: TuningJob
+  job: JobDetail
 }
 
 export function TuningDetailTabs({ job }: Props) {
@@ -100,11 +100,11 @@ export function TuningDetailTabs({ job }: Props) {
           </TabPanel>
           {job.autotune && (
             <TabPanel>
-              <TrialsTable jobId={job.id} />
+              <TrialsTable jobId={job.id} trials={job.trials} />
             </TabPanel>
           )}
           <TabPanel>
-            <TuningResultsPanel jobId={job.id} />
+            <TuningResultsPanel outputArtifacts={job.output_artifacts} />
           </TabPanel>
         </TabPanels>
       </Tabs>

@@ -1,7 +1,6 @@
 'use client'
 
 import { Fragment, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import {
   DataTable,
   Table,
@@ -22,12 +21,10 @@ import {
   TabPanel,
   CodeSnippet,
   Button,
-  ProgressBar,
   InlineNotification,
 } from '@carbon/react'
 import { ArrowLeft } from '@carbon/icons-react'
 import { RadarChart } from '@carbon/charts-react'
-import { getJobTrials } from '@/api/autotunex'
 import { useChartsTheme } from '@/hooks/useTheme'
 import { TrialLogViewer } from '@/components/TrialLogViewer'
 import { TrialCompare } from '@/components/TrialCompare'
@@ -60,17 +57,17 @@ function toFeatureLabel(name: string): string {
 // So we take the *union* of metric names across all trials, then emit one entry
 // per trial per axis, defaulting a missing metric to 0.
 function toRadarData(trials: Trial[]): { product: string; feature: string; score: number }[] {
-  const withScores = trials.filter((t) => t.score)
-  if (withScores.length === 0) return []
+  const withMetrics = trials.filter((t) => t.metrics && Object.keys(t.metrics).length > 0)
+  if (withMetrics.length === 0) return []
 
   const metricNames = Array.from(
-    new Set(withScores.flatMap((t) => Object.keys(t.score!.metrics)))
+    new Set(withMetrics.flatMap((t) => Object.keys(t.metrics)))
   )
 
   const bounds: Record<string, { min: number; max: number }> = {}
   for (const name of metricNames) {
-    const values = withScores
-      .map((t) => t.score!.metrics[name])
+    const values = withMetrics
+      .map((t) => t.metrics[name])
       .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
     bounds[name] = {
       min: values.length ? Math.min(...values) : 0,
@@ -79,9 +76,9 @@ function toRadarData(trials: Trial[]): { product: string; feature: string; score
   }
 
   const data: { product: string; feature: string; score: number }[] = []
-  for (const trial of withScores) {
+  for (const trial of withMetrics) {
     for (const name of metricNames) {
-      const raw = trial.score!.metrics[name]
+      const raw = trial.metrics[name]
       const value = typeof raw === 'number' && Number.isFinite(raw) ? raw : bounds[name].min
       const { min, max } = bounds[name]
       const normalized = min === max ? 0 : (value - min) / (max - min)
@@ -97,28 +94,22 @@ function toRadarData(trials: Trial[]): { product: string; feature: string; score
 
 interface Props {
   jobId: string
+  trials: Trial[]
 }
 
-export function TrialsTable({ jobId }: Props) {
+export function TrialsTable({ jobId, trials }: Props) {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [showCompare, setShowCompare] = useState(false)
   const theme = useChartsTheme()
-
-  const { data: trials = [], isLoading } = useQuery({
-    queryKey: ['autotunex-job-trials', jobId],
-    queryFn: () => getJobTrials(jobId),
-  })
-
-  if (isLoading) {
-    return <ProgressBar size="small" label="Loading trials..." />
-  }
 
   if (trials.length === 0) {
     return <InlineNotification kind="info" title="No trial data available" hideCloseButton />
   }
 
   // Full-screen compare view: replaces the table + radar, mirroring AutoTuneX.
-  const selectedForCompare = trials.filter((t) => selectedIds.includes(t.id) && t.status === 'COMPLETED' && t.score)
+  const selectedForCompare = trials.filter(
+    (t) => selectedIds.includes(t.id) && t.status === 'completed' && Object.keys(t.metrics ?? {}).length > 0
+  )
   if (showCompare && selectedForCompare.length > 0) {
     return (
       <div>
@@ -142,8 +133,8 @@ export function TrialsTable({ jobId }: Props) {
       id: t.id,
       created_at: t.created_at,
       status: t.status,
-      loss: t.score?.metrics[t.score.metric] ?? undefined,
-      total_time: t.score?.metrics.total_time,
+      loss: (t.metric ? t.metrics?.[t.metric] : undefined) ?? undefined,
+      total_time: t.metrics?.total_time,
     }))
     .sort((a, b) => {
       if (a.loss === undefined && b.loss === undefined) return 0
@@ -153,9 +144,11 @@ export function TrialsTable({ jobId }: Props) {
     })
 
   const selectedTrials = trials.filter((t) => selectedIds.includes(t.id))
-  // Only completed trials with a score can be plotted — the radar needs a full
-  // metric grid, and running/errored trials have no (or partial) score.
-  const comparableTrials = selectedTrials.filter((t) => t.status === 'COMPLETED' && t.score)
+  // Only completed trials with metrics can be plotted — the radar needs a full
+  // metric grid, and running/errored trials have no (or partial) metrics.
+  const comparableTrials = selectedTrials.filter(
+    (t) => t.status === 'completed' && Object.keys(t.metrics ?? {}).length > 0
+  )
   const radarData = toRadarData(comparableTrials)
   // A radar needs at least 2 axes (distinct metrics) to render; a single axis
   // makes Carbon's RadarChart reject.
@@ -250,7 +243,7 @@ export function TrialsTable({ jobId }: Props) {
                           </TabList>
                           <TabPanels>
                             <TabPanel>
-                              <TrialLogViewer trialId={trial.id} status={trial.status} />
+                              <TrialLogViewer jobId={jobId} trialId={trial.id} status={trial.status} />
                             </TabPanel>
                             <TabPanel>
                               <CodeSnippet type="multi" wrapText>

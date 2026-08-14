@@ -116,7 +116,7 @@ function toCompareRow(trial: Trial): Record<string, any> {
   }
   const flatConfig = flattenObject(config)
 
-  const metrics: Record<string, any> = { ...(trial.score?.metrics ?? {}) }
+  const metrics: Record<string, any> = { ...(trial.metrics ?? {}) }
   if (typeof metrics.loss === 'number') metrics.loss = +metrics.loss.toFixed(5)
   if (typeof metrics.train_loss === 'number') metrics.train_loss = +metrics.train_loss.toFixed(5)
   if (typeof metrics.total_time === 'number') metrics.total_time = formatTime(+metrics.total_time)
@@ -152,9 +152,9 @@ function CompareValue({
 // The "loss" a trial is judged on — its primary metric (score.metric), matching
 // the Loss column in the trials table, falling back to a literal `loss` metric.
 function lossOf(trial: Trial): number | null {
-  const metrics = trial.score?.metrics
+  const metrics = trial.metrics
   if (!metrics) return null
-  const primary = trial.score?.metric ? metrics[trial.score.metric] : undefined
+  const primary = trial.metric ? metrics[trial.metric] : undefined
   const value = typeof primary === 'number' ? primary : metrics.loss
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }

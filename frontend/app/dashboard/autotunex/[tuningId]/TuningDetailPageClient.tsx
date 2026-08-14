@@ -10,7 +10,7 @@ import { TuningStatusBadge } from '@/components/TuningStatusBadge'
 import { TuningDetailTabs } from './TuningDetailTabs'
 import styles from './page.module.scss'
 
-const ACTIVE_STATUSES = new Set(['RUNNING', 'PENDING', 'SUBMITTED'])
+const ACTIVE_STATUSES = new Set(['running', 'pending'])
 
 // useSearchParams() bails the page out to client-side rendering up to the
 // nearest Suspense boundary during static export — without one here, the

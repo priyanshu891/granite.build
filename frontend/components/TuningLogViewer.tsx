@@ -5,7 +5,7 @@ import { useScrollingLogs } from '@/hooks/useScrollingLogs'
 import type { TuningJob } from '@/types'
 import { LogLines } from './LogLines'
 
-const ACTIVE_STATUSES = new Set(['RUNNING', 'PENDING', 'SUBMITTED'])
+const ACTIVE_STATUSES = new Set(['running', 'pending'])
 
 interface Props {
   jobId: string

@@ -33,13 +33,12 @@ const BLUE = 'var(--cds-support-info)'
 const GRAY = '#6f6f6f'
 
 const STATUS_CONFIG: Record<TuningStatus, { label: string; color: string; shape: ShapeKind }> = {
-  RUNNING:    { label: 'Running',    color: BLUE,  shape: 'circle-outline' },
-  COMPLETED:  { label: 'Completed',  color: GREEN, shape: 'circle' },
-  ERROR:      { label: 'Error',      color: RED,   shape: 'prohibit' },
-  TERMINATED: { label: 'Terminated', color: GRAY,  shape: 'prohibit' },
-  PENDING:    { label: 'Pending',    color: GRAY,  shape: 'circle-outline' },
-  SUBMITTED:  { label: 'Submitted',  color: BLUE,  shape: 'square' },
-  PAUSED:     { label: 'Paused',     color: GRAY,  shape: 'triangle-outline' },
+  running:    { label: 'Running',    color: BLUE,  shape: 'circle-outline' },
+  completed:  { label: 'Completed',  color: GREEN, shape: 'circle' },
+  error:      { label: 'Error',      color: RED,   shape: 'prohibit' },
+  terminated: { label: 'Terminated', color: GRAY,  shape: 'prohibit' },
+  pending:    { label: 'Pending',    color: GRAY,  shape: 'circle-outline' },
+  paused:     { label: 'Paused',     color: GRAY,  shape: 'triangle-outline' },
 }
 
 interface Props {
@@ -48,7 +47,9 @@ interface Props {
 }
 
 export function TuningStatusBadge({ status, showLabel = true }: Props) {
-  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.TERMINATED
+  // `SUBMITTED` no longer exists as a status — any unrecognized/legacy value
+  // (or a bad server payload) falls back to `pending` per the migration plan.
+  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
       <Shape kind={cfg.shape} color={cfg.color} size={16} />
