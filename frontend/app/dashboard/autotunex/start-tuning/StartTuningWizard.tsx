@@ -23,16 +23,18 @@ import type {
   WizardDraft,
 } from '@/types'
 import {
+  AUTOTUNEX_FEATURES,
   createDataset,
   estimateUsage,
   getAutotuneDatasetTypes,
   getConfigurations,
+  getDataset,
   getDatasets,
   getHFModels,
   startJob,
   updateConfiguration as apiUpdateConfiguration,
   createConfiguration as apiCreateConfiguration,
-  uploadDatasetChunked,
+  uploadDataset,
 } from '@/api/autotunex'
 import { getRequiredColumns, isModelSelectionValid, normalizeTokenizerListFields, overlayColumnMapping } from './wizardUtils'
 import { normalizeVerlRows } from './verlNormalize'
@@ -46,6 +48,26 @@ import { Step3ReviewLaunch } from './steps/Step3ReviewLaunch'
 import styles from './StartTuningWizard.module.scss'
 
 const DRAFT_DEBOUNCE_MS = 500
+const DATASET_READY_POLL_MS = 1500
+const DATASET_READY_TIMEOUT_MS = 5 * 60 * 1000
+
+/**
+ * The v0.3.5 multipart upload returns 202 with status "uploading" — the
+ * server processes the file off-request. Poll the dataset row until the
+ * server marks it ready (or error) before referencing it in the job-create
+ * call.
+ */
+async function waitForDatasetReady(id: string): Promise<void> {
+  const deadline = Date.now() + DATASET_READY_TIMEOUT_MS
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const ds = await getDataset(id)
+    if (ds.status === 'ready') return
+    if (ds.status === 'error') throw new Error(ds.status_detail || 'Dataset processing failed.')
+    if (Date.now() > deadline) throw new Error('Dataset upload timed out while processing. Please try again.')
+    await new Promise((resolve) => setTimeout(resolve, DATASET_READY_POLL_MS))
+  }
+}
 
 export function StartTuningWizard() {
   const router = useRouter()
@@ -102,11 +124,12 @@ export function StartTuningWizard() {
   const createdConfigIdRef = useRef<string | null>(null)
 
   const [resourceEstimation, setResourceEstimation] = useState<Resources | null>(null)
+  const [estimationUnavailable, setEstimationUnavailable] = useState(false)
 
   // Pre-fetch parallel API calls on wizard open — same cache keys the step
   // components consume via useQuery, so this just primes the cache.
-  useQuery({ queryKey: ['autotunex', 'datasets'], queryFn: getDatasets })
-  useQuery({ queryKey: ['autotunex', 'configurations'], queryFn: getConfigurations })
+  useQuery({ queryKey: ['autotunex', 'datasets'], queryFn: () => getDatasets({ page: 1, pageSize: 100 }) })
+  useQuery({ queryKey: ['autotunex', 'configurations'], queryFn: () => getConfigurations({ page: 1, pageSize: 100 }) })
   useQuery({ queryKey: ['autotunex', 'datasetTypes'], queryFn: getAutotuneDatasetTypes })
   const { data: prefetchedModels } = useQuery({
     queryKey: ['autotunex', 'hfModels', 'ibm-granite/granite-4.0-h-micro', 20],
@@ -144,6 +167,7 @@ export function StartTuningWizard() {
 
     setExperimentName('')
     setResourceEstimation(null)
+    setEstimationUnavailable(false)
 
     setRewardFunctionCode('')
     setRewardFunctionName('compute_score')
@@ -179,7 +203,14 @@ export function StartTuningWizard() {
         return selectedConfigId !== null && !isEditingConfig && !isCreatingConfig
       case 3:
         if (hasRewardStep) {
-          return rewardFunctionCode.trim().length > 0 && rewardFunctionName.trim().length > 0 && allTestsPassed
+          // Reward-function validation is gated off in this environment (see
+          // AUTOTUNEX_FEATURES.rewardValidation) — don't block the wizard on
+          // a test-pass signal that can never arrive.
+          return (
+            rewardFunctionCode.trim().length > 0 &&
+            rewardFunctionName.trim().length > 0 &&
+            (allTestsPassed || !AUTOTUNEX_FEATURES.rewardValidation)
+          )
         }
         return experimentName.trim() !== '' && !isLaunching
       case 4:
@@ -304,9 +335,23 @@ export function StartTuningWizard() {
       return `${modelShort}_${configName}`.substring(0, 50)
     })
 
+    if (!AUTOTUNEX_FEATURES.estimation) {
+      setResourceEstimation(null)
+      setEstimationUnavailable(true)
+      return
+    }
+
     if (selectedModel && selectedConfigId) {
       estimateUsage({ model_name: selectedModel, config_id: selectedConfigId === '__pending__' ? '' : selectedConfigId, gpu_memory: 80 })
-        .then(setResourceEstimation)
+        .then((result) => {
+          if (result && 'unavailable' in result) {
+            setResourceEstimation(null)
+            setEstimationUnavailable(true)
+          } else {
+            setResourceEstimation(result)
+            setEstimationUnavailable(false)
+          }
+        })
         .catch(() => setResourceEstimation(null))
     }
   }
@@ -333,6 +378,7 @@ export function StartTuningWizard() {
     setPendingConfigUpdate(null)
     setExperimentName('')
     setResourceEstimation(null)
+    setEstimationUnavailable(false)
     setCompletedSteps((prev) => prev.map((v, i) => (i === 2 || i === 3 ? false : v)))
   }
 
@@ -355,13 +401,21 @@ export function StartTuningWizard() {
         finalDatasetId = createdDatasetIdRef.current
 
         setLaunchPhase('uploading_files')
-        await uploadDatasetChunked(finalDatasetId!, {
-          trainFile: uploadedFile,
-          validationFile: validationFile ?? undefined,
-          columnMapping,
-          trainSetPercentage: validationFile ? undefined : splitRatio,
-          onProgress: setUploadProgress,
-        })
+        await uploadDataset(
+          finalDatasetId!,
+          {
+            trainFile: uploadedFile,
+            validationFile: validationFile ?? null,
+            validationPercentage: validationFile ? null : 100 - splitRatio,
+            columnMapping,
+          },
+          setUploadProgress
+        )
+
+        // Multipart upload responds 202 ("uploading") — the server finishes
+        // processing off-request, so wait for it before referencing this
+        // dataset in the job-create call below.
+        await waitForDatasetReady(finalDatasetId!)
 
         setDatasetId(finalDatasetId)
       }
@@ -394,15 +448,17 @@ export function StartTuningWizard() {
         model_source: modelSource,
         experiment_name: experimentName.trim().replace(/\s+/g, '_'),
         autotune: autotuneEnabled,
+        // No seed control exists in this wizard's UI — use the API default.
+        seed: 42,
         ...(hasRewardStep && rewardFunctionCode.trim()
           ? { reward_function_code: rewardFunctionCode, reward_function_name: rewardFunctionName || 'compute_score' }
           : {}),
       }
 
-      await startJob(tuningForm)
+      const { id: jobId } = await startJob(tuningForm)
       setCompletedSteps((prev) => prev.map((v, i) => (i === lastStepIndex ? true : v)))
       clearDraft()
-      router.push('/dashboard/builds')
+      router.push(`/dashboard/autotunex/_/?id=${jobId}`)
     } catch (err: any) {
       setTransitionError(err.message || 'Launch failed. Please try again.')
     } finally {
@@ -546,6 +602,7 @@ export function StartTuningWizard() {
             selectedModel={selectedModel}
             modelSource={modelSource}
             resourceEstimation={resourceEstimation}
+            estimationUnavailable={estimationUnavailable}
             totalRecords={totalRecords}
             splitRatio={splitRatio}
             isSplitEnabled={isSplitEnabled}

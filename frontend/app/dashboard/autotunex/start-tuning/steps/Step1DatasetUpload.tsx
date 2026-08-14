@@ -192,10 +192,11 @@ export function Step1DatasetUpload({
   const [aiSuggestedFields, setAiSuggestedFields] = useState<Set<string>>(new Set())
   const [showAiReasoning, setShowAiReasoning] = useState(false)
 
-  const { data: existingDatasets = [], isLoading: isLoadingDatasets } = useQuery({
+  const { data: existingDatasetsResult, isLoading: isLoadingDatasets } = useQuery({
     queryKey: ['autotunex', 'datasets'],
-    queryFn: getDatasets,
+    queryFn: () => getDatasets({ page: 1, pageSize: 100 }),
   })
+  const existingDatasets = existingDatasetsResult?.items ?? []
   const { data: datasetTypes = {} } = useQuery({
     queryKey: ['autotunex', 'datasetTypes'],
     queryFn: getAutotuneDatasetTypes,
@@ -307,14 +308,19 @@ export function Step1DatasetUpload({
       for (const col of metadata) colSamples[col.name] = col.sampleValues.slice(0, 3)
 
       const targetType = ALGORITHM_TO_DATASET_TYPE[selectedAlgorithm]
-      const result = await suggestColumnMappingAI(data.slice(0, 8), colNames, colSamples, targetType)
+      const result = await suggestColumnMappingAI({
+        sample_data: data.slice(0, 8),
+        column_names: colNames,
+        column_samples: colSamples,
+        target_dataset_type: targetType,
+      })
 
-      setAiSuggestion({ confidence: result.confidence, reasoning: result.reasoning, algorithm: result.algorithm })
+      setAiSuggestion({ confidence: result.confidence, reasoning: result.reasoning ?? '', algorithm: result.tuning_type })
 
-      if (result.algorithm) {
-        const aiAlgoDetail = ALGORITHM_DETAILS.find((a) => a.id === result.algorithm)
+      if (result.tuning_type) {
+        const aiAlgoDetail = ALGORITHM_DETAILS.find((a) => a.id === result.tuning_type)
         if (!selectedGoal || (aiAlgoDetail && aiAlgoDetail.category === selectedGoal)) {
-          setSelectedAlgorithm(result.algorithm)
+          setSelectedAlgorithm(result.tuning_type)
         }
       }
 
@@ -331,17 +337,17 @@ export function Step1DatasetUpload({
         const dictKeyToName: Record<string, string> = {}
         for (const [key, col] of Object.entries(columnsDict)) dictKeyToName[key] = (col as any).name
 
-        for (const [aiKey, mapping] of Object.entries(result.column_mapping)) {
-          if (!mapping.source_column || !colNames.includes(mapping.source_column)) continue
+        for (const [aiKey, sourceColumn] of Object.entries(result.column_mapping)) {
+          if (!sourceColumn || !colNames.includes(sourceColumn)) continue
 
           let matchedCol = dictKeyToName[aiKey]
           if (!matchedCol) {
             const normalized = aiKey.replace(/_col$/, '')
-            matchedCol = aiAllCols.find((rc) => rc === aiKey || rc === normalized || rc === mapping.source_column) || ''
+            matchedCol = aiAllCols.find((rc) => rc === aiKey || rc === normalized || rc === sourceColumn) || ''
           }
 
           if (matchedCol && aiAllCols.includes(matchedCol)) {
-            newMapping[matchedCol] = mapping.source_column
+            newMapping[matchedCol] = sourceColumn
             newSuggested.add(matchedCol)
           }
         }
@@ -416,16 +422,17 @@ export function Step1DatasetUpload({
     onDatasetChanged()
 
     try {
-      const dataset = await getDataset(datasetId)
+      const dataset = await getDataset(datasetId, { preview: true, previewRows: 50 })
       setSelectedExistingDataset(dataset)
       setExistingDatasetId(dataset.id)
       setTotalRecords((dataset.train_records || 0) + (dataset.validation_records || 0))
       setDatasetForm(() => ({ name: dataset.name, description: dataset.description, train_file: null, validation_file: null }))
 
-      if (dataset.train_data && dataset.train_data.length > 0) {
-        setParsedData(dataset.train_data)
-        const columns = Object.keys(dataset.train_data[0] || {})
-        setColumnMetadata(extractColumnMetadata(dataset.train_data))
+      const trainPreview = dataset.preview?.train ?? []
+      if (trainPreview.length > 0) {
+        setParsedData(trainPreview)
+        const columns = Object.keys(trainPreview[0] || {})
+        setColumnMetadata(extractColumnMetadata(trainPreview))
         setDetectedFormat(detectDatasetFormat(columns))
         const suggestedAlgo = suggestAlgorithm(columns)
         const suggestedDetail = ALGORITHM_DETAILS.find((a) => a.id === suggestedAlgo)
@@ -438,11 +445,12 @@ export function Step1DatasetUpload({
         setDetectedFormat('unknown')
       }
 
-      if (dataset.validation_data && dataset.validation_data.length > 0) {
-        const result = buildPreviewData(dataset.validation_data)
+      const validationPreview = dataset.preview?.validation ?? []
+      if (validationPreview.length > 0) {
+        const result = buildPreviewData(validationPreview)
         setValPreviewHeaders(result.headers)
         setValPreviewRows(result.rows)
-        setValidationRecordCount(dataset.validation_records || dataset.validation_data.length)
+        setValidationRecordCount(dataset.validation_records || validationPreview.length)
       } else {
         setValPreviewRows([])
         setValPreviewHeaders([])

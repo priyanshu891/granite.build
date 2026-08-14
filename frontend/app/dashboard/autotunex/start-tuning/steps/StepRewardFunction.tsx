@@ -13,7 +13,7 @@ import {
 } from '@carbon/react'
 import { Play, Add, TrashCan, Checkmark, ListBoxes } from '@carbon/icons-react'
 import type { ParsedDataRow, RewardFunctionValidationResult } from '@/types'
-import { getDataset, generateTestSolutions, validateRewardFunction } from '@/api/autotunex'
+import { AUTOTUNEX_FEATURES, getDataset, generateTestSolutions, validateRewardFunction } from '@/api/autotunex'
 import styles from './StepRewardFunction.module.scss'
 
 const DEFAULT_REWARD_TEMPLATE = `# gsm8k_reward.py
@@ -220,7 +220,7 @@ async function buildTestCasesFromRows(allRows: ParsedDataRow[]): Promise<TestCas
       .filter((p): p is any[] => Array.isArray(p) && p.length > 0)
     if (prompts.length > 0) {
       const result = await generateTestSolutions(prompts)
-      llmSolutions = result?.solutions || []
+      llmSolutions = result && 'solutions' in result ? result.solutions : []
     }
   } catch {
     // LLM failed — will fall back to placeholders below
@@ -272,6 +272,11 @@ export function StepRewardFunction({
   const [validationResult, setValidationResult] = useState<RewardFunctionValidationResult | null>(null)
   const [showTestPanel, setShowTestPanel] = useState(false)
 
+  // Live reward-function validation has no v0.3.5 backend equivalent yet
+  // (see AUTOTUNEX_FEATURES.rewardValidation) — this is a fixed build-time
+  // flag, so a plain const (not state) is enough to gate the UI.
+  const validationUnavailable = !AUTOTUNEX_FEATURES.rewardValidation
+
   // View mode: 0 = Table View, 1 = JSON View
   const [viewModeIndex, setViewModeIndex] = useState(0)
   const advancedTestMode = viewModeIndex === 1
@@ -306,8 +311,8 @@ export function StepRewardFunction({
 
     if (datasetId) {
       setIsLoadingDataset(true)
-      getDataset(datasetId)
-        .then((dataset) => buildTestCasesFromRows(dataset?.train_data || []))
+      getDataset(datasetId, { preview: true, previewRows: 50 })
+        .then((dataset) => buildTestCasesFromRows(dataset?.preview?.train || []))
         .then((cases) => {
           setTestCases(cases)
           nextIdRef.current = cases.length + 1
@@ -412,6 +417,11 @@ export function StepRewardFunction({
   // ─── Validation ───
 
   async function validateCode(runTest: boolean = false) {
+    // Live validation has no v0.3.5 backend equivalent yet (see
+    // AUTOTUNEX_FEATURES.rewardValidation) — no-op rather than a failed
+    // network call, so this can be safely wired to the editor's blur handler.
+    if (!AUTOTUNEX_FEATURES.rewardValidation) return
+
     setIsValidating(true)
     setValidationResult(null)
 
@@ -438,7 +448,7 @@ export function StepRewardFunction({
 
     try {
       const result = await validateRewardFunction(rewardFunctionCode, rewardFunctionName, runTest, testInputs)
-      setValidationResult(result)
+      setValidationResult('unavailable' in result ? null : result)
     } catch {
       setValidationResult({
         success: false,
@@ -590,7 +600,7 @@ export function StepRewardFunction({
                   kind="primary"
                   size="sm"
                   renderIcon={Play}
-                  disabled={isValidating || isLoadingDataset || rewardFunctionCode.trim().length === 0}
+                  disabled={isValidating || isLoadingDataset || rewardFunctionCode.trim().length === 0 || validationUnavailable}
                   onClick={() => validateCode(true)}
                 >
                   Run
@@ -610,6 +620,18 @@ export function StepRewardFunction({
               )}
             </div>
           </div>
+
+          {validationUnavailable && (
+            <div style={{ marginTop: '0.5rem' }}>
+              <InlineNotification
+                kind="info"
+                title="Reward function validation unavailable"
+                subtitle="Live validation and test execution are temporarily unavailable. You can still write your reward function and continue — it will run when your tuning job launches."
+                hideCloseButton
+                lowContrast
+              />
+            </div>
+          )}
       </div>
 
       {/* Test cases panel (below editor, hidden on validation error or per-case runtime error) */}

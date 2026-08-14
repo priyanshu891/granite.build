@@ -40,6 +40,7 @@ interface Step3ReviewLaunchProps {
   launchPhase: LaunchPhase
   uploadProgress: number
   resourceEstimation: Resources | null
+  estimationUnavailable: boolean
   totalRecords: number
   splitRatio: number
   isSplitEnabled: boolean
@@ -63,6 +64,7 @@ export function Step3ReviewLaunch({
   launchPhase,
   uploadProgress,
   resourceEstimation,
+  estimationUnavailable,
   totalRecords,
   splitRatio,
   isSplitEnabled,
@@ -330,7 +332,7 @@ export function Step3ReviewLaunch({
         </div>
       </div>
 
-      {resourceEstimation && (
+      {resourceEstimation ? (
         <div style={{ marginTop: '1rem' }}>
             <Tile className={styles.reviewCard}>
               <h6 className={styles.cardHeading} style={{ marginBottom: '0.75rem' }}>Estimated Resources</h6>
@@ -354,7 +356,14 @@ export function Step3ReviewLaunch({
               </div>
             </Tile>
         </div>
-      )}
+      ) : estimationUnavailable ? (
+        <div style={{ marginTop: '1rem' }}>
+            <Tile className={styles.reviewCard}>
+              <h6 className={styles.cardHeading} style={{ marginBottom: '0.75rem' }}>Estimated Resources</h6>
+              <p className={styles.emptyHint}>Resource estimation is temporarily unavailable. You can still launch your tuning job.</p>
+            </Tile>
+        </div>
+      ) : null}
 
       {launchPhase && (
         <div style={{ marginTop: '1.5rem' }}>

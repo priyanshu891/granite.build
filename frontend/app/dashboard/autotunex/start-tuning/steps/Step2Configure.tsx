@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Tile, Select, SelectItem, Button, TextInput, Tag, InlineLoading, InlineNotification } from '@carbon/react'
 import { Add, Settings, Edit } from '@carbon/icons-react'
-import type { Configuration, ConfigData, ConfigForm, PendingConfigData, PendingConfigUpdate, TuningGoal } from '@/types'
+import type { Configuration, ConfigData, ConfigForm, ListResult, PendingConfigData, PendingConfigUpdate, TuningGoal } from '@/types'
 import { getConfiguration, getConfigurations, getConfigurationTemplate } from '@/api/autotunex'
 import { ALGORITHM_DETAILS } from '@/config/autotunexAlgorithms'
 import { ConfigDisplay } from '../ConfigDisplay'
@@ -78,7 +78,11 @@ export function Step2Configure({
   onClearPendingConfig,
 }: Step2ConfigureProps) {
   const queryClient = useQueryClient()
-  const { data: allConfigs = [], isLoading } = useQuery({ queryKey: ['autotunex', 'configurations'], queryFn: getConfigurations })
+  const { data: configsResult, isLoading } = useQuery({
+    queryKey: ['autotunex', 'configurations'],
+    queryFn: () => getConfigurations({ page: 1, pageSize: 100 }),
+  })
+  const allConfigs = configsResult?.items ?? []
 
   const [suggestedConfigs, setSuggestedConfigs] = useState<Configuration[]>([])
   const prevAlgorithm = useRef(selectedAlgorithm)
@@ -238,8 +242,6 @@ export function Step2Configure({
         name: pendingData.name,
         tuner_type: pendingData.tuner_type || '',
         rl_tuner_type: pendingData.rl_tuner_type,
-        artifact_id: '',
-        artifact_url: '',
         config_data: pendingData.config_data,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -270,8 +272,8 @@ export function Step2Configure({
       setSelectedConfig({ ...selectedConfig, name: updatedName, tuner_type: tuner_type || '', rl_tuner_type, config_data: configData })
       onPendingConfigUpdate(pendingUpdate)
       setSuggestedConfigs((prev) => prev.map((c) => (c.id === selectedConfig.id ? { ...c, name: updatedName } : c)))
-      queryClient.setQueryData<Configuration[]>(['autotunex', 'configurations'], (prev) =>
-        prev ? prev.map((c) => (c.id === selectedConfig.id ? { ...c, name: updatedName } : c)) : prev
+      queryClient.setQueryData<ListResult<Configuration>>(['autotunex', 'configurations'], (prev) =>
+        prev ? { ...prev, items: prev.items.map((c) => (c.id === selectedConfig.id ? { ...c, name: updatedName } : c)) } : prev
       )
     }
 
@@ -330,8 +332,6 @@ export function Step2Configure({
       name: pendingData.name,
       tuner_type: pendingData.tuner_type || '',
       rl_tuner_type: pendingData.rl_tuner_type,
-      artifact_id: '',
-      artifact_url: '',
       config_data: pendingData.config_data,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
