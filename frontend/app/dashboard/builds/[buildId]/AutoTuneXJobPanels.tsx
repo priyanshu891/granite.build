@@ -3,6 +3,7 @@
 import { SkeletonText, InlineNotification } from '@carbon/react'
 import { useQuery } from '@tanstack/react-query'
 import { getJobByBuildId } from '@/api/autotunex'
+import { listSpaces } from '@/api/gbserver'
 import { TrialsTable } from '@/components/TrialsTable'
 import { TuningLogViewer } from '@/components/TuningLogViewer'
 
@@ -14,9 +15,19 @@ import { TuningLogViewer } from '@/components/TuningLogViewer'
 
 // Shared fetch of the tuning job linked to this build.
 function useLinkedTuningJob(buildId: string) {
+  // Same "admin of at least one space" gate used by the tunings/settings
+  // tables — admins get `scope=all` so these panels can resolve a job linked
+  // to the build even when it doesn't belong to the viewer. Same queryKey
+  // shape as AutoTuneXPanel's job query, so this shares its cache entry.
+  const { data: spaces = [] } = useQuery({
+    queryKey: ['spaces'],
+    queryFn: listSpaces,
+  })
+  const isAdmin = spaces.some((s) => s.is_admin)
+
   return useQuery({
-    queryKey: ['autotunex-job-by-build', buildId],
-    queryFn: () => getJobByBuildId(buildId),
+    queryKey: ['autotunex-job-by-build', buildId, isAdmin],
+    queryFn: () => getJobByBuildId(buildId, isAdmin ? 'all' : 'own'),
   })
 }
 

@@ -32,6 +32,11 @@ interface Props {
   onCreated: () => void
 }
 
+// Matches the wizard's `waitForDatasetReady` timeout (StartTuningWizard.tsx)
+// so both upload paths give up on a stuck "uploading" dataset after the same
+// window instead of polling forever.
+const POLL_TIMEOUT_MS = 5 * 60 * 1000
+
 // Dataset-type dropdown items → algorithm id (matches AutoTuneX).
 const TYPE_ITEMS = [
   { id: 'lora', label: 'SFT' },
@@ -132,6 +137,7 @@ export function SettingsDatasetCreate({ open, onClose, onCreated }: Props) {
   // triggered by the multipart upload settles into 'ready' or 'error'.
   async function pollUntilReady(datasetId: string): Promise<void> {
     setPolling(true)
+    const deadline = Date.now() + POLL_TIMEOUT_MS
     while (!cancelledRef.current) {
       const ds = await getDataset(datasetId)
       if (cancelledRef.current) return
@@ -139,6 +145,9 @@ export function SettingsDatasetCreate({ open, onClose, onCreated }: Props) {
       if (ds.status === 'ready') return
       if (ds.status === 'error') {
         throw new Error(ds.status_detail || 'Dataset processing failed. Please check the file and try again.')
+      }
+      if (Date.now() > deadline) {
+        throw new Error('Dataset processing timed out. Please try again.')
       }
       await new Promise((resolve) => setTimeout(resolve, 3000))
     }

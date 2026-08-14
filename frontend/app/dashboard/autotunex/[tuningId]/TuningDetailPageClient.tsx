@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { InlineNotification, SkeletonText } from '@carbon/react'
 import { useQuery } from '@tanstack/react-query'
 import { getJob } from '@/api/autotunex'
+import { listSpaces } from '@/api/gbserver'
 import { PageHeader } from '@/components/PageHeader'
 import { TuningStatusBadge } from '@/components/TuningStatusBadge'
 import { TuningDetailTabs } from './TuningDetailTabs'
@@ -71,15 +72,23 @@ function TuningDetailContent() {
     }
   }, [tuningId])
 
-  const refetchInterval = (data: unknown) => {
-    const j = data as { status?: string } | undefined
-    return j && ACTIVE_STATUSES.has(j.status ?? '') ? 15_000 : false
-  }
+  // Reused verbatim from the tunings list (`["spaces"]` queryKey) so the admin
+  // check shares the same React Query cache entry rather than issuing a
+  // duplicate `listSpaces()` fetch. Admins get `scope=all` so they can drill
+  // into tunings they don't own.
+  const { data: spaces = [] } = useQuery({
+    queryKey: ['spaces'],
+    queryFn: listSpaces,
+  })
+  const isAdmin = spaces.some((s) => s.is_admin)
 
   const { data: job, isLoading, error } = useQuery({
-    queryKey: ['autotunex-job', tuningId],
-    queryFn: () => getJob(tuningId!),
-    refetchInterval,
+    queryKey: ['autotunex-job', tuningId, isAdmin],
+    queryFn: () => getJob(tuningId!, isAdmin ? 'all' : 'own'),
+    refetchInterval: (query) => {
+      const s = (query.state.data as { status?: string } | undefined)?.status
+      return s && ACTIVE_STATUSES.has(s) ? 15_000 : false
+    },
     enabled: Boolean(tuningId),
   })
 

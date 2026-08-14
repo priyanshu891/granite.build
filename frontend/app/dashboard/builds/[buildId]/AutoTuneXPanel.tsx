@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { Link as CarbonLink, Modal, InlineLoading, SkeletonText } from '@carbon/react'
 import { useQuery } from '@tanstack/react-query'
 import { getConfiguration, getJobByBuildId } from '@/api/autotunex'
+import { listSpaces } from '@/api/gbserver'
 import { ConfigDisplay } from '../../autotunex/start-tuning/ConfigDisplay'
 import { SettingsDatasetView } from '@/components/SettingsDatasetView'
 import styles from './DetailsPanel.module.scss'
@@ -36,9 +37,18 @@ export function AutoTuneXPanel({ buildId }: AutoTuneXPanelProps) {
   const [configOpen, setConfigOpen] = useState(false)
   const [datasetOpen, setDatasetOpen] = useState(false)
 
+  // Same "admin of at least one space" gate used by the tunings/settings
+  // tables — admins get `scope=all` so this panel can resolve a job linked
+  // to the build even when it doesn't belong to the viewer.
+  const { data: spaces = [] } = useQuery({
+    queryKey: ['spaces'],
+    queryFn: listSpaces,
+  })
+  const isAdmin = spaces.some((s) => s.is_admin)
+
   const { data: job, isLoading } = useQuery({
-    queryKey: ['autotunex-job-by-build', buildId],
-    queryFn: () => getJobByBuildId(buildId),
+    queryKey: ['autotunex-job-by-build', buildId, isAdmin],
+    queryFn: () => getJobByBuildId(buildId, isAdmin ? 'all' : 'own'),
   })
 
   // Loaded lazily when the configuration modal is opened (matches TuningDetailTabs).

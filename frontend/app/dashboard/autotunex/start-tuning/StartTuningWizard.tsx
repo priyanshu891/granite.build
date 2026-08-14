@@ -443,7 +443,7 @@ export function StartTuningWizard() {
 
       const tuningForm: TuningForm = {
         config_id: finalConfigId!,
-        dataset_id: (datasetId || existingDatasetId)!,
+        dataset_id: (finalDatasetId ?? datasetId ?? existingDatasetId)!,
         model: selectedModel.trim(),
         model_source: modelSource,
         experiment_name: experimentName.trim().replace(/\s+/g, '_'),

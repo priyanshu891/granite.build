@@ -4,6 +4,7 @@ import { Tabs, TabList, Tab, TabPanels, TabPanel, FormLabel, Modal } from '@carb
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getConfiguration } from '@/api/autotunex'
+import { listSpaces } from '@/api/gbserver'
 import type { JobDetail } from '@/types'
 import { TuningLogViewer } from '@/components/TuningLogViewer'
 import { TrialsTable } from '@/components/TrialsTable'
@@ -26,9 +27,18 @@ function formatTime(seconds: number): string {
 function DetailsPanel({ job }: { job: JobDetail }) {
   const [configOpen, setConfigOpen] = useState(false)
 
+  // Same "admin of at least one space" gate used by the tunings/settings
+  // tables — admins get `scope=all` so the config modal can resolve a
+  // configuration this viewer doesn't own.
+  const { data: spaces = [] } = useQuery({
+    queryKey: ['spaces'],
+    queryFn: listSpaces,
+  })
+  const isAdmin = spaces.some((s) => s.is_admin)
+
   const { data: configuration } = useQuery({
-    queryKey: ['autotunex-config', job.config_id],
-    queryFn: () => getConfiguration(job.config_id),
+    queryKey: ['autotunex-config', job.config_id, isAdmin],
+    queryFn: () => getConfiguration(job.config_id, isAdmin ? 'all' : 'own'),
     enabled: configOpen,
   })
 

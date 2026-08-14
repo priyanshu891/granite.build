@@ -49,12 +49,18 @@ export default function AutoTuneXPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (ids: string[]) => {
-      for (const id of ids) await deleteJob(id)
+      for (const id of ids) await deleteJob(id, scope)
     },
-    onSuccess: () => {
+    onSuccess: (_data, ids) => {
       queryClient.invalidateQueries({ queryKey: ['autotunex-jobs'] })
       setSelectedIds([])
       setDeleteOpen(false)
+      // If the delete emptied the last page, clamp back onto the new last
+      // page and let the invalidated query above refetch it — no in-memory
+      // re-slicing of a locally-shrunk array.
+      const newTotal = Math.max(0, total - ids.length)
+      const lastPage = Math.max(1, Math.ceil(newTotal / pageSize))
+      if (page > lastPage) setPage(lastPage)
     },
   })
 
