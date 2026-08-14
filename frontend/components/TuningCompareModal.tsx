@@ -15,7 +15,9 @@ const COMPARE_KEYS: { key: keyof TuningJob; label: string }[] = [
   { key: 'config_name', label: 'Configuration' },
   { key: 'dataset', label: 'Data set' },
   { key: 'seed', label: 'Seed' },
-  { key: 'precision', label: 'Precision' },
+  // 'precision' is no longer part of the job LIST payload (JobSummary) in the
+  // v0.3.5 API — it is detail-only. Dropped from the compare table rather than
+  // issuing a per-job detail fetch. Restore via getJob() if needed later.
   { key: 'created_at', label: 'Created on' },
 ]
 
