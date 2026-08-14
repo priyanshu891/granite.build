@@ -59,7 +59,6 @@ export function AutoTuneXPanel({ buildId }: AutoTuneXPanelProps) {
 
   // No tuning job linked to this build — render nothing so DetailsPanel fills the row.
   if (!job) return null
-  console.log('AutoTuneXPanel: job', job)
   return (
     <div style={{ padding: '0.5rem 1rem' }}>
       {/* <h5 style={{ marginBottom: '1rem' }}>AutoTuneX</h5> */}
