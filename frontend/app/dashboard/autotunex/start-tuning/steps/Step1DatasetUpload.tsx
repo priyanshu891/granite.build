@@ -312,7 +312,7 @@ export function Step1DatasetUpload({
         sample_data: data.slice(0, 8),
         column_names: colNames,
         column_samples: colSamples,
-        target_dataset_type: targetType,
+        target_format: targetType,
       })
 
       setAiSuggestion({ confidence: result.confidence, reasoning: result.reasoning ?? '', algorithm: result.tuning_type })

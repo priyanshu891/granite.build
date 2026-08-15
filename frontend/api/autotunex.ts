@@ -253,7 +253,10 @@ export interface SuggestColumnMappingPayload {
   sample_data: Record<string, any>[]
   column_names: string[]
   column_samples: Record<string, string[]>
-  target_dataset_type?: string
+  // The backend field is `target_format` (a dataset-format key from
+  // /datasets/intelligence/formats) and its model forbids extra fields, so the
+  // old `target_dataset_type` name is rejected with 422. Omitted when undefined.
+  target_format?: string
 }
 
 export async function suggestColumnMappingAI(payload: SuggestColumnMappingPayload): Promise<AiMappingSuggestion> {

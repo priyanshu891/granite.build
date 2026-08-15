@@ -110,7 +110,7 @@ export function SettingsDatasetCreate({ open, onClose, onCreated }: Props) {
         sample_data: sampleRows.slice(0, 8),
         column_names: colNames,
         column_samples: colSamples,
-        target_dataset_type: targetType,
+        target_format: targetType,
       })
 
       // Map the AI's dataset-type-keyed suggestions (flat requiredCol -> sourceCol
