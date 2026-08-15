@@ -62,10 +62,13 @@ type Scope = 'own' | 'all'
 // These three v0.2 endpoints have no v0.3.5 equivalent yet. Flip a flag to
 // `true` once the server ships the endpoint to re-enable the feature — no
 // other code changes needed.
+// These endpoints shipped in the AutoTuneX backend after the initial migration;
+// the flags remain as a kill-switch (flip to false to fall back to the graceful
+// "temporarily unavailable" UI without touching call sites).
 export const AUTOTUNEX_FEATURES = {
-  estimation: false, // POST /job/estimate_usages — no v1 equivalent
-  rewardValidation: false, // POST /reward-function/validate — no v1 equivalent
-  testSolutions: false, // POST /generate-test-solutions — no v1 equivalent
+  estimation: true, // POST /jobs/estimate-usages
+  rewardValidation: true, // POST /reward-functions/validate
+  testSolutions: true, // POST /jobs/generate-test-solutions
 } as const
 
 // ── HuggingFace models ────────────────────────────────────────────────────────
@@ -262,7 +265,7 @@ export async function suggestColumnMappingAI(payload: SuggestColumnMappingPayloa
 
 export async function estimateUsage(payload: Estimation): Promise<Resources | { unavailable: true }> {
   if (!AUTOTUNEX_FEATURES.estimation) return { unavailable: true }
-  const { data } = await client.post<Resources>('/job/estimate_usages', payload)
+  const { data } = await client.post<Resources>('/jobs/estimate-usages', payload)
   return data
 }
 
@@ -273,7 +276,7 @@ export async function validateRewardFunction(
   testInputs?: Record<string, any> | Record<string, any>[]
 ): Promise<RewardFunctionValidationResult | { unavailable: true }> {
   if (!AUTOTUNEX_FEATURES.rewardValidation) return { unavailable: true }
-  const { data } = await client.post<RewardFunctionValidationResult>('/reward-function/validate', {
+  const { data } = await client.post<RewardFunctionValidationResult>('/reward-functions/validate', {
     code,
     function_name: functionName,
     test_execution: testExecution,
@@ -286,7 +289,7 @@ export async function generateTestSolutions(
   prompts: Array<Array<{ role: string; content: string }>>
 ): Promise<{ solutions: string[] } | { unavailable: true }> {
   if (!AUTOTUNEX_FEATURES.testSolutions) return { unavailable: true }
-  const { data } = await client.post<{ solutions: string[] }>('/generate-test-solutions', { prompts })
+  const { data } = await client.post<{ solutions: string[] }>('/jobs/generate-test-solutions', { prompts })
   return data
 }
 

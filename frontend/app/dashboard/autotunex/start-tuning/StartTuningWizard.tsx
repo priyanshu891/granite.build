@@ -342,17 +342,29 @@ export function StartTuningWizard() {
     }
 
     if (selectedModel && selectedConfigId) {
-      estimateUsage({ model_name: selectedModel, config_id: selectedConfigId === '__pending__' ? '' : selectedConfigId, gpu_memory: 80 })
-        .then((result) => {
-          if (result && 'unavailable' in result) {
-            setResourceEstimation(null)
-            setEstimationUnavailable(true)
-          } else {
-            setResourceEstimation(result)
-            setEstimationUnavailable(false)
-          }
-        })
-        .catch(() => setResourceEstimation(null))
+      // estimate-usages requires exactly one of config_id / config_data: send
+      // config_data for a pending (not-yet-saved) config, config_id otherwise.
+      const estimation =
+        selectedConfigId === '__pending__'
+          ? pendingNewConfig
+            ? { model_name: selectedModel, config_data: pendingNewConfig.config_data, gpu_memory: 80 }
+            : null
+          : { model_name: selectedModel, config_id: selectedConfigId, gpu_memory: 80 }
+      if (estimation) {
+        estimateUsage(estimation)
+          .then((result) => {
+            if (result && 'unavailable' in result) {
+              setResourceEstimation(null)
+              setEstimationUnavailable(true)
+            } else {
+              setResourceEstimation(result)
+              setEstimationUnavailable(false)
+            }
+          })
+          .catch(() => setResourceEstimation(null))
+      } else {
+        setResourceEstimation(null)
+      }
     }
   }
 

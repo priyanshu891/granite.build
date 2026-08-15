@@ -655,8 +655,14 @@ export interface Resources {
 
 export interface Estimation {
   model_name: string
-  config_id: string
-  gpu_memory: number
+  gpu_memory?: number
+  // The backend requires exactly one of config_id / config_data:
+  // config_id for an existing configuration, config_data for a not-yet-saved
+  // (pending) one being created inline in the wizard.
+  config_id?: string
+  config_data?: ConfigData
+  tuner_type?: string
+  rl_tuner_type?: string
 }
 
 export interface WizardDraft {
