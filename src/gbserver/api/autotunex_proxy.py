@@ -17,7 +17,7 @@
 
 In standalone mode the frontend is served by gbserver at the same origin, so
 AutoTuneX calls arrive as same-origin ``/api/autotunex/*`` requests. This module
-forwards them server-side to the AutoTuneX FastAPI server's ``/fmtune/api/*``
+forwards them server-side to the AutoTuneX FastAPI server's ``/api/v1/*``
 routes, so browser cookies flow with no CORS. Mirrors the ``next dev`` rewrite in
 frontend/next.config.ts. The AutoTuneX server enforces its own cookie auth;
 gbserver treats ``/api/autotunex/*`` as public (see auth._PUBLIC_PATH_PREFIXES).
@@ -36,7 +36,8 @@ from gbserver.utils.logger import get_logger
 logger = get_logger(__name__)
 
 AUTOTUNEX_URL = os.getenv("AUTOTUNEX_API_URL", "http://localhost:8000")
-_UPSTREAM_PREFIX = "/fmtune/api"
+# AutoTuneX API v0.3.5 serves its resource routes under /api/v1 (was /fmtune/api).
+_UPSTREAM_PREFIX = "/api/v1"
 # Public path this proxy is mounted at; the browser side of the mapping.
 _PUBLIC_PREFIX = "/api/autotunex"
 
@@ -76,15 +77,16 @@ async def aclose_client() -> None:
 def _rewrite_location(value: str) -> str:
     """Map an upstream Location back into the public ``/api/autotunex/*`` space.
 
-    tuspyserver emits an absolute Location built from the upstream host and its
-    ``/fmtune/api`` mount (e.g. ``http://localhost:8000/fmtune/api/datasets/tus/
-    <id>``) on a creation POST. Because the proxy drops the Host header, that
-    host is the upstream's, so the browser would send the follow-up HEAD/PATCH
-    cross-origin and hit CORS. Rewrite the ``/fmtune/api`` path prefix to
-    ``/api/autotunex`` and return a host-relative URL so those requests come
-    back through gbserver — regardless of the upstream scheme/host or a trailing
-    slash on AUTOTUNEX_API_URL. Locations whose path is outside the upstream API
-    space (e.g. an external auth redirect) are left untouched.
+    The upstream can emit an absolute Location built from its own host and its
+    ``/api/v1`` mount — e.g. FastAPI's trailing-slash 307 (``/api/v1/jobs/`` ->
+    ``http://localhost:8000/api/v1/jobs``), or any redirect that stays inside the
+    API. Because the proxy drops the Host header, that host is the upstream's, so
+    the browser would send the follow-up request cross-origin and hit CORS.
+    Rewrite the ``/api/v1`` path prefix to ``/api/autotunex`` and return a
+    host-relative URL so those requests come back through gbserver — regardless
+    of the upstream scheme/host or a trailing slash on AUTOTUNEX_API_URL.
+    Locations whose path is outside the upstream API space (e.g. an external auth
+    redirect) are left untouched.
     """
     parts = urlsplit(value)
     if parts.path == _UPSTREAM_PREFIX or parts.path.startswith(

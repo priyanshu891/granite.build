@@ -48,8 +48,8 @@ def test_forwards_method_path_query_and_cookie(monkeypatch):
 
     client = TestClient(_make_app())
     resp = client.get(
-        "/api/autotunex/job/by_build_id/abc",
-        params={"include_logs": "false"},
+        "/api/autotunex/jobs/by-build-id/abc",
+        params={"scope": "own"},
         headers={"cookie": "session=xyz"},
     )
 
@@ -57,7 +57,7 @@ def test_forwards_method_path_query_and_cookie(monkeypatch):
     assert resp.json() == {"ok": True}
     assert seen["method"] == "GET"
     assert seen["url"] == (
-        "http://autotunex.test/fmtune/api/job/by_build_id/abc?include_logs=false"
+        "http://autotunex.test/api/v1/jobs/by-build-id/abc?scope=own"
     )
     assert seen["cookie"] == "session=xyz"
 
@@ -150,18 +150,18 @@ def test_preserves_multiple_set_cookie_headers(monkeypatch):
     assert resp.headers.get_list("set-cookie") == ["a=1", "b=2"]
 
 
-def test_rewrites_absolute_tus_location_header(monkeypatch):
-    """tuspyserver builds an absolute Location pointing at the upstream host and
-    its /fmtune/api prefix (e.g. after a tus creation POST). Left as-is, the tus
-    client would send follow-up HEAD/PATCH straight to the upstream, cross-origin
-    (CORS). The proxy must map it back into the public /api/autotunex/* space so
-    the browser keeps talking to gbserver."""
+def test_rewrites_absolute_upstream_location_header(monkeypatch):
+    """The upstream can emit an absolute Location pointing at its own host and
+    /api/v1 prefix (e.g. FastAPI's trailing-slash 307, or any in-API redirect).
+    Left as-is, the browser would send the follow-up request straight to the
+    upstream, cross-origin (CORS). The proxy must map it back into the public
+    /api/autotunex/* space so the browser keeps talking to gbserver."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
-            201,
+            307,
             headers={
-                "location": "http://autotunex.test/fmtune/api/datasets/tus/ABC123"
+                "location": "http://autotunex.test/api/v1/datasets/ABC123"
             },
         )
 
@@ -169,22 +169,22 @@ def test_rewrites_absolute_tus_location_header(monkeypatch):
     monkeypatch.setattr(proxy_mod, "_client", _client_with_handler(handler))
 
     client = TestClient(_make_app())
-    resp = client.post("/api/autotunex/datasets/tus", follow_redirects=False)
+    resp = client.post("/api/autotunex/datasets", follow_redirects=False)
 
-    assert resp.status_code == 201
-    assert resp.headers["location"] == "/api/autotunex/datasets/tus/ABC123"
+    assert resp.status_code == 307
+    assert resp.headers["location"] == "/api/autotunex/datasets/ABC123"
 
 
 def test_rewrites_location_when_upstream_url_has_trailing_slash(monkeypatch):
     """A trailing slash in AUTOTUNEX_API_URL must not defeat the rewrite. The
-    match is on the /fmtune/api path prefix, not an exact origin-string compare,
+    match is on the /api/v1 path prefix, not an exact origin-string compare,
     so the follow-up requests still come back through gbserver."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
-            201,
+            307,
             headers={
-                "location": "http://autotunex.test/fmtune/api/datasets/tus/XYZ"
+                "location": "http://autotunex.test/api/v1/datasets/XYZ"
             },
         )
 
@@ -192,13 +192,13 @@ def test_rewrites_location_when_upstream_url_has_trailing_slash(monkeypatch):
     monkeypatch.setattr(proxy_mod, "_client", _client_with_handler(handler))
 
     client = TestClient(_make_app())
-    resp = client.post("/api/autotunex/datasets/tus", follow_redirects=False)
+    resp = client.post("/api/autotunex/datasets", follow_redirects=False)
 
-    assert resp.headers["location"] == "/api/autotunex/datasets/tus/XYZ"
+    assert resp.headers["location"] == "/api/autotunex/datasets/XYZ"
 
 
 def test_leaves_non_upstream_location_untouched(monkeypatch):
-    """A redirect that does not point into the upstream /fmtune/api space (e.g.
+    """A redirect that does not point into the upstream /api/v1 space (e.g.
     an external auth provider) must be passed through verbatim, not mangled."""
 
     def handler(request: httpx.Request) -> httpx.Response:
