@@ -10,15 +10,28 @@ const ACTIVE_STATUSES = new Set(['running', 'pending'])
 interface Props {
   jobId: string
   status: TuningJob['status']
+  /** Cap the inline scroll container height (px). Omit to keep the SCSS 70vh default (detail page). */
+  maxHeight?: number
+  /** List scope to fetch logs under. Omit to use getJobLogs' 'own' default (detail page). */
+  scope?: 'own' | 'all'
 }
 
-export function TuningLogViewer({ jobId, status }: Props) {
+export function TuningLogViewer({ jobId, status, maxHeight, scope }: Props) {
   const isActive = ACTIVE_STATUSES.has(status)
   const { logs, isLoading, isLoadingMore, handleScroll } = useScrollingLogs({
-    queryKey: ['autotunex-job-logs', jobId],
-    fetchLogs: (opts) => getJobLogs(jobId, opts),
+    // scope is part of the key so 'own' vs 'all' fetches don't collide in the RQ cache.
+    queryKey: ['autotunex-job-logs', jobId, scope ?? 'own'],
+    fetchLogs: (opts) => getJobLogs(jobId, { ...opts, scope }),
     isActive,
   })
 
-  return <LogLines logs={logs} isLoading={isLoading} isLoadingMore={isLoadingMore} onScroll={handleScroll} />
+  return (
+    <LogLines
+      logs={logs}
+      isLoading={isLoading}
+      isLoadingMore={isLoadingMore}
+      onScroll={handleScroll}
+      maxHeight={maxHeight}
+    />
+  )
 }
