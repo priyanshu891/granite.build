@@ -17,12 +17,17 @@ import {
   TableSelectRow,
   TableBatchActions,
   TableBatchAction,
+  TableExpandHeader,
+  TableExpandRow,
+  TableExpandedRow,
   Pagination,
   Link as CarbonLink,
   Button,
   Toggle,
 } from '@carbon/react'
 import { Compare, Launch, Rocket, TrashCan } from '@carbon/icons-react'
+import { Fragment } from 'react'
+import { TuningLogViewer } from './TuningLogViewer'
 import type { TuningJob } from '@/types'
 import { TuningStatusBadge } from './TuningStatusBadge'
 import Link from 'next/link'
@@ -132,6 +137,7 @@ export function TuningsTable({
     total_time_display: totalTimeFor(j),
   }))
   const totalTimeDisplayById = new Map(rows.map((r) => [r.id, r.total_time_display]))
+  const statusById = new Map(jobs.map((j) => [j.id, j.status]))
 
   return (
     <DataTable rows={rows} headers={HEADERS} isSortable sortRow={sortRow}>
@@ -143,9 +149,11 @@ export function TuningsTable({
         getRowProps,
         getSelectionProps,
         getBatchActionProps,
+        getExpandHeaderProps,
       }) => {
         const currentSelectedIds = tableRows.filter((r) => selectedIds.includes(r.id)).map((r) => r.id)
         const batchActionProps = getBatchActionProps()
+        const { key: _ehk, ...expandHeaderProps } = getExpandHeaderProps()
 
         return (
           <TableContainer
@@ -186,6 +194,7 @@ export function TuningsTable({
             <Table {...getTableProps()} size="md">
               <TableHead>
                 <TableRow>
+                  <TableExpandHeader {...expandHeaderProps} />
                   <TableSelectAll
                     {...getSelectionProps()}
                     onSelect={(e) => {
@@ -210,51 +219,65 @@ export function TuningsTable({
                   const { key: _k, ...rowProps } = getRowProps({ row })
                   const selectionProps = getSelectionProps({ row })
                   return (
-                    <TableRow key={row.id} {...rowProps}>
-                      <TableSelectRow
-                        {...selectionProps}
-                        onSelect={(e) => {
-                          selectionProps.onSelect(e)
-                          const checked = (e.target as HTMLInputElement).checked
-                          onSelectedIdsChange(
-                            checked
-                              ? [...selectedIds, row.id]
-                              : selectedIds.filter((id) => id !== row.id)
-                          )
-                        }}
-                      />
-                      {row.cells.map((cell) => (
-                        <TableCell key={cell.id}>
-                          {cell.info.header === 'status' ? (
-                            <TuningStatusBadge status={cell.value} />
-                          ) : cell.info.header === 'created_at' ? (
-                            new Date(cell.value as string).toLocaleString()
-                          ) : cell.info.header === 'experiment_name' ? (
-                            <CarbonLink
-                              href="#"
-                              onClick={(e) => {
-                                e.preventDefault()
-                                onRowClick(row.id)
-                              }}
-                            >
-                              {cell.value}
-                            </CarbonLink>
-                          ) : cell.info.header === 'model' && (cell.value as string)?.startsWith('/') ? (
-                            <span title={cell.value as string}>
-                              {(cell.value as string).split('/').slice(-2).join('/')}
-                            </span>
-                          ) : cell.info.header === 'model' ? (
-                            <a href={`https://huggingface.co/${cell.value}`} target="_blank" rel="noreferrer">
-                              {cell.value}
-                            </a>
-                          ) : cell.info.header === 'total_time' ? (
-                            totalTimeDisplayById.get(row.id) ?? ''
-                          ) : (
-                            (cell.value as React.ReactNode)
-                          )}
-                        </TableCell>
-                      ))}
-                    </TableRow>
+                    <Fragment key={row.id}>
+                      <TableExpandRow {...rowProps}>
+                        <TableSelectRow
+                          {...selectionProps}
+                          onSelect={(e) => {
+                            selectionProps.onSelect(e)
+                            const checked = (e.target as HTMLInputElement).checked
+                            onSelectedIdsChange(
+                              checked
+                                ? [...selectedIds, row.id]
+                                : selectedIds.filter((id) => id !== row.id)
+                            )
+                          }}
+                        />
+                        {row.cells.map((cell) => (
+                          <TableCell key={cell.id}>
+                            {cell.info.header === 'status' ? (
+                              <TuningStatusBadge status={cell.value} />
+                            ) : cell.info.header === 'created_at' ? (
+                              new Date(cell.value as string).toLocaleString()
+                            ) : cell.info.header === 'experiment_name' ? (
+                              <CarbonLink
+                                href="#"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  onRowClick(row.id)
+                                }}
+                              >
+                                {cell.value}
+                              </CarbonLink>
+                            ) : cell.info.header === 'model' && (cell.value as string)?.startsWith('/') ? (
+                              <span title={cell.value as string}>
+                                {(cell.value as string).split('/').slice(-2).join('/')}
+                              </span>
+                            ) : cell.info.header === 'model' ? (
+                              <a href={`https://huggingface.co/${cell.value}`} target="_blank" rel="noreferrer">
+                                {cell.value}
+                              </a>
+                            ) : cell.info.header === 'total_time' ? (
+                              totalTimeDisplayById.get(row.id) ?? ''
+                            ) : (
+                              (cell.value as React.ReactNode)
+                            )}
+                          </TableCell>
+                        ))}
+                      </TableExpandRow>
+                      <TableExpandedRow colSpan={headers.length + 2}>
+                        {row.isExpanded && (
+                          <TuningLogViewer
+                            jobId={row.id}
+                            // Every tableRow.id maps to a job; 'completed' is an inert
+                            // (non-polling) fallback that satisfies the type and can't occur.
+                            status={statusById.get(row.id) ?? 'completed'}
+                            maxHeight={320}
+                            scope={scope}
+                          />
+                        )}
+                      </TableExpandedRow>
+                    </Fragment>
                   )
                 })}
               </TableBody>
