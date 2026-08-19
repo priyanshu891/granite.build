@@ -11,6 +11,7 @@ import { TrialsTable } from '@/components/TrialsTable'
 import { TuningResultsPanel } from '@/components/TuningResultsPanel'
 import { ConfigDisplay } from '../start-tuning/ConfigDisplay'
 import { modelSourceLabel } from '../modelSources'
+import { SettingsDatasetView } from '@/components/SettingsDatasetView'
 
 function formatTime(seconds: number): string {
   if (seconds <= 0) return '0 s'
@@ -26,6 +27,7 @@ function formatTime(seconds: number): string {
 
 function DetailsPanel({ job }: { job: JobDetail }) {
   const [configOpen, setConfigOpen] = useState(false)
+  const [datasetOpen, setDatasetOpen] = useState(false)
 
   // Same "admin of at least one space" gate used by the tunings/settings
   // tables — admins get `scope=all` so the config modal can resolve a
@@ -47,7 +49,7 @@ function DetailsPanel({ job }: { job: JobDetail }) {
   )
 
   const fields: { label: string; value: React.ReactNode }[] = [
-    { label: 'Status', value: job.status },
+    { label: 'Build ID', value: job.tasks[0]?.build_id?.split('-')[0] as string },
     { label: 'Model', value: job.model },
     { label: 'Model source', value: modelSourceLabel(job.model_source) },
     {
@@ -58,9 +60,11 @@ function DetailsPanel({ job }: { job: JobDetail }) {
         </a>
       ),
     },
-    { label: 'Data set', value: job.dataset },
-    { label: 'Seed', value: job.seed },
-    { label: 'Precision', value: job.precision },
+    { label: 'Data set',       value: (
+        <a href="#" onClick={(e) => { e.preventDefault(); setDatasetOpen(true) }}>
+          {job.dataset}
+        </a>
+      ), },
     { label: 'Total time', value: formatTime(totalTimeSeconds) },
   ]
 
@@ -69,7 +73,7 @@ function DetailsPanel({ job }: { job: JobDetail }) {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', marginBottom: '2rem' }}>
         {fields.map((f) => (
           <div key={f.label} style={{ minWidth: '10rem' }}>
-            <FormLabel>{f.label}</FormLabel>
+            <FormLabel style={{ marginBottom: '0.5rem' }}>{f.label}</FormLabel>
             <div style={{ fontFamily: 'monospace' }}>{f.value}</div>
           </div>
         ))}
@@ -87,6 +91,12 @@ function DetailsPanel({ job }: { job: JobDetail }) {
       >
         {configuration ? <ConfigDisplay configuration={configuration} /> : <p>Loading…</p>}
       </Modal>
+
+    <SettingsDatasetView
+        open={datasetOpen}
+        datasetId={job.dataset_id}
+        onClose={() => setDatasetOpen(false)}
+      />
     </div>
   )
 }
