@@ -150,6 +150,7 @@ export function TuningsTable({
         getSelectionProps,
         getBatchActionProps,
         getExpandHeaderProps,
+        getExpandedRowProps,
       }) => {
         const currentSelectedIds = tableRows.filter((r) => selectedIds.includes(r.id)).map((r) => r.id)
         const batchActionProps = getBatchActionProps()
@@ -194,7 +195,7 @@ export function TuningsTable({
             <Table {...getTableProps()} size="md">
               <TableHead>
                 <TableRow>
-                  <TableExpandHeader {...expandHeaderProps} />
+                  <TableExpandHeader {...expandHeaderProps} aria-label="Expand row" />
                   <TableSelectAll
                     {...getSelectionProps()}
                     onSelect={(e) => {
@@ -265,8 +266,8 @@ export function TuningsTable({
                           </TableCell>
                         ))}
                       </TableExpandRow>
-                      <TableExpandedRow colSpan={headers.length + 2}>
-                        {row.isExpanded && (
+                      {row.isExpanded && (
+                        <TableExpandedRow {...getExpandedRowProps({ row })} colSpan={headers.length + 2}>
                           <TuningLogViewer
                             jobId={row.id}
                             // Every tableRow.id maps to a job; 'completed' is an inert
@@ -275,8 +276,8 @@ export function TuningsTable({
                             maxHeight={320}
                             scope={scope}
                           />
-                        )}
-                      </TableExpandedRow>
+                        </TableExpandedRow>
+                      )}
                     </Fragment>
                   )
                 })}
