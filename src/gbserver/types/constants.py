@@ -899,6 +899,8 @@ GBSERVER_WANDB_ENTITY = os.getenv(ENV_VAR_PREFIX + "_WANDB_ENTITY", "dmf-testing
 GBSERVER_WANDB_BASE_URL = os.getenv(
     ENV_VAR_PREFIX + "_WANDB_BASE_URL", "https://ibm.wandb.io"
 )
+GBSERVER_WANDB_QUIET = getenv_boolean(ENV_VAR_PREFIX + "_WANDB_QUIET", True)
+GBSERVER_WANDB_LOG_LEVEL = os.getenv(ENV_VAR_PREFIX + "_WANDB_LOG_LEVEL", "warning")
 
 GBSERVER_SQL_SCHEME = os.getenv(ENV_VAR_GBSERVER_SQL_SCHEME, "postgresql")
 GBSERVER_SQL_HOST = os.getenv(
@@ -1012,6 +1014,7 @@ GB_ARTIFACT_REGISTRY_TABLE_NAME = "gb_artifacts"
 GB_TARGET_RUNS_TABLE_NAME = "gb_targets"
 GB_NODE_FAILURES_TABLE_NAME = "gb_ndfail"
 GB_SPACE_USERS_TABLE_NAME = "gb_space_users"
+GB_STATUS_TABLE_NAME = "gb_status"
 
 GB_JOB_STATS_DETAIL_CATEGORY = "granite-dot-build"
 GB_JOB_STATS_DETAIL_TYPE = "granite-dot-build"

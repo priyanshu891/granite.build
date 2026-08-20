@@ -50,7 +50,7 @@ if not _can_import("kubernetes_asyncio"):
     collect_ignore.append("unit/resilience/test_k8s_retry.py")
     collect_ignore.append("unit/monitoring/test_appwrapper_monitor.py")
     collect_ignore.append("unit/environment/test_cleanup_retry.py")
-    collect_ignore.append("integration/ibm/environment/test_k8s_raycluster_cleanup.py")
+    collect_ignore.append("integration/environment/test_k8s_raycluster_cleanup.py")
 
 if not _can_import("asyncssh"):
     collect_ignore.append("integration/ibm/utils/test_ssh_tunnel.py")
@@ -824,13 +824,12 @@ def _mock_lineage(request):
     mock_store.create_jobstats_for_target.return_value = ([], {})
     mock_store.create_jobstats_for_original_artifact.return_value = None
 
+    # NOTE: buildrunner no longer imports get_lineage_store — lineage recording
+    # moved to LineageWatcher, which resolves the store via
+    # gbserver.lineage.jobstats.get_lineage_store (patched above).
     with (
         patch("gbserver.lineage.jobstats.get_lineage_store", return_value=mock_store),
         patch("gbserver.api.artifacts.get_lineage_store", return_value=mock_store),
-        patch(
-            "gbserver.buildrunner.buildrunner.get_lineage_store",
-            return_value=mock_store,
-        ),
         patch(
             "integration.ibm.api.test_artifacts.get_lineage_store",
             return_value=mock_store,
