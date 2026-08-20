@@ -26,6 +26,7 @@ import {
   DeliveryParcel,
   Light,
   Pipelines,
+  ModelTuned,
   Switcher as SwitcherIcon,
 } from "@carbon/icons-react";
 import { useTheme } from "@/hooks/useTheme";
@@ -162,6 +163,18 @@ export function AppHeader() {
               aria-current={pathname === "/dashboard/analytics" ? "page" : undefined}
             >
               Analytics
+            </SideNavLink>
+            <SideNavLink
+              as={Link}
+              href="/dashboard/autotunex"
+              renderIcon={ModelTuned}
+              aria-current={
+                pathname === "/dashboard/autotunex" || pathname.startsWith("/dashboard/autotunex/")
+                  ? "page"
+                  : undefined
+              }
+            >
+              Model Customization
             </SideNavLink>
           </SideNavItems>
         </SideNav>

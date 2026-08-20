@@ -212,9 +212,13 @@ frontend/node_modules/
 frontend/.next/
 frontend/out/
 frontend/.env
+frontend/.env.local
 frontend/certificates/
 frontend/*.tsbuildinfo
 
 # Compiled frontend served by gbserver — built by `make build-frontend`, not committed
 src/gbserver/static/ui/
+
+# Superpowers SDD scratch (ledger, briefs, review packages) — local only
+.superpowers/
 
