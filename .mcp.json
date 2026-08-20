@@ -5,7 +5,14 @@
       "command": "bash",
       "args": ["-c", "exec \"$CLAUDE_PROJECT_DIR/.venv/bin/gbmcp\""],
       "env": {
-        "GBSERVER_PORT": "${GBSERVER_PORT:-8080}"
+        "GBSERVER_PORT": "${GBSERVER_PORT:-8080}",
+        "GBSERVER_METADATA_STORAGE": "sql",
+        "GBSERVER_SQL_HOST": "${GBSERVER_SQL_HOST:-127.0.0.1}",
+        "GBSERVER_SQL_PORT": "${GBSERVER_SQL_PORT:-5432}",
+        "GBSERVER_SQL_DBNAME": "${GBSERVER_SQL_DBNAME:-granitebuild}",
+        "GBSERVER_SQL_SCHEMA": "${GBSERVER_SQL_SCHEMA:-public}",
+        "GBSERVER_SQL_USER": "${GBSERVER_SQL_USER:-$(whoami)}",
+        "GBSERVER_SQL_PASSWD": "${GBSERVER_SQL_PASSWD:-}"
       }
     }
   }
