@@ -2,19 +2,40 @@
   margin-bottom: 1rem;
 }
 
-.fieldNarrow {
-  flex: 0 1 140px;
-  min-width: 120px;
+// Field rows reproduce the geometry of Carbon's flex grid, which the source
+// AutoTuneX form uses. There, a `Row` cancels its columns' 1rem side padding
+// with -1rem margins, so N equal columns render as N equal tracks separated by
+// 2rem gutters with no padding at the row's outer edges. `repeat(N, minmax(0,
+// 1fr))` + `gap: 2rem` produces exactly that, and `minmax(0, 1fr)` stops a wide
+// input from pushing its track past its share.
+//
+// Per-item `flex-basis` was used here before and is what made the layout
+// diverge: basis values wrap to whatever count fits the container (4-up in the
+// generic sections instead of 2-up) and let each wrapped line size its columns
+// independently, so fields never line up between rows.
+
+/**
+ * Hyperparameter row. The source opens with two `<Column sm={1}>` and then
+ * either two more `sm={1}` (uniform strategy: min/max) or a single `sm={2}`
+ * (choice strategy: values). Carbon's `sm` grid is 4 columns wide, so that is
+ * 25% / 25% / 25% / 25%, or 25% / 25% / 50%.
+ */
+.hyperparamRow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2rem;
+  align-items: start;
 }
 
-.fieldWide {
-  flex: 1 1 240px;
-  min-width: 200px;
+/** The "Values" cell: `sm={2}` in the source, i.e. half the row. */
+.hyperparamValues {
+  grid-column: span 2;
 }
 
-.genericField {
-  flex: 1 1 220px;
-  min-width: 180px;
+@media (max-width: 42rem) {
+  .hyperparamRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .modeRow {
@@ -85,10 +106,30 @@
 
 .configItem {
   margin-bottom: 0.5rem;
-  padding: 1rem 0;
+  padding: 0.5rem 0;
 }
 
-.inputContainer {
+/**
+ * The hyperparameter's name, which acts as a heading over the
+ * Strategy / Default / Values group beneath it. Carbon React computes
+ * `.cds--label`'s bottom margin to 0 here, so the name ends up butted straight
+ * against the "Strategy" label with no gap at all; the source form renders
+ * roughly 0.75rem of separation. Selected through `.configItem` so the two-class
+ * specificity beats Carbon's own `.cds--label` regardless of stylesheet order.
+ */
+.configItem > .paramLabel {
+  margin-bottom: 0.75rem;
+}
+
+/**
+ * 1rem inset from the enclosing section card's edges for the generic advanced
+ * sections. The source puts this padding on each field (`.input-container`),
+ * which cannot be reused per-cell here: as a grid cell it stacks on the grid's
+ * own 2rem row gap and adds 2rem of dead space to every row boundary. Hoisting
+ * it to the container keeps the same inset while leaving the row rhythm to the
+ * gap alone — the spacing the General tab uses, which is the agreed reference.
+ */
+.genericSectionInset {
   padding: 1rem;
 }
 

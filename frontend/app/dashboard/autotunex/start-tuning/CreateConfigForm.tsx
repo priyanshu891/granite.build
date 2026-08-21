@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { Fragment, useMemo, useRef, useState } from 'react'
 import { Checkbox, ContentSwitcher, Dropdown, FormLabel, MultiSelect, NumberInput, Select, SelectItem, Switch, TextInput, Toggle } from '@carbon/react'
 import type { Configuration, ConfigForm, TuningGoal } from '@/types'
 import { getOption, parseCommaList, toUpperCase } from './wizardUtils'
@@ -185,15 +185,15 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
 
     if (paramConfig.values && (paramConfig.type === 'int' || paramConfig.type === 'float')) {
       return (
-        <div className={layoutStyles.rowWrap} key={paramName}>
-          <div className={styles.fieldNarrow}>
+        <div className={styles.hyperparamRow} key={paramName}>
+          <div>
             <Select id={`${fieldId}-strategy`} labelText="Strategy" value={paramConfig.strategy} onChange={(e) => update({ strategy: e.target.value })}>
               {paramConfig.options.map((option: string) => (
                 <SelectItem key={option} value={option} text={getOption(option as any)} />
               ))}
             </Select>
           </div>
-          <div className={styles.fieldNarrow}>
+          <div>
             <NumberInput
               id={`${fieldId}-default`}
               label="Default"
@@ -207,7 +207,7 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
           </div>
           {paramConfig.strategy === 'uniform' ? (
             <>
-              <div className={styles.fieldNarrow}>
+              <div>
                 <NumberInput
                   id={`${fieldId}-min`}
                   label="Min value"
@@ -216,7 +216,7 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
                   onChange={(_e, { value }) => update({ min_val: typeof value === 'number' ? value : Number(value) })}
                 />
               </div>
-              <div className={styles.fieldNarrow}>
+              <div>
                 <NumberInput
                   id={`${fieldId}-max`}
                   label="Max value"
@@ -227,7 +227,7 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
               </div>
             </>
           ) : (
-            <div className={styles.fieldWide}>
+            <div className={styles.hyperparamValues}>
               <TextInput
                 id={`${fieldId}-values`}
                 labelText="Values"
@@ -269,22 +269,22 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
         disabled: selectedValues.length === 1 && option === paramConfig.default,
       }))
       return (
-        <div className={layoutStyles.rowWrap} key={paramName}>
-          <div className={styles.fieldNarrow}>
+        <div className={styles.hyperparamRow} key={paramName}>
+          <div>
             <Select id={`${fieldId}-strategy`} labelText="Strategy" value={paramConfig.strategy} onChange={(e) => update({ strategy: e.target.value })}>
               {paramConfig.options.map((option: string) => (
                 <SelectItem key={option} value={option} text={getOption(option as any)} />
               ))}
             </Select>
           </div>
-          <div className={styles.fieldNarrow}>
+          <div>
             <Select id={`${fieldId}-default`} labelText="Default" value={paramConfig.default} onChange={(e) => update({ default: e.target.value })}>
               {(paramConfig.values || []).map((option: string) => (
                 <SelectItem key={option} value={option} text={option} />
               ))}
             </Select>
           </div>
-          <div className={styles.fieldWide}>
+          <div className={styles.hyperparamValues}>
             <MultiSelect
               id={`${fieldId}-values`}
               // `titleText` is the field label in Carbon React; `label` is only the
@@ -327,7 +327,7 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
         <h5>{sectionKey === 'tuners_config' ? 'Hyperparameter search space settings' : 'RL Hyperparameter search space settings'}</h5>
         {Object.entries(tuner.hyperparams).map(([paramName, paramConfig]) => (
           <div className={styles.configItem} key={paramName}>
-            <FormLabel>
+            <FormLabel className={styles.paramLabel}>
               <span style={{ fontSize: '14px', fontWeight: 600 }}>{toUpperCase((paramConfig as any).description) ?? (paramConfig as any).description}</span>
             </FormLabel>
             {renderHyperparamField(sectionKey, tunerKey, paramName, paramConfig)}
@@ -341,107 +341,117 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
     const section: any = (config as any)[sectionKey]
     if (!section) return null
     return (
-      <div className={layoutStyles.rowWrap}>
-        {Object.entries(section).map(([key, value]: [string, any]) => {
-          // bool-typed fields aren't editable via this generic section (the source has an
-          // identical, unreachable Checkbox branch further down gated behind this same
-          // exclusion — dropped here rather than porting dead code).
-          if (value?.type === 'bool' || key === 'resource_name' || !shouldShowField(section, value)) return null
-          if (!isObject(value)) {
-            return (
-              <div className={styles.genericField} key={key}>
-                <div className={styles.inputContainer}>
-                  <TextInput id={`${sectionKey}-${key}`} labelText={toUpperCase(key) ?? key} value={String(section[key])} onChange={(e) => updateGenericField(sectionKey, key, { default: e.target.value })} />
-                </div>
-              </div>
-            )
-          }
+      <div className={styles.genericSectionInset}>
+        <div className={layoutStyles.fieldGrid}>
+          {Object.entries(section).map(([key, value]: [string, any]) => {
+            // bool-typed fields aren't editable via this generic section (the source has an
+            // identical, unreachable Checkbox branch further down gated behind this same
+            // exclusion — dropped here rather than porting dead code).
+            if (value?.type === 'bool' || key === 'resource_name' || !shouldShowField(section, value)) return null
+            if (!isObject(value)) {
+              return (
+                <TextInput
+                  key={key}
+                  id={`${sectionKey}-${key}`} labelText={toUpperCase(key) ?? key} value={String(section[key])} onChange={(e) => updateGenericField(sectionKey, key, { default: e.target.value })} />
+              )
+            }
 
-          const fieldId = `${sectionKey}-${key}`
-          let control: React.ReactNode
-          if (key === 'max_concurrent_trials' && config.training_config?.num_gpus_per_trial) {
-            const gpu = config.training_config.num_gpus_per_trial as any
-            control = (
-              <NumberInput
-                id={fieldId}
-                label={toUpperCase(key) ?? key}
-                helperText={value.description}
-                value={value.default}
-                min={value.min_val}
-                max={Math.floor(gpu.max_val / gpu.default)}
-                step={value.type === 'float' ? 0.01 : 1}
-                onChange={(_e, { value: v }) => updateGenericField(sectionKey, key, { default: typeof v === 'number' ? v : Number(v) })}
-              />
-            )
-          } else if (key === 'num_gpus_per_trial') {
-            control = (
-              <NumberInput
-                id={fieldId}
-                label={toUpperCase(key) ?? key}
-                helperText={value.description}
-                value={value.default}
-                min={value.min_val}
-                max={value.max_val}
-                step={value.type === 'float' ? 0.01 : 1}
-                onChange={(_e, { value: v }) => {
-                  const num = typeof v === 'number' ? v : Number(v)
-                  updateGenericField(sectionKey, key, { default: num })
-                  if (config.tune_config?.max_concurrent_trials) {
-                    updateGenericField('tune_config', 'max_concurrent_trials', { default: Math.floor(value.max_val / num) })
-                  }
-                }}
-              />
-            )
-          } else if (key === 'time_budget_s') {
-            control = <TimeInput label={key} value={value} onChange={(next) => updateGenericField(sectionKey, key, next)} />
-          } else if (value.type === 'int' || value.type === 'float') {
-            control = (
-              <NumberInput
-                id={fieldId}
-                label={toUpperCase(key) ?? key}
-                helperText={value.description}
-                value={value.default}
-                min={value.min_val}
-                max={value.max_val}
-                step={value.type === 'float' ? 0.01 : 1}
-                onChange={(_e, { value: v }) => updateGenericField(sectionKey, key, { default: typeof v === 'number' ? v : Number(v) })}
-              />
-            )
-          } else if (value.type === 'str' && value.values?.length > 0) {
-            control = (
-              <Select id={fieldId} labelText={toUpperCase(key) ?? key} helperText={value.description} value={value.default} onChange={(e) => updateGenericField(sectionKey, key, { default: e.target.value })}>
-                {value.values.map((option: string) => (
-                  <SelectItem key={option} value={option} text={option} />
-                ))}
-              </Select>
-            )
-          } else if (value.type === 'list') {
-            control = (
-              <TextInput
-                id={fieldId}
-                labelText={toUpperCase(key) ?? key}
-                helperText={`${value.description} (comma-separated)`}
-                placeholder="tok_a, tok_b, tok_c"
-                value={Array.isArray(value.default) ? value.default.join(', ') : value.default ?? ''}
-                onChange={(e) => updateGenericField(sectionKey, key, { default: e.target.value })}
-                onBlur={(e) => updateGenericField(sectionKey, key, { default: parseCommaList(e.target.value) })}
-              />
-            )
-          } else {
-            control = (
-              <TextInput id={fieldId} labelText={toUpperCase(key) ?? key} helperText={value.description} placeholder={`Enter ${key}`} value={value.default ?? ''} onChange={(e) => updateGenericField(sectionKey, key, { default: e.target.value })} />
-            )
-          }
+            const fieldId = `${sectionKey}-${key}`
+            let control: React.ReactNode
+            if (key === 'max_concurrent_trials' && config.training_config?.num_gpus_per_trial) {
+              const gpu = config.training_config.num_gpus_per_trial as any
+              control = (
+                <NumberInput
+                  id={fieldId}
+                  label={toUpperCase(key) ?? key}
+                  helperText={value.description}
+                  value={value.default}
+                  min={value.min_val}
+                  max={Math.floor(gpu.max_val / gpu.default)}
+                  step={value.type === 'float' ? 0.01 : 1}
+                  onChange={(_e, { value: v }) => updateGenericField(sectionKey, key, { default: typeof v === 'number' ? v : Number(v) })}
+                />
+              )
+            } else if (key === 'num_gpus_per_trial') {
+              control = (
+                <NumberInput
+                  id={fieldId}
+                  label={toUpperCase(key) ?? key}
+                  helperText={value.description}
+                  value={value.default}
+                  min={value.min_val}
+                  max={value.max_val}
+                  step={value.type === 'float' ? 0.01 : 1}
+                  onChange={(_e, { value: v }) => {
+                    const num = typeof v === 'number' ? v : Number(v)
+                    updateGenericField(sectionKey, key, { default: num })
+                    if (config.tune_config?.max_concurrent_trials) {
+                      updateGenericField('tune_config', 'max_concurrent_trials', { default: Math.floor(value.max_val / num) })
+                    }
+                  }}
+                />
+              )
+            } else if (key === 'time_budget_s') {
+              control = <TimeInput label={key} value={value} onChange={(next) => updateGenericField(sectionKey, key, next)} />
+            } else if (value.type === 'int' || value.type === 'float') {
+              control = (
+                <NumberInput
+                  id={fieldId}
+                  label={toUpperCase(key) ?? key}
+                  helperText={value.description}
+                  value={value.default}
+                  min={value.min_val}
+                  max={value.max_val}
+                  step={value.type === 'float' ? 0.01 : 1}
+                  onChange={(_e, { value: v }) => updateGenericField(sectionKey, key, { default: typeof v === 'number' ? v : Number(v) })}
+                />
+              )
+            } else if (value.type === 'str' && value.values?.length > 0) {
+              control = (
+                <Select id={fieldId} labelText={toUpperCase(key) ?? key} helperText={value.description} value={value.default} onChange={(e) => updateGenericField(sectionKey, key, { default: e.target.value })}>
+                  {value.values.map((option: string) => (
+                    <SelectItem key={option} value={option} text={option} />
+                  ))}
+                </Select>
+              )
+            } else if (value.type === 'list') {
+              control = (
+                <TextInput
+                  id={fieldId}
+                  labelText={toUpperCase(key) ?? key}
+                  helperText={`${value.description} (comma-separated)`}
+                  placeholder="tok_a, tok_b, tok_c"
+                  value={Array.isArray(value.default) ? value.default.join(', ') : value.default ?? ''}
+                  onChange={(e) => updateGenericField(sectionKey, key, { default: e.target.value })}
+                  onBlur={(e) => updateGenericField(sectionKey, key, { default: parseCommaList(e.target.value) })}
+                />
+              )
+            } else {
+              control = (
+                <TextInput id={fieldId} labelText={toUpperCase(key) ?? key} helperText={value.description} placeholder={`Enter ${key}`} value={value.default ?? ''} onChange={(e) => updateGenericField(sectionKey, key, { default: e.target.value })} />
+              )
+            }
 
-          return (
-            <div className={styles.genericField} key={key}>
-              <div className={styles.inputContainer}>{control}</div>
-            </div>
-          )
-        })}
+            return <Fragment key={key}>{control}</Fragment>
+          })}
+        </div>
       </div>
     )
   }
+
+  // Carbon React's Dropdown renders `selectedItem` verbatim through
+  // `itemToString`, so it has to be the *item object* from `items` — passing a
+  // synthesised `{ id, text: selectedTuner }` displayed the raw key ("lora")
+  // instead of the label. The source binds `selectedId`, which resolves the
+  // item for you; these lookups are the React equivalent.
+  const tunerItems = tuners.map((name) => ({
+    id: name,
+    text: `${(config.tuners_config as any)?.[name]?.description} (${toUpperCase(name)})`,
+  }))
+  const rlTunerItems = availableRlTuners.map((name) => ({
+    id: name,
+    text: name === 'none' ? 'No RL Algorithm (NONE)' : `${(config.tuners_rl_config as any)?.[name]?.description} (${toUpperCase(name)})`,
+  }))
 
   const switcherItems = sectionNames.map((name) => ({ id: name, text: SECTION_LABELS[name] || toUpperCase(name.replace('_config', '')) || name }))
 
@@ -470,11 +480,8 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
                 id="rl-tuner-dropdown"
                 label=""
                 titleText="RL Algorithm type:"
-                selectedItem={{ id: selectedRlTuner, text: selectedRlTuner }}
-                items={availableRlTuners.map((name) => ({
-                  id: name,
-                  text: name === 'none' ? 'No RL Algorithm (NONE)' : `${(config.tuners_rl_config as any)?.[name]?.description} (${toUpperCase(name)})`,
-                }))}
+                selectedItem={rlTunerItems.find((item) => item.id === selectedRlTuner) ?? null}
+                items={rlTunerItems}
                 itemToString={(item) => item?.text ?? ''}
                 onChange={({ selectedItem }) => selectedItem && setSelectedRlTuner(selectedItem.id)}
               />
@@ -499,8 +506,8 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
                   id="tuner-dropdown"
                   label=""
                   titleText="Tuner type:"
-                  selectedItem={{ id: selectedTuner, text: selectedTuner }}
-                  items={tuners.map((name) => ({ id: name, text: `${(config.tuners_config as any)?.[name]?.description} (${toUpperCase(name)})` }))}
+                  selectedItem={tunerItems.find((item) => item.id === selectedTuner) ?? null}
+                  items={tunerItems}
                   itemToString={(item) => item?.text ?? ''}
                   onChange={({ selectedItem }) => selectedItem && setSelectedTuner(selectedItem.id)}
                 />
