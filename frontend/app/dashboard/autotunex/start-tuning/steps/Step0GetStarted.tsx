@@ -342,7 +342,7 @@ export function Step0GetStarted({
               id="autotune-enabled"
               checked={autotuneEnabled}
               onChange={(_, { checked }) => setAutotuneEnabled(checked)}
-              labelText="use hyperparameter optimization"
+              labelText="Use hyperparameter optimization"
             />
         </>
       )}
