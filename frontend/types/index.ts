@@ -638,10 +638,18 @@ export interface Trial {
   updated_at: string;
 }
 
+// One downloadable output file from GET /jobs/{id}/result-report (the AutoTuneX
+// `AssetSummary`, computed on read from the job's artifact source). `path` is
+// the download key — filenames repeat across trial subdirectories, so the
+// per-file download endpoint keys on the relative path, not the basename. Every
+// field but `filename`/`size` is nullable server-side.
 export interface TuningAsset {
   filename: string;
   size: number;
-  modified: string;
+  modified: string | null;
+  path: string | null;
+  file_hash: string | null;
+  published: boolean | null;
 }
 
 export interface LogEntry {

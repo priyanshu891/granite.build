@@ -33,6 +33,7 @@ import type {
   PendingConfigUpdate,
   Resources,
   RewardFunctionValidationResult,
+  TuningAsset,
   TuningForm,
   TuningJob,
 } from '@/types'
@@ -40,6 +41,7 @@ import axios from 'axios'
 import { autotunexApiBase } from '@/api/client'
 import { normalizeVerlRows } from '@/app/dashboard/autotunex/start-tuning/verlNormalize'
 import {
+  adaptAsset,
   adaptConfiguration,
   adaptJob,
   adaptSuggestion,
@@ -52,7 +54,7 @@ import {
 // keeps working for tests/consumers — the implementations live in
 // `@/api/autotunexAdapters` purely so that leaf module stays free of
 // non-type-only imports (see its header comment for why that matters).
-export { adaptConfiguration, adaptJob, adaptSuggestion, adaptTrial, pageQuery, toListResult }
+export { adaptAsset, adaptConfiguration, adaptJob, adaptSuggestion, adaptTrial, pageQuery, toListResult }
 
 const client = axios.create({ baseURL: autotunexApiBase('') })
 
@@ -412,4 +414,33 @@ export async function getJobGbLogs(jobId: string, opts?: { all?: boolean; scope?
     params: { all: opts?.all ?? false, scope: opts?.scope ?? 'own' },
   })
   return data ?? []
+}
+
+// ── Results / output assets ──────────────────────────────────────────────────
+// The Results tab lists a completed job's downloadable output files from
+// GET /jobs/{id}/result-report (computed on read from the job's artifact
+// source, so it returns 409 while the job is still producing them). Assets can
+// come back as a bare `[]` when the source is readable but empty.
+
+export async function getJobAssets(jobId: string, scope: Scope = 'own'): Promise<TuningAsset[]> {
+  const { data } = await client.get<Record<string, unknown>[]>(`/jobs/${jobId}/result-report`, {
+    params: { scope },
+  })
+  return (data ?? []).map(adaptAsset)
+}
+
+// Direct-download URL builders. The file/archive endpoints stream with
+// `Content-Disposition: attachment`, so these are consumed as plain <a href>
+// links (bytes go straight to disk) rather than fetched through axios — the
+// same approach as the AutoTuneX UI. AutoTuneX runs auth-free in standalone, so
+// no credentials are attached. `path` is the asset's relative `path` and is
+// URL-encoded so nested slashes survive as a single query value.
+export function resultFileUrl(jobId: string, path: string, scope: Scope = 'own'): string {
+  return autotunexApiBase(
+    `/jobs/${jobId}/result-report/file?path=${encodeURIComponent(path)}&scope=${scope}`
+  )
+}
+
+export function resultArchiveUrl(jobId: string, scope: Scope = 'own'): string {
+  return autotunexApiBase(`/jobs/${jobId}/result-report/archive?scope=${scope}`)
 }

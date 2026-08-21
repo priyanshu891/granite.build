@@ -124,7 +124,7 @@ export function TuningDetailTabs({ job }: Props) {
             </TabPanel>
           )}
           <TabPanel>
-            <TuningResultsPanel outputArtifacts={job.output_artifacts} />
+            <TuningResultsPanel jobId={job.id} jobStatus={job.status} />
           </TabPanel>
         </TabPanels>
       </Tabs>

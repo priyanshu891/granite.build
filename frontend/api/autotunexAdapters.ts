@@ -14,6 +14,7 @@ import type {
   ListParams,
   ListResult,
   Trial,
+  TuningAsset,
   TuningJob,
   TuningStatus,
 } from '@/types'
@@ -95,6 +96,24 @@ export function adaptConfiguration(raw: Record<string, unknown>): Configuration 
     created_at: raw.created_at as string | undefined,
     updated_at: raw.updated_at as string | undefined,
     associated_jobs: adaptConfigurationJobRefs(raw.associated_jobs),
+  }
+}
+
+// ── Results / output assets ────────────────────────────────────────────────────
+
+/**
+ * Maps one `AssetSummary` row from GET /jobs/{id}/result-report. Only
+ * `filename`/`size` are guaranteed server-side; the rest default to null.
+ * `published: false` is preserved (only null/undefined fall through to null).
+ */
+export function adaptAsset(raw: Record<string, unknown>): TuningAsset {
+  return {
+    filename: (raw.filename as string) ?? '',
+    size: (raw.size as number) ?? 0,
+    modified: (raw.modified as string | null) ?? null,
+    path: (raw.path as string | null) ?? null,
+    file_hash: (raw.file_hash as string | null) ?? null,
+    published: (raw.published as boolean | null) ?? null,
   }
 }
 

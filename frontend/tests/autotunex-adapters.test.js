@@ -10,7 +10,7 @@
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
 
-const { pageQuery, toListResult, adaptTrial, adaptJob, adaptConfiguration, adaptSuggestion } = require(
+const { pageQuery, toListResult, adaptTrial, adaptJob, adaptConfiguration, adaptSuggestion, adaptAsset } = require(
   '../api/autotunexAdapters.ts'
 )
 
@@ -162,5 +162,40 @@ describe('adaptSuggestion', () => {
     assert.deepEqual(suggestion.column_mapping, {})
     assert.equal(suggestion.reasoning, undefined)
     assert.equal(suggestion.column_confidence, undefined)
+  })
+})
+
+describe('adaptAsset', () => {
+  it('maps a full result-report row (AssetSummary)', () => {
+    const raw = {
+      filename: 'adapters.safetensors',
+      size: 13_000_000,
+      modified: '2026-08-21T10:02:00Z',
+      path: 'trial_0/adapters.safetensors',
+      file_hash: 'abc123',
+      published: true,
+    }
+    assert.deepEqual(adaptAsset(raw), {
+      filename: 'adapters.safetensors',
+      size: 13_000_000,
+      modified: '2026-08-21T10:02:00Z',
+      path: 'trial_0/adapters.safetensors',
+      file_hash: 'abc123',
+      published: true,
+    })
+  })
+
+  it('defaults the nullable fields to null and size to 0 when absent', () => {
+    const asset = adaptAsset({ filename: 'training.log' })
+    assert.equal(asset.filename, 'training.log')
+    assert.equal(asset.size, 0)
+    assert.equal(asset.modified, null)
+    assert.equal(asset.path, null)
+    assert.equal(asset.file_hash, null)
+    assert.equal(asset.published, null)
+  })
+
+  it('preserves published:false (only null/undefined fall through to null)', () => {
+    assert.equal(adaptAsset({ filename: 'x', published: false }).published, false)
   })
 })
