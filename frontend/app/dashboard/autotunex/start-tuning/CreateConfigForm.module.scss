@@ -26,21 +26,50 @@
   margin-bottom: 1rem;
 }
 
+// Layout mirrors the source AutoTuneX form exactly: plain block flow with a
+// FIXED-height inner scroll region — deliberately not a flex chain.
+//
+// A flex chain that grows the scroll region to fill the tile was tried and
+// reverted: it consumes every spare pixel, leaving the tile zero headroom, and it
+// diverged from the source for no benefit. The fixed 336px below reproduces the
+// source's slack (~584px of content against the tile's max-height).
+
+// `position: relative` is load-bearing, not cosmetic. Carbon renders
+// screen-reader-only `.cds--visually-hidden` spans (e.g. TextInput's counter
+// alert) as `position: absolute`. Without a positioned ancestor here, their
+// containing block becomes the enclosing `.configPreviewTile` (which is
+// `position: relative`), so this element's `overflow` cannot clip them: one such
+// span sits ~924px down inside the scrolled hyperparameter list and drags the
+// *tile's* scrollHeight out to meet it. The tile then scrolls, carrying the mode
+// toggle, tab switcher and tuner dropdown out of view. Making this a containing
+// block keeps those spans clipped here, where they belong.
+/** Section body that scrolls itself (General, generic Advanced sections). */
 .main {
+  position: relative;
   max-height: 400px;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
+/**
+ * Section body for the tuner sections, left completely unconstrained (the source
+ * passes no style at all here). The pinned "Tuner type" / "RL Algorithm type"
+ * dropdown then sits in normal flow above `.configSection`, which is the only
+ * thing that scrolls.
+ */
 .mainNoScroll {
-  overflow: visible;
   max-height: none;
+  overflow: visible;
 }
 
 .configSection {
   background-color: var(--cds-layer, #fff);
   border-radius: 5px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  // See the note above `.main`: required so Carbon's absolutely-positioned
+  // visually-hidden spans are clipped by this scroll region instead of escaping
+  // to the tile and making it scrollable.
+  position: relative;
   max-height: 336px;
   overflow-y: auto;
   overflow-x: hidden;
