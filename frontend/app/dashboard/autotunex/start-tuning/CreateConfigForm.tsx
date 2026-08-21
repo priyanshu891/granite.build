@@ -1,9 +1,11 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Checkbox, ContentSwitcher, Dropdown, FormLabel, MultiSelect, NumberInput, Select, SelectItem, Switch, TextInput, Toggle } from '@carbon/react'
 import type { Configuration, ConfigForm, TuningGoal } from '@/types'
 import { getOption, parseCommaList, toUpperCase } from './wizardUtils'
+import { computeSectionNames } from './configSections'
+import { formatValues, parseValuesInput } from './hyperparamValues'
 import { GeneralConfigForm } from './GeneralConfigForm'
 import { TimeInput } from './TimeInput'
 import styles from './CreateConfigForm.module.scss'
@@ -12,10 +14,14 @@ import layoutStyles from './layout.module.scss'
 const SFT_ALGORITHMS = ['lora', 'sft', 'alora', 'lokr', 'loha', 'vera']
 const RL_ALGORITHMS = ['dpo', 'kto', 'ppo', 'grpo', 'dapo']
 
-// Canonical tab order for advanced mode (ensures consistent ordering regardless of Object.keys order)
-const SECTION_ORDER = ['general_config', 'tune_config', 'training_config', 'tokenizer_config', 'tuners_config', 'training_rl_config', 'tuners_rl_config']
-
 const SECTION_LABELS: Record<string, string> = { tuners_rl_config: 'RL Tuners', training_rl_config: 'RL Training' }
+
+/** One selectable candidate in a string hyperparameter's "Values" MultiSelect. */
+interface ValueItem {
+  id: string
+  text: string
+  disabled: boolean
+}
 
 function isObject(item: any): boolean {
   return item && typeof item === 'object' && !Array.isArray(item)
@@ -95,28 +101,10 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
     [] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
-  const sectionNames = useMemo(() => {
-    if (!mode) {
-      const basic = ['general_config']
-      if (trainingMode === 'offline_tuning') {
-        basic.push('tuners_config')
-        if (presetGoal !== 'sft') basic.push('tuners_rl_config')
-      } else {
-        basic.push('tuners_rl_config')
-      }
-      return basic.filter((s) => allSectionKeys.includes(s))
-    }
-
-    let advanced = [...allSectionKeys]
-    if (trainingMode !== 'online_tuning') advanced = advanced.filter((k) => k !== 'training_rl_config')
-    if (trainingMode === 'online_tuning') advanced = advanced.filter((k) => k !== 'tuners_config')
-    if (presetGoal === 'sft') advanced = advanced.filter((k) => k !== 'tuners_rl_config')
-    return advanced.sort((a, b) => {
-      const ai = SECTION_ORDER.indexOf(a)
-      const bi = SECTION_ORDER.indexOf(b)
-      return (ai === -1 ? Infinity : ai) - (bi === -1 ? Infinity : bi)
-    })
-  }, [mode, trainingMode, presetGoal, allSectionKeys])
+  const sectionNames = useMemo(
+    () => computeSectionNames({ mode, trainingMode, presetGoal, allSectionKeys }),
+    [mode, trainingMode, presetGoal, allSectionKeys]
+  )
 
   const [selectedSection, setSelectedSection] = useState<string>(() => sectionNames[0] ?? 'general_config')
   const selectedIndex = Math.max(0, sectionNames.indexOf(selectedSection))
@@ -133,6 +121,41 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
   }
 
   const [errorFields, setErrorFields] = useState<Record<string, { error: boolean; message: string }>>({})
+
+  // Raw text the user is currently typing in a "Values" field, keyed by field id.
+  // A "Values" input has to accept transient states that don't parse yet ("8,16,",
+  // "0.0000"), so the text can't be re-derived from the committed number array on
+  // every keystroke — doing so makes a controlled input snap back and the field
+  // read-only. An entry lives here only while a field is being edited; on a
+  // successful commit it is dropped so the canonical (sorted) values show again.
+  const [valueDrafts, setValueDrafts] = useState<Record<string, string>>({})
+
+  // Pristine copy of the template, mirroring the source form's `configCopy`.
+  // A hyperparameter's MultiSelect needs the *full* original option list for its
+  // items: using the live (current) values would make a deselected option vanish
+  // from the menu permanently, so it could never be re-added.
+  const pristineConfig = useRef<ConfigForm | null>(null)
+  if (pristineConfig.current === null) pristineConfig.current = structuredClone(config)
+
+  /**
+   * Validate and commit a "Values" field, mirroring the source form's `on:change`
+   * — which is the *native* change event, i.e. blur, not every keystroke.
+   * On failure the draft text is kept so the user still sees what they typed
+   * alongside the error, exactly as the Svelte version does.
+   */
+  function commitValues(fieldId: string, raw: string, paramConfig: any, update: (patch: Record<string, any>) => void) {
+    const { values, error } = parseValuesInput(raw, paramConfig.min_val, paramConfig.max_val)
+
+    setErrorFields((prev) => ({ ...prev, [fieldId]: { error, message: `Value must be between ${paramConfig.min_val} and ${paramConfig.max_val}` } }))
+    if (error || !values) return
+
+    update({ values })
+    setValueDrafts((prev) => {
+      const next = { ...prev }
+      delete next[fieldId]
+      return next
+    })
+  }
 
   function updateHyperparam(sectionKey: 'tuners_config' | 'tuners_rl_config', tunerKey: string, paramName: string, patch: Record<string, any>) {
     setConfig((prev) => {
@@ -208,17 +231,15 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
               <TextInput
                 id={`${fieldId}-values`}
                 labelText="Values"
-                value={Array.isArray(paramConfig.values) ? paramConfig.values.join(', ') : paramConfig.values}
+                // Typing updates only the local draft; parsing/validation happens on blur
+                // (the source form validates on the native change event). Validating per
+                // keystroke and bailing out on a transient parse error would leave this
+                // controlled input pinned to the last committed array — unable to be edited.
+                value={valueDrafts[fieldId] ?? formatValues(paramConfig.values)}
                 invalid={errorFields[fieldId]?.error}
                 invalidText={errorFields[fieldId]?.message}
-                onChange={(e) => {
-                  const raw = e.target.value
-                  const nums = raw.split(',').map((v) => Number(v.trim()))
-                  const hasError = nums.some((n) => Number.isNaN(n) || n < paramConfig.min_val || n > paramConfig.max_val)
-                  setErrorFields((prev) => ({ ...prev, [fieldId]: { error: hasError, message: `Value must be between ${paramConfig.min_val} and ${paramConfig.max_val}` } }))
-                  if (hasError) return
-                  update({ values: nums.sort((a, b) => a - b) })
-                }}
+                onChange={(e) => setValueDrafts((prev) => ({ ...prev, [fieldId]: e.target.value }))}
+                onBlur={(e) => commitValues(fieldId, e.target.value, paramConfig, update)}
               />
             </div>
           )}
@@ -235,7 +256,18 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
     }
 
     if (paramConfig.options?.length === 1 && paramConfig.type === 'str') {
-      const otherValues = (paramConfig.values || []).filter((v: string) => v !== paramConfig.default)
+      // Options come from the pristine template, not the live selection — otherwise
+      // deselecting an option would remove it from the menu for good.
+      const pristineParam = (pristineConfig.current as any)?.[sectionKey]?.[tunerKey]?.hyperparams?.[paramName]
+      const allOptions: string[] = pristineParam?.values ?? paramConfig.values ?? []
+      const selectedValues: string[] = paramConfig.values ?? []
+      // Disable the last remaining selected option (when it is the default) so the
+      // candidate list can never be emptied — the same per-item guard the source uses.
+      const valueItems: ValueItem[] = allOptions.map((option) => ({
+        id: option,
+        text: option,
+        disabled: selectedValues.length === 1 && option === paramConfig.default,
+      }))
       return (
         <div className={layoutStyles.rowWrap} key={paramName}>
           <div className={styles.fieldNarrow}>
@@ -255,13 +287,18 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
           <div className={styles.fieldWide}>
             <MultiSelect
               id={`${fieldId}-values`}
-              label="Values"
-              items={paramConfig.values || []}
-              selectedItems={paramConfig.values || []}
-              disabled={otherValues.length === 0}
-              itemToString={(item: string) => item}
+              // `titleText` is the field label in Carbon React; `label` is only the
+              // placeholder shown when nothing is selected (the source's Svelte
+              // `labelText` maps to the former).
+              titleText="Values"
+              label=""
+              items={valueItems}
+              selectedItems={valueItems.filter((item) => selectedValues.includes(item.id))}
+              itemToString={(item: ValueItem | null) => item?.text ?? ''}
               onChange={({ selectedItems }) => {
-                const next = selectedItems ?? []
+                const next = (selectedItems ?? []).flatMap((item) => (item ? [item.id] : []))
+                // Belt-and-braces alongside the per-item guard above: a hyperparameter
+                // must always keep at least one candidate value.
                 if (next.length === 0) return
                 update({ values: next, default: next.includes(paramConfig.default) ? paramConfig.default : next[0] })
               }}
@@ -425,7 +462,7 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
 
       <main className={selectedSection === 'tuners_config' || selectedSection === 'tuners_rl_config' ? styles.mainNoScroll : styles.main}>
         {selectedSection === 'general_config' ? (
-          <GeneralConfigForm config={config as any} onConfigChange={setConfig as any} isTuning={trainingMode === 'offline_tuning'} />
+          <GeneralConfigForm config={config as any} onConfigChange={setConfig as any} />
         ) : selectedSection === 'tuners_rl_config' && availableRlTuners.length > 0 ? (
           <div>
             <div style={{ marginBottom: '1rem' }}>

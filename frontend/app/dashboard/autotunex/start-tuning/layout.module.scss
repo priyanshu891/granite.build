@@ -23,3 +23,21 @@
   gap: 1rem;
   align-items: flex-end;
 }
+
+// Strict two-up field grid. Unlike `.rowWrap` (flex with per-item `flex-basis`,
+// which lets each row size its columns independently and so misaligns fields
+// between rows), every cell here is exactly 1fr — reproducing the equal-width
+// columns Carbon's `Row`/`Column` gives the source AutoTuneX form.
+// `minmax(0, 1fr)` keeps wide inputs from forcing the track wider than half.
+.fieldGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2rem;
+  align-items: start;
+}
+
+@media (max-width: 42rem) {
+  .fieldGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

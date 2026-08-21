@@ -90,6 +90,14 @@ export function TimeInput({ label = 'Time Budget', value, onChange }: TimeInputP
         <NumberInput
           id={label}
           hideSteppers
+          // An unset time budget (`default: null`) renders as "" and is a valid,
+          // expected state — it means "no limit". Carbon React's NumberInput
+          // derives its own validity (`invalid: !getInputValidity(...)`) and treats
+          // `value === ""` as invalid unless `allowEmpty` is set, which would show a
+          // phantom range error on a blank field that our own `isInvalid` never
+          // flags. Carbon Svelte honours the `invalid` prop instead, which is why
+          // the source form shows no error here.
+          allowEmpty
           label={toUpperCase(label) ?? label}
           helperText={value.description?.replace('seconds', selectedUnit)}
           invalid={isInvalid}
