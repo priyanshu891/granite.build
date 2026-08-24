@@ -218,3 +218,4 @@ frontend/*.tsbuildinfo
 # Compiled frontend served by gbserver — built by `make build-frontend`, not committed
 src/gbserver/static/ui/
 
+!autotunex/**/lib/
