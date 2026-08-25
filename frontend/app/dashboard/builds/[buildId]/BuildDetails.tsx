@@ -101,7 +101,7 @@ export function BuildDetails({
             <Tab>Definition</Tab>
             <Tab style={{ display: aiAnalysisHide }}>AI Analysis</Tab>
             <Tab>Lineage</Tab>
-            <Tab style={{ display: autotunexHide }}>Trials</Tab>
+            <Tab style={{ display: autotunexHide }}>Hyperparameters</Tab>
             <Tab style={{ display: autotunexHide }}>Tuning Logs</Tab>
           </TabListVertical>
           <TabPanels>

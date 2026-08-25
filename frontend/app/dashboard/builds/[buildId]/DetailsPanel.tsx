@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CopyButton, SkeletonText, Tag } from "@carbon/react";
+import { CopyButton, Link as CarbonLink, SkeletonText, Tag } from "@carbon/react";
 import styles from "./DetailsPanel.module.scss";
 import type { Build, BuildStatusDetail } from "@/types";
 import { BuildStatusBadge } from "@/components/BuildStatusBadge";
@@ -73,14 +73,14 @@ export function DetailsPanel({ build, status, loading }: DetailsPanelProps) {
         )}
         {build.source_uri && (
           <DetailField label="Source URI">
-            <a
+            <CarbonLink
               href={build.source_uri}
               target="_blank"
               rel="noreferrer"
               className={styles.sourceLink}
             >
               {build.source_uri}
-            </a>
+            </CarbonLink>
           </DetailField>
         )}
         {build.description && (

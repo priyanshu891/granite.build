@@ -111,7 +111,7 @@ export function TuningDetailTabs({ job }: Props) {
       <Tabs>
         <TabList aria-label="Tuning detail tabs">
           <Tab>Details</Tab>
-          {job.autotune && <Tab>Trials</Tab>}
+          {job.autotune && <Tab>Hyperparameters</Tab>}
           <Tab>Results</Tab>
         </TabList>
         <TabPanels>
