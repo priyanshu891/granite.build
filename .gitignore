@@ -222,3 +222,4 @@ src/gbserver/static/ui/
 # Superpowers SDD scratch (ledger, briefs, review packages) — local only
 .superpowers/
 
+!autotunex/**/lib/
