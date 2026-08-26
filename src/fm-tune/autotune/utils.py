@@ -32,6 +32,7 @@ try:
     import ray
     import torch
     import transformers
+    from datasets import DatasetDict, load_dataset
     from peft import (
         LoHaConfig,
         LoKrConfig,
@@ -58,7 +59,6 @@ try:
     # Local imports
     import autotune.constants
     from autotune.constants import AUTOTUNE_DEFAULT_METRIC, AUTOTUNE_DEFAULT_MODE
-    from datasets import DatasetDict, load_dataset
 except ImportError as exc:
     raise ImportError(
         "autotune's training features require the heavy ML stack "

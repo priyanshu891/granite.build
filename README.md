@@ -155,10 +155,10 @@ browser at [Swagger UI](http://127.0.0.1:8000/docs), and the full reference live
 | **Configurations** | full CRUD `/configurations` (+ `GET /configurations/template`) | [configurations.md](docs/api/configurations.md) |
 | **Datasets** | full CRUD `/datasets`, `POST /datasets/{id}/upload`, `?preview=true` | [datasets.md](docs/api/datasets.md) |
 | **Dataset intelligence** | `POST /datasets/intelligence/{parse-strategy,suggest-mapping,validate-strategy}`, `GET .../formats` | [datasets.md](docs/api/datasets.md) |
-| **Users** | `GET /users`, `GET /users/{id}`, `PATCH /users/{id}` (admin), `GET /users/me/metadata` | [users.md](docs/api/users.md) |
+| **Users** | `GET /users`, `GET /users/{id}`, `PATCH /users/{id}` (all admin-only); `GET /users/me/metadata` (open to any authenticated caller) | [users.md](docs/api/users.md) |
 | **Chat & MCP** | `POST /chat`, `POST /chat/stream`, `/mcp` (unprefixed) | [chat.md](docs/api/chat.md), [mcp.md](docs/api/mcp.md) |
 | **Auth** | `GET /auth/{login,callback,me}`, `POST /auth/logout`, `POST /auth/assume/{user_id}` (admin), `POST /auth/unassume` | [authentication.md](docs/api/authentication.md) |
-| **Health** | `GET /health` | [overview.md](docs/api/overview.md) |
+| **Health** | `GET /health`, `GET /health/live` (liveness alias), `GET /health/ready` (DB-gated readiness; `503` when the database is unreachable) | [overview.md](docs/api/overview.md) |
 | **App config** | `GET /app-config` (unauthenticated; the upload cap and client gzip/preview knobs the web UI reads at boot) | [overview.md](docs/api/overview.md) |
 
 For the conventions shared by every endpoint — pagination, ownership scoping, and the RFC 9457
@@ -240,7 +240,7 @@ make migrate     # alembic upgrade head — see the warning below before using t
 
 Those are the common ones. `make help` (the default goal, so a bare `make` works too)
 lists every target, and CLAUDE.md documents what each one is for — including
-the locked-install, coverage, audit, api-bridge and migration-authoring targets.
+the training-install, coverage, audit, api-bridge and migration-authoring targets.
 
 Migrations are verified against SQLite, PostgreSQL 16 and MySQL 8.4 in CI.
 

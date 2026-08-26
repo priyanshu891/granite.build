@@ -31,6 +31,8 @@ A few rules hold everywhere:
 Misconfiguration is caught at startup, not at request time. The service refuses to start
 (with a `ValidationError` naming the offending setting) in these cases:
 
+- **An empty provider list.** `AUTOTUNEX_AUTH_PROVIDERS` must name at least one credential
+  kind; `[]` is refused.
 - **Authentication disabled in production.** `AUTOTUNEX_ENVIRONMENT=prod` combined with
   `AUTOTUNEX_AUTH_PROVIDERS=["disabled"]` is refused unless
   `AUTOTUNEX_ALLOW_INSECURE_NO_AUTH=true` is also set (which logs a loud warning).
@@ -51,6 +53,10 @@ Misconfiguration is caught at startup, not at request time. The service refuses 
   `AUTOTUNEX_LLM_MODEL` must all be set together or all be unset.
 - **`job_backend=llmb` missing a required input** (see the
   [Execution](#execution-job-launch) section for the exact per-mode set).
+- **`dataset_storage_backend=huggingface` forced in bash standalone.**
+  `GB_ENVIRONMENT=standalone` with `AUTOTUNEX_LSF_CLUSTER` unset is refused regardless of
+  the tokens — the HuggingFace push runs `llmb artifact push`, which granite.build disables
+  there. The LSF/SkyPilot variant (`AUTOTUNEX_LSF_CLUSTER` set) is exempt.
 - **`dataset_storage_backend=huggingface` forced** without the GB and HF token environment
   variables present.
 - **`debug=true` in production.** `AUTOTUNEX_DEBUG=true` combined with
@@ -119,7 +125,7 @@ migrations.
 | `AUTOTUNEX_DATASET_CLIENT_GZIP_ENABLED` | Whether the frontend gzip-compresses compressible (jsonl/json/csv) dataset uploads. Surfaced via `GET /api/v1/app-config`. | `true` |
 | `AUTOTUNEX_DATASET_CLIENT_GZIP_MIN_BYTES` | Skip client-side gzip below this file size. Surfaced via `GET /api/v1/app-config`. | `1048576` (1 MiB) |
 | `AUTOTUNEX_DATASET_CLIENT_PARQUET_PREVIEW_MAX_BYTES` | Byte threshold above which the frontend skips a local Parquet preview. Surfaced via `GET /api/v1/app-config`. | `104857600` (100 MiB) |
-| `AUTOTUNEX_DATASET_STORAGE_BACKEND` | Where datasets are stored: `auto`, `local`, or `huggingface`. `auto` resolves to `huggingface` when the `llmb` tooling and **both** token env vars are available, otherwise `local`. Forcing `huggingface` without both tokens is refused at startup. | `auto` |
+| `AUTOTUNEX_DATASET_STORAGE_BACKEND` | Where datasets are stored: `auto`, `local`, or `huggingface`. `auto` resolves to `local` whenever `GB_ENVIRONMENT` is `standalone` (where `llmb artifact push` is unavailable), regardless of tokens; otherwise it resolves to `huggingface` when the `llmb` tooling and **both** token env vars are present, and `local` if not. Forcing `huggingface` without both tokens is refused at startup. | `auto` |
 | `AUTOTUNEX_HF_TOKEN_ENV` | **Name** of the environment variable holding the HuggingFace token used for the HuggingFace storage backend. Only the variable's presence is checked; its value is never loaded into settings. | `HF_TOKEN` |
 | `AUTOTUNEX_HF_NAMESPACE` | Optional HuggingFace org/namespace prefix for the derived dataset-repo name. | *(unset)* |
 | `AUTOTUNEX_HF_PREVIEW_ENABLED` | Enable dataset preview via the HuggingFace dataset viewer. When off, HuggingFace-stored datasets return an empty preview; locally-stored datasets read rows from disk regardless. | `true` |

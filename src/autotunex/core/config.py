@@ -306,10 +306,12 @@ class Settings(BaseSettings):
     """
 
     dataset_storage_backend: Literal["auto", "local", "huggingface"] = "auto"
-    """``"auto"`` resolves to ``huggingface`` when ``llmb`` and **both** tokens
-    (``gb_token_env`` + ``hf_token_env``) are available, else ``local``.
-    ``"local"``/``"huggingface"`` force it — a forced ``huggingface`` missing
-    either token is refused at startup."""
+    """``"auto"`` resolves to ``local`` whenever ``gb_environment`` is
+    ``standalone`` (where ``llmb artifact push`` is unavailable), regardless of
+    tokens; otherwise it resolves to ``huggingface`` when the ``llmb`` tooling
+    and **both** token env vars (``gb_token_env`` + ``hf_token_env``) are
+    present, and ``local`` if not. ``"local"``/``"huggingface"`` force it — a
+    forced ``huggingface`` missing either token is refused at startup."""
 
     llmb_command: str = "llmb"
     """The ``llmb build`` CLI binary name or path (HuggingFace push)."""

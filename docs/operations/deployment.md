@@ -214,6 +214,14 @@ auto-creation is on, and no real auth provider is configured. To run the image i
 production, override them accordingly — at minimum `AUTOTUNEX_ENVIRONMENT=prod`, a
 real database with `AUTOTUNEX_AUTO_CREATE_SCHEMA=false`, and a real auth provider.
 
+The database is the one override that an environment variable alone cannot deliver.
+The runtime stage installs the base dependencies only (`pip install .`), so neither
+`asyncmy` nor `asyncpg` is in the image — they live in the `mysql` and `postgres`
+extras — and pointing this image at `mysql+asyncmy://...` or
+`postgresql+asyncpg://...` fails at engine creation, not at some later query.
+Rebuild it with the matching extra (`pip install ".[mysql]"` or `".[postgres]"` in
+place of `pip install .`), or use the AIO image below, which installs `[mysql]`.
+
 ### All-in-one (AIO) image
 
 `Dockerfile.aio` is a second, separate image that runs the **whole stack** in one

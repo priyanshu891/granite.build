@@ -36,7 +36,10 @@ precedence over the ambient cookie (bearer, then API key, then session). A
 request with no usable credential gets `401 Unauthorized`. A credential routed to
 a provider that is not enabled fails with the same opaque `401` as a genuinely
 invalid one — the service never reveals which schemes a deployment has
-configured.
+configured. Expiry is the one distinction a client can act on: an **expired**
+bearer token or session cookie answers `401` with the detail `The access token
+has expired.` and a matching `WWW-Authenticate` `error_description`, so a client
+knows to refresh rather than re-prompt for a credential.
 
 ## Modes at a glance
 
@@ -233,11 +236,14 @@ The flow uses these endpoints, plus two admin-only impersonation endpoints docum
 | `/auth/me`          | GET    | Reports the current principal (the `Principal` body below).               |
 | `/auth/logout`      | POST   | Clears the session cookie and the `autotunex_assume` impersonation overlay (and returns the IdP logout endpoint, if set); requires authentication. |
 
+Every `/auth/*` route — the four above and the two impersonation endpoints below —
+is mounted at the service **root**, outside the `/api/v1` resource prefix.
+
 During `/auth/login` the `state` and PKCE verifier live in a short-lived signed,
-httpOnly cookie — never server memory — so the flow works identically behind any
-number of workers. `/auth/callback` validates `state`, exchanges the code for
-tokens (the client secret never reaches the browser), verifies the returned ID
-token, and mints the session cookie.
+httpOnly `oauth_flow` cookie (a 5-minute TTL) — never server memory — so the flow
+works identically behind any number of workers. `/auth/callback` validates
+`state`, exchanges the code for tokens (the client secret never reaches the
+browser), verifies the returned ID token, and mints the session cookie.
 
 Both `/auth/login` and `/auth/callback` are mounted unconditionally, so the routes
 exist even when `"session"` is not among `AUTOTUNEX_AUTH_PROVIDERS`. Whether the

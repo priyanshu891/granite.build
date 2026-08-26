@@ -221,8 +221,9 @@ When `test_execution` is `true` and all static checks passed, the code runs thro
   on Linux; on macOS it may be a no-op.
 - **Caps CPU and wall clock.** The child sets `RLIMIT_CPU` to the timeout plus a 30-second
   buffer, deliberately generous so it acts only as a backstop. The parent is the primary
-  defense: past `reward_timeout_seconds` it `SIGKILL`s the child's whole process group and
-  returns `executed: false` with `Execution timed out after <n>s`. A child that exits
+  defense: one second past `reward_timeout_seconds` it `SIGKILL`s the child's whole process
+  group and returns `executed: false` with `Execution timed out after <n>s` — where `<n>` is
+  the configured timeout, not the extra second the parent actually waited. A child that exits
   non-zero or writes nothing yields
   `Sandbox process exited abnormally (possible resource limit or crash)`.
 - **Truncates output.** Captured stdout is cut to 2 000 characters; at most 10 test cases

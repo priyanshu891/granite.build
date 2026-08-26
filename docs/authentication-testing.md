@@ -278,6 +278,10 @@ caller — a valid credential whose email has no `users` row — resolves to
 - email present, `user_id: null` → authenticated, no `users` row: insert one
 - 401 → the credential itself was rejected
 
+Rather than inserting the row by hand, `AUTOTUNEX_AUTO_PROVISION_USERS=true` creates
+it on the caller's first request (race-safe, and always `role='user'` — never admin,
+so an admin still needs the manual role change below).
+
 Set that row's `role` to `admin` **and** pass `?scope=all` to see every job rather than
 only its owner's — admin is the ability to ask for the cross-user view, and the parameter
 unlocks it (a non-admin passing `scope=all` gets a 403). The comparison is case-sensitive,
@@ -329,7 +333,8 @@ suite drives these endpoints over `https://testserver`.
   `POST /jobs`, `POST /jobs/{id}/cancel`, `POST /jobs/{id}/reconcile` and
   `DELETE /jobs/{id}`; the full configuration and dataset CRUD, including `PUT`,
   `DELETE` and `POST /datasets/{id}/upload`; `PATCH /users/{id}`;
-  `POST /auth/assume/{user_id}` and `POST /auth/unassume`; and
-  `POST /auth/logout`. Double-submit tokens across all mutating endpoints remain
-  a tracked repo-wide change — see `CLAUDE.md`'s open decision 6.
+  `POST /auth/assume/{user_id}` and `POST /auth/unassume`; `POST /auth/logout`;
+  and `POST /chat` / `POST /chat/stream`, whose tool registry can create a
+  configuration and launch a job. Double-submit tokens across all mutating
+  endpoints remain a tracked repo-wide change — see `CLAUDE.md`'s open decision 6.
 - **API keys do not rotate**, as above.

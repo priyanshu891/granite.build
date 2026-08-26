@@ -305,6 +305,7 @@ Returns `201 Created` with the job in status `pending`:
   },
   "output_artifacts": null,
   "trials": [],
+  "is_stale": false,
   "created_at": "2026-08-11T10:05:00Z",
   "updated_at": "2026-08-11T10:05:00Z",
   "finished_at": null
@@ -364,8 +365,12 @@ curl -s "http://127.0.0.1:8000/api/v1/jobs?limit=20&offset=0" | python -m json.t
 ```
 
 `model_source`, `tuning_type`, `num_trials`, the nested `tasks`, the `trials`,
-and the JSON blobs live only on the detail response above — fetch them per-job
-after showing the list.
+`is_stale`, and the JSON blobs live only on the detail response above — fetch
+them per-job after showing the list.
+
+`is_stale` is `true` when the live configuration's behavioural settings no longer
+match what the job snapshotted at submit; it is detail-only, never on
+`JobSummary`.
 
 `finished_at` is the latest `gb_tasks.updated_at` for the job, a **string**
 rather than a datetime because the column is `VARCHAR(255)`, and `null` when the

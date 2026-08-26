@@ -298,6 +298,7 @@ Return one job with its current status and full detail. Returns `JobRead`.
 | `config_snapshot` | object \| null | The configuration captured at submit time |
 | `output_artifacts` | object \| null | Free-form artifact descriptor written by the pipeline |
 | `trials` | `TrialRead[]` | The job's trials (may be empty) |
+| `is_stale` | bool | `true` when the live configuration's behavioural settings no longer match what the job snapshotted at submit; detail-only, never on `JobSummary` |
 
 ```json
 {
@@ -323,6 +324,7 @@ Return one job with its current status and full detail. Returns `JobRead`.
   "config_snapshot": { "name": "granite-sft-sweep", "config_data": { "...": "..." } },
   "output_artifacts": { "best_trial": "a1b2c3" },
   "trials": [],
+  "is_stale": false,
   "created_at": "2026-08-11T09:00:00Z",
   "updated_at": "2026-08-11T10:30:00Z",
   "finished_at": "2026-08-11 10:28:14"

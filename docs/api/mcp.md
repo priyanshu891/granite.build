@@ -23,14 +23,16 @@ resource prefix.
 
 MCP requests authenticate with the **`X-API-Key`** header, resolved to the same scoped
 principal the REST API uses; every tool call is therefore owner-scoped exactly as the
-equivalent REST endpoint would be. A request that presents no valid key fails the tool call
-with an authentication error.
+equivalent REST endpoint would be. With the `api_key` provider enabled, a request that
+presents no valid key fails the tool call with an authentication error.
 
 For an external client to have a credential it can present, the `api_key` provider must be
-enabled (in `auth_providers`). If MCP is mounted without it, the server logs a startup
-warning: with no `api_key` provider, callers have no `X-API-Key` to present and every tool
-call resolves through whichever provider *is* configured — in standalone/disabled auth that
-means the standalone system owner, with no credential check at all.
+enabled (in `auth_providers`). MCP has no bearer or session-cookie transport of its own — it
+threads only the `X-API-Key` header — so mounting MCP without that provider leaves no middle
+ground, and the server logs a startup warning. Under standalone/disabled auth every tool call
+*succeeds* as the standalone system owner, with no credential check at all; under an `oidc`-
+or `session`-only deployment every tool call *fails* with a missing-credentials error, because
+the key is the only credential MCP can carry.
 
 ## Exposed tools
 

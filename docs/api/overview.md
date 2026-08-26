@@ -23,7 +23,9 @@ The prefix is configurable with the `AUTOTUNEX_API_PREFIX` environment variable.
 If you change it, every resource path changes with it — the examples in this
 documentation assume the `/api/v1` default.
 
-A single liveness endpoint is mounted at the **root**, outside the prefix:
+Three health endpoints are mounted at the **root**, outside the prefix:
+`GET /health`, `GET /health/live` (liveness alias), and `GET /health/ready`
+(DB-gated readiness; `503` when the database is unreachable).
 
 ```bash
 curl https://api.example.com/health
@@ -34,11 +36,51 @@ curl https://api.example.com/health
 ```
 
 `GET /health` never touches the database — it is a liveness probe, not a
-readiness one — and it does not require authentication. The bare service root
-(`/`) issues a temporary redirect to `/autotune`, where the SPA mounts by
-default, so it 404s unless the SPA is built and `AUTOTUNEX_FRONTEND_DIR` is
-configured. That target is hard-coded: changing `AUTOTUNEX_FRONTEND_BASE_PATH`
-moves the SPA but not this redirect. The interactive docs are at `/docs`.
+readiness one — and it does not require authentication.
+
+`GET /health/live` is an alias of `GET /health`: same payload, no database call,
+no credential. It exists so an orchestrator can configure an explicit live/ready
+split with two symmetrical paths.
+
+```bash
+curl https://api.example.com/health/live
+```
+
+```json
+{ "status": "ok", "service": "AutoTuneX API", "version": "0.3.5" }
+```
+
+`GET /health/ready` is the readiness half, and the one health endpoint that
+*does* touch the database: it runs a trivial `SELECT 1` and answers `200` only
+once that succeeds. It needs no credential either.
+
+```bash
+curl https://api.example.com/health/ready
+```
+
+```json
+{ "status": "ready", "database": "ok" }
+```
+
+A `SQLAlchemyError` — a dead pool connection, an unreachable host — comes back
+as a `503` problem detail instead of the generic `500` an uncaught error would
+produce, so an orchestrator can gate traffic on database reachability rather than
+mere liveness. Any *other* failure still surfaces as a `500`.
+
+```json
+{
+  "type": "about:blank",
+  "title": "Service Unavailable",
+  "status": 503,
+  "detail": "The database is not reachable."
+}
+```
+
+The bare service root (`/`) issues a temporary redirect to `/autotune`, where
+the SPA mounts by default, so it 404s unless the SPA is built and
+`AUTOTUNEX_FRONTEND_DIR` is configured. That target is hard-coded: changing
+`AUTOTUNEX_FRONTEND_BASE_PATH` moves the SPA but not this redirect. The
+interactive docs are at `/docs`.
 
 `GET /api/v1/app-config` is the one *prefixed* endpoint that likewise needs no
 credential: it returns non-sensitive, backend-defined values the web UI reads at

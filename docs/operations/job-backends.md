@@ -181,10 +181,12 @@ cloning:
 AUTOTUNEX_BASH_FM_TUNE_ROOT=/abs/path/to/granite.build/autotunex/src/fm-tune
 ```
 
-The local-bash build references its dataset by URI, so it **requires an
-HF-hosted dataset** (its `artifact_url` set); a local-only dataset cannot be
-launched here. Its model is HuggingFace-only too — the spec emits `hf:///<model>`,
-so a `custom_path` model cannot be launched by this variant.
+The local-bash build references its dataset by URI (its `artifact_url` must be
+set), but the builder is **scheme-agnostic**: either an `hf://` artifact, which
+gbserver pulls, or the absolute `file://` locator that standalone dataset upload
+writes, which the same-host gbserver mounts as the build's `dataset_files` input.
+Its model is HuggingFace-only, though — the spec emits `hf:///<model>`, so a
+`custom_path` model cannot be launched by this variant.
 
 ```
 AUTOTUNEX_JOB_BACKEND=llmb
@@ -195,8 +197,15 @@ AUTOTUNEX_GB_SERVER_URL=https://gb.example.com
 # AUTOTUNEX_BASH_FM_TUNE_REF=main
 AUTOTUNEX_BASH_FM_TUNE_EXTRA=full,mlx
 AUTOTUNEX_BASH_BACKEND=mlx           # or: torch
-AUTOTUNEX_DATASET_STORAGE_BACKEND=huggingface
+AUTOTUNEX_DATASET_STORAGE_BACKEND=auto
 ```
+
+`auto` is deliberate here, and forcing `huggingface` instead **fails startup**: the
+HuggingFace push runs `llmb artifact push`, which granite.build disables in
+standalone mode, so settings validation refuses that combination outright for the
+same-host bash variant (`gb_environment="standalone"` with no `lsf_cluster`). `auto`
+resolves to local storage and emits the `file://` locator described above; `local`
+works too.
 
 A ready-to-copy example lives at `envs/bash.env.example`.
 

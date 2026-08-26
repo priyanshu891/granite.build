@@ -64,7 +64,8 @@ the literal path is matched here. Returns a `UserMetadata`.
 
 ### Notable statuses
 
-`401` if unauthenticated.
+`401` if unauthenticated. A caller with no `users` row — unprovisioned under a real
+provider, or unrestricted standalone — gets all-zero counts rather than an error.
 
 ---
 

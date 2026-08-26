@@ -121,7 +121,7 @@ The revisions form a single linear chain from the baseline to the current head:
 | `7f175ebf55ad` | Adds dataset `status` and `status_detail`. |
 | `b27a008ed0cf` | Makes `datasets.description` nullable. |
 | `c628b830e8a3` | Adds the `jobs` reward-function columns. |
-| `0a2caef2a185` | Widens the trial id column to 16 (**current head**). |
+| `0a2caef2a185` | Widens `trials.id` and `results.trial_id` to `VARCHAR(16)` (**current head**). |
 
 ## Fresh or empty database (local dev, tests, CI)
 
@@ -168,6 +168,14 @@ Two things to know about these steps:
   value into `config_snapshot['precision']` (a JSON field) and then drops the `precision`
   column. Nothing is lost — its `downgrade()` re-adds the column (as nullable) and restores
   the values out of the snapshot, so the change is reversible in both directions.
+
+> **Caveat — trial-id widths.** This stamp-then-upgrade path holds only for a deployment
+> whose trial ids match the baseline's `VARCHAR(10)`. `0a2caef2a185` widens `trials.id` and
+> `results.trial_id` from `VARCHAR(10)` to `VARCHAR(16)`, but
+> `resources/autotunex_schema.sql` already declares both columns as `VARCHAR(16)` — so a
+> database built from that raw schema file and stamped at the baseline re-widens columns that
+> are already wide, across the `results.trial_id` foreign key. Adopting such a database needs
+> that foreign key dropped and recreated around the retype instead.
 
 ## Related
 

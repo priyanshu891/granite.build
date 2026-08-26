@@ -63,7 +63,10 @@ app = FastAPI(
         "name": "IBM Research",
         "url": "https://github.com/ibm-granite/granite.build/tree/main/autotunex",
     },
-    license_info={"name": "IBM Research", "url": "https://github.com/ibm-granite/granite.build/tree/main/autotunex"},
+    license_info={
+        "name": "IBM Research",
+        "url": "https://github.com/ibm-granite/granite.build/tree/main/autotunex",
+    },
     servers=[
         {
             "url": os.getenv("AUTOTUNE_SERVER_URL", "http://localhost:8000"),

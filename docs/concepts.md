@@ -130,7 +130,7 @@ A **task** is a build or deployment step attached to a job — for example, runn
 
 Tasks are how a job's out-of-band build and deployment work is tracked. Treat them as the operational steps that surround a run; the specific kinds available depend on how your deployment is configured.
 
-## The lifecycle: one state machine, three entities
+## The lifecycle: six shared states, one job state machine
 
 Jobs, trials, and tasks all move through the **same six states**:
 
@@ -145,7 +145,9 @@ Jobs, trials, and tasks all move through the **same six states**:
 
 "Terminal" means there are no outgoing transitions: once a job reaches `completed`, `error`, or `terminated`, it stays there. The one exception is an admin-only force-reconcile: `POST /jobs/{id}/reconcile` writes the status the build backend reports straight onto the job, deliberately bypassing these transitions so a job left in the *wrong* terminal state can be repaired — and it can never rewind a job to a pre-run state. See the [Jobs API](api/jobs.md) and [Job execution and backends](operations/job-backends.md).
 
-The allowed transitions are exactly these. Reading the arrows as "may move to":
+The six states are shared vocabulary; the *enforced* transitions are the **job** state machine. Every job status write is validated against the map below, and a move it does not allow is rejected. Trials and tasks report the same six values, but their statuses are recorded as the tuning pipeline reports them — no transition check is applied to them.
+
+For a job, the allowed transitions are exactly these. Reading the arrows as "may move to":
 
 ```
   pending  ──→  running          (start executing)
@@ -162,7 +164,7 @@ The allowed transitions are exactly these. Reading the arrows as "may move to":
   terminated  ──→  (nothing — terminal)
 ```
 
-The same thing as a table of "from → allowed next":
+The same job state machine as a table of "from → allowed next":
 
 | From | Allowed transitions |
 | --- | --- |

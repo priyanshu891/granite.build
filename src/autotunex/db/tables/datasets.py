@@ -46,7 +46,7 @@ class DatasetTable(Base):
 
     ``train_file`` and ``validation_file`` are stored generated columns derived
     from ``name``, which makes them non-writable — see ``docs/schema-review.md``
-    item D6 on why deriving a filename from a mutable display name is fragile.
+    item D5 on why deriving a filename from a mutable display name is fragile.
     """
 
     __tablename__ = "datasets"

@@ -1,7 +1,8 @@
 # Schema review: `resources/autotunex_schema.sql`
 
 Date: 2026-07-29
-Status: recommendations only — **none of section A–D is applied to the ORM**
+Status: recommendations only — **apart from the four deviations in section F, none of
+section A–D is applied to the ORM**
 
 ## How to read this
 
@@ -11,7 +12,7 @@ and other systems may depend on its current columns and types. This document rec
 could be corrected and normalized, so the decision to change any of it is explicit and
 separate.
 
-Exactly one deviation from the file is applied. See section F.
+Four deviations from the file are applied. See section F.
 
 Severity: **high** — risks data loss or wrong answers. **medium** — will bite at scale or
 during a migration. **low** — hygiene.
@@ -22,23 +23,22 @@ during a migration. **low** — hygiene.
 
 ### A1. `trials.id` is a global primary key holding per-job identifiers — high
 
-`resources/autotunex_schema.sql:73` — `id VARCHAR(10) PRIMARY KEY`.
+`resources/autotunex_schema.sql:73` — `id VARCHAR(16) PRIMARY KEY`.
 
-Ten-character trial identifiers of the Ray Tune variety are unique *within a run*, not
-across all runs. As a global primary key this will eventually reject a legitimate insert,
-or worse, attach a trial to the wrong job. `results.trial_id UNIQUE` inherits the same
-assumption.
+Trial identifiers of the Ray Tune variety are unique *within a run*, not across all runs. As
+a global primary key this will eventually reject a legitimate insert, or worse, attach a
+trial to the wrong job. `results.trial_id UNIQUE` inherits the same assumption.
 
 Recommended: composite primary key `(job_id, id)`, or a surrogate key plus a unique
 constraint on `(job_id, number)`. The scaffold's original `TrialTable` used the latter.
 
 ### A2. `log_entries.trial_id` cannot join to `trials` — high
 
-`resources/autotunex_schema.sql:86` declares `CHAR(36)`, but `trials.id` is `VARCHAR(10)`.
+`resources/autotunex_schema.sql:86` declares `CHAR(36)`, but `trials.id` is `VARCHAR(16)`.
 No value can ever match, and there is no foreign key to catch it. `results.trial_id`
-correctly uses `varchar(10)`, which confirms the intended type.
+correctly uses `varchar(16)`, which confirms the intended type.
 
-Recommended: `VARCHAR(10)` with a foreign key to `trials(id) ON DELETE CASCADE`.
+Recommended: `VARCHAR(16)` with a foreign key to `trials(id) ON DELETE CASCADE`.
 
 ### A3. Deleting a user destroys all tuning history — high
 
@@ -57,9 +57,9 @@ Recommended: `RESTRICT` on the user foreign keys, or soft-delete `users` with a
 All `created_at` / `updated_at` columns are `TIMESTAMP`, which MySQL stores as a 32-bit
 value spanning `1970-01-01` to `2038-01-19 03:14:07`. `DATETIME` spans years 1000–9999.
 
-`TIMESTAMP` also converts to the session timezone on read while `DATETIME` does not, which
-appears to be why `:153` sets a global timezone. Switching to `DATETIME` removes both the
-2038 cliff and the need for that workaround.
+`TIMESTAMP` also converts to the session timezone on read while `DATETIME` does not, so
+every reader has to pin its session timezone to get consistent values back. Switching to
+`DATETIME` removes both the 2038 cliff and that requirement.
 
 Recommended: `DATETIME` throughout. This is a type change on a live table — batch it with
 other work.
@@ -138,9 +138,9 @@ Recommended: `DATETIME`, with `created_at` added and `ON UPDATE CURRENT_TIMESTAM
 | C3 | No index on `log_entries(job_id, timestamp)`, `log_entries(trial_id)`, `jobs(status)`, `jobs(user_id, created_at)` | — | Add. Foreign keys get implicit indexes; these are not covered, and log retrieval is the hottest read path | med |
 | C4 | No `started_at` / `finished_at` on `jobs` or `trials` | — | Add. Duration is currently uncomputable, and `updated_at` is a poor proxy | med |
 | C5 | `gb_tasks` has no `created_at`, and `updated_at` has no `ON UPDATE` | 108-122 | Add both | low |
-| C6 | `SET GLOBAL time_zone` in a schema script | 153 | Remove. Needs `SYSTEM_VARIABLES_ADMIN` and affects every other database on the server; set it per connection instead | med |
+| C6 | `SET GLOBAL time_zone` in a schema script | — | **Resolved** — no longer present in the schema file. If it returns: it needs `SYSTEM_VARIABLES_ADMIN` and affects every other database on the server, so set the timezone per connection instead | med |
 | C7 | Database is `autotune`; everything else says `autotunex` | 1-2 | Align | low |
-| C8 | `datasets.description TEXT NOT NULL` with no default | 30 | Nullable, or `DEFAULT ''` — `TEXT` cannot take a literal default in MySQL | low |
+| C8 | `datasets.description TEXT NOT NULL` with no default | 30 | Nullable, or `DEFAULT ''` — `TEXT` cannot take a literal default in MySQL. **Applied** as nullable; see section F | low |
 | C9 | `datasets.artifact_url` vs `gb_tasks.artifact_uri` | 39, 116 | Pick one spelling | low |
 | C10 | The identical six-value status `ENUM` is declared three times | 50, 75, 112 | Unavoidable in MySQL, but note that adding a state requires three `ALTER TABLE`s on large tables | low |
 | C11 | `u.email AS user` shadows MySQL's `USER()` conceptually | 126 | `user_email` | low |
@@ -280,14 +280,17 @@ which removes the `COALESCE` fallbacks in the view; `config_id` can then relax f
 The ORM targets MySQL in production and SQLite in tests, with Postgres supported. Two
 constructs in this file have no portable form.
 
-**Generated columns (`:31`, `:34`).** No single expression works everywhere:
+**Generated columns (`:31`, `:34`).** No single literal SQL expression works everywhere:
 
 - SQLite gained a `CONCAT()` function only in 3.44; before that it is `||` only.
 - MySQL reads `||` as logical **OR** by default, so `||` cannot be the shared form.
 - Postgres requires generation expressions to be immutable, and `concat()` is only
   *stable* — it rejects `CONCAT(...)`. `name || '_train'` is immutable and works.
 
-The ORM branches on dialect. Dropping these columns (D5) removes the problem.
+One ORM expression covers all three regardless: SQLAlchemy's concatenation operator renders
+`concat()` on MySQL and `||` on SQLite and Postgres, so `_suffixed()`
+(`src/autotunex/db/tables/datasets.py:33-41`, used at `:61-68`) mirrors the schema everywhere
+with no dialect branch. Dropping these columns (D5) removes the problem entirely.
 
 **The view.** Postgres rejects it for the grouping reason in B3, and
 `JSON_UNQUOTE(JSON_EXTRACT(...))` is MySQL-only (`->>` on Postgres, `json_extract` on
@@ -377,45 +380,64 @@ What the process found that this report did not already cover:
   agree on `TIMESTAMP` instead), and it reintroduces the 2038 cutoff on all 12 timestamp
   columns for no CI-visible benefit — exactly the tradeoff A4 already documents. Mirroring
   the defect, bugs included, remains the deliberate choice here.
-- **The `mysql` extra is missing a real runtime dependency: `cryptography`.** MySQL 8.4
+- **The `mysql` extra was missing a real runtime dependency: `cryptography`.** MySQL 8.4
   defaults new users to `caching_sha2_password`. `asyncmy==0.2.11` declares zero
   dependencies of its own, but its auth handshake raises
   `RuntimeError: 'cryptography' package is required for sha256_password or
   caching_sha2_password auth methods` the moment a connection is opened before the server has
   cached a faster path for that session — i.e., on the very first connection to a freshly
   started server. That is the state of every CI service container on every run, so
-  `mysql+asyncmy` connections will fail in CI until `cryptography` is added alongside
+  `mysql+asyncmy` connections failed in CI until `cryptography` was added alongside
   `asyncmy` wherever the `mysql` extra is declared. This did not surface in earlier isolated
   testing because a warm connection to an already-authenticated server skips the RSA
-  exchange and masks the gap.
+  exchange and masks the gap. **Resolved** — this is why the pin exists:
+  `cryptography==48.0.1` is declared both as a base runtime dependency
+  (`pyproject.toml:58`) and inside the `mysql` extra (`pyproject.toml:90`).
 - **Everything else the plan anticipated did not reproduce.** Postgres created and dropped
   the `run_status` / `gb_task_type` enum types correctly via plain `create_table`/
   `drop_table` with no explicit `sa.Enum(...).create()`/`.drop()` needed; the `"precision"`
   reserved-word quoting and MySQL foreign-key downgrade ordering were not exercised because
   Task 7's revision (which touches `jobs.precision`) had not landed yet — only the baseline
-  revision exists at verification time, so **the precision-backfill `COALESCE` check (seed a
+  revision existed at verification time. That revision has since landed (`78f6bb7de0df`) and
+  the `migrations` matrix runs the whole chain on all three dialects on every push
+  (`.github/workflows/ci.yml:85-161`), so **the precision-backfill `COALESCE` check (seed a
   `precision` value with a null `config_snapshot`, upgrade, confirm the snapshot is not
-  `NULL`) is still outstanding** and must be run once that revision exists. The generated
-  columns (`concat(name, '_train')`) built without incident on MySQL, Postgres, and SQLite.
+  `NULL`) is done** — see section F. The generated columns (`concat(name, '_train')`) built
+  without incident on MySQL, Postgres, and SQLite.
 
 ---
 
-## F. Deviation applied to the ORM
+## F. Deviations applied to the ORM
 
-One change is applied, at the maintainer's request.
+Four changes are applied, at the maintainer's request. Each has an Alembic revision, and that
+migration history — not this list — is the authority on how the ORM diverges from the file.
 
-**`jobs.precision` is removed** (`:59`). It was `VARCHAR(50) NOT NULL` with no default, so
-every writer had to supply it. This aligns with D6 — it is a training hyperparameter nothing
-filters on.
+**`jobs.precision` is removed** (`:59`, revision `78f6bb7de0df`). It was `VARCHAR(50) NOT
+NULL` with no default, so every writer had to supply it. This aligns with D6 — it is a
+training hyperparameter nothing filters on.
 
-Because the column holds live data, the migration backfills before dropping:
+Because the column holds live data, the migration backfills before dropping. On MySQL and
+SQLite:
 
 ```sql
 UPDATE jobs
    SET config_snapshot = json_set(COALESCE(config_snapshot, JSON_OBJECT()),
-                                  '$.precision', precision);
-ALTER TABLE jobs DROP COLUMN precision;
+                                  '$.precision', precision)
+ WHERE precision IS NOT NULL;
 ```
+
+PostgreSQL has no `json_set`, so that branch composes with `jsonb` instead:
+
+```sql
+UPDATE jobs
+   SET config_snapshot = COALESCE(config_snapshot::jsonb, '{}'::jsonb)
+                      || jsonb_build_object('precision', "precision")
+ WHERE "precision" IS NOT NULL;
+```
+
+Every branch is guarded by `WHERE precision IS NOT NULL`, and the drop goes through
+`op.batch_alter_table("jobs")` rather than a bare `ALTER TABLE`, so SQLite gets its table
+rebuild.
 
 `COALESCE` is required: `json_set(NULL, ...)` returns `NULL` on **both MySQL and SQLite**
 (verified against SQLite 3.50.2 — this is not a MySQL-only quirk, as an earlier draft of this
@@ -425,3 +447,16 @@ Verified end to end on SQLite, MySQL 8.4 and PostgreSQL 16 with a seeded null-sn
 
 Consumers reading `precision` from `autotunex_jobs` (via `j.*`) will break. `JobSummary` and
 `JobRead` no longer expose the field.
+
+**`datasets.description` is relaxed to nullable** (`:30`, revision `b27a008ed0cf`). The file
+declares it `TEXT NOT NULL` with no default — and `TEXT` cannot take a literal default in
+MySQL — so every writer had to supply a description. This applies C8.
+
+**`datasets.status` and `datasets.status_detail` are added** (revision `7f175ebf55ad`,
+`db/tables/datasets.py:74-77`). Both are absent from the schema file; they carry the
+dataset-upload lifecycle the API needs.
+
+**`jobs.reward_function_code` and `jobs.reward_function_name` are added** (revision
+`c628b830e8a3`, `db/tables/jobs.py:72-73`). Also absent from the schema file. An online-RL
+job persists its reward function in these dedicated columns rather than inside
+`config_snapshot`.
