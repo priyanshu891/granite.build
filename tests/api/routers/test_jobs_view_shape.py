@@ -97,6 +97,7 @@ async def test_summary_omits_heavy_and_detail_only_fields(
         "ray_address",
         "cleanup",
         "autotune",
+        "is_stale",
     ):
         assert absent not in item
     for present in (

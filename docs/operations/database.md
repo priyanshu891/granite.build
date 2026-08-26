@@ -69,8 +69,14 @@ Managed MySQL such as IBM Cloud Databases refuses plaintext auth, so a productio
 must negotiate TLS:
 
 - `AUTOTUNEX_DATABASE_SSL_MODE` (`disable` | `require` | `verify`) — `require` encrypts
-  without verifying the server's certificate; `verify` also checks it against the CA below.
+  without verifying the server's certificate; `verify` also checks it against the CA below,
+  and **hard-requires** it: `verify` with no `AUTOTUNEX_DATABASE_SSL_CA` raises at engine
+  construction.
 - `AUTOTUNEX_DATABASE_SSL_CA` — path to the CA-certificate PEM used when verifying.
+
+That pairing is *not* one of the settings-level fail-fast checks, so it surfaces on the
+first engine build rather than at import — including under `alembic`, which resolves its TLS
+context through the same helper.
 
 See the [Persistence](configuration.md#persistence) table in configuration.md for the full
 setting reference.
@@ -91,16 +97,18 @@ schema version is tracked explicitly.
 
 ## Migrations
 
-AutoTuneX uses Alembic (async environment). Two Make targets wrap it:
+AutoTuneX uses Alembic (async environment). Four Make targets wrap it:
 
 ```bash
 make migrate                    # alembic upgrade head — apply all pending migrations
 make migration m="add trials"   # autogenerate a new revision from ORM changes
+make migrations-check           # alembic check — fail if db/tables/ has drifted
+make downgrade                  # alembic downgrade -1 — roll back one revision
 ```
 
 Migrations are verified against SQLite, PostgreSQL 16, and MySQL 8.4 in CI, and
-`alembic check` must stay clean on all three. Any change to the ORM tables ships with an
-accompanying Alembic revision in the same commit.
+`alembic check` — what `make migrations-check` runs — must stay clean on all three. Any
+change to the ORM tables ships with an accompanying Alembic revision in the same commit.
 
 ### Revision history
 

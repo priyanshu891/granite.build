@@ -177,12 +177,15 @@ practice regardless).
 
 The repository ships a multi-stage `Dockerfile` and a `compose.yaml` at its root
 that run the whole service — the API plus the built SvelteKit UI — from a single
-image. Stage one builds the SPA; the runtime stage installs only AutoTuneX's base
-dependencies (no PostgreSQL/MySQL/`granite-build` extras, hence no Ray/Torch/MLX)
-and serves the SPA in-process alongside the API. The image runs as a non-root
-user, exposes port 8000, keeps all writable state — the SQLite DB and artifacts —
-under a `/data` volume so it survives restarts, and defines a `HEALTHCHECK` that
-probes `/health`.
+image. Stage one builds the SPA; the runtime stage installs AutoTuneX's base
+dependencies (no PostgreSQL/MySQL extras) plus the vendored `src/fm-tune[core]`
+training stack (`torch` + `ray[tune,default]`) and serves the SPA in-process
+alongside the API. With `AUTOTUNEX_JOB_BACKEND=local` baked in (see the table
+below), tuning runs in-container; only the GPU / online-RL extras (`[full]`:
+verl/vLLM, flash-attn, deepspeed) and the macOS-arm64-only `[mlx]` extra are left
+out. The image runs as a non-root user, exposes port 8000, keeps all writable
+state — the SQLite DB and artifacts — under a `/data` volume so it survives
+restarts, and defines a `HEALTHCHECK` that probes `/health`.
 
 ```bash
 podman compose up --build      # or: docker compose up --build
@@ -254,11 +257,14 @@ the container and point `AUTOTUNEX_DATABASE_SSL_CA` and
 
 At build time, `GB_REF` picks the granite.build branch to build and
 `PUBLIC_AUTOTUNEX_API_URL` (empty by default, meaning same-origin) matters only
-if the API is fronted elsewhere. `INSTALL_AUTOTUNE_CORE=1`, together with
-`GITHUB_HOST` and a `gb_token` **BuildKit secret**, additionally installs the
-`autotune` training core that the `local` backend needs — a much larger image
-(torch/Ray). The token is passed as a secret rather than a build arg precisely so
-it never lands in the image history.
+if the API is fronted elsewhere. `INSTALL_AUTOTUNE_CORE=1` additionally installs
+the `autotune` training core that the `local` backend needs, from the vendored
+`src/fm-tune[core,mlx]` already in the build context — no credentials and no
+private repo fetch, just a much larger image (torch/Ray). `GB_TOKEN` and
+`GITHUB_HOST` play no part in the build: they are run-time settings (the token the
+`llmb` backend requires, plus the entrypoint's git credentials, which matter only
+if you point `AUTOTUNEX_BASH_FM_TUNE_ROOT` at a repo URL instead of the vendored
+trainer at `/opt/fm-tune`).
 
 On Kubernetes/OpenShift, mount a PVC at `/data`: it is both the volume and `HOME`,
 so artifacts, datasets and gbserver's own SQLite state all land there. The image

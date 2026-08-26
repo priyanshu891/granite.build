@@ -28,11 +28,23 @@ class DataScope(StrEnum):
 
 
 class HealthResponse(BaseModel):
-    """Liveness payload returned by ``GET /health``."""
+    """Liveness payload returned by ``GET /health`` and ``GET /health/live``."""
 
     status: str = "ok"
     service: str
     version: str
+
+
+class ReadinessResponse(BaseModel):
+    """Readiness payload returned by ``GET /health/ready`` on success.
+
+    A 200 means the service answered *and* a probe query against the database
+    succeeded. A database outage returns 503 (a ``ProblemDetail``) instead, so an
+    orchestrator can gate traffic on database reachability, not just liveness.
+    """
+
+    status: str = "ready"
+    database: str = "ok"
 
 
 class ProblemDetail(BaseModel):

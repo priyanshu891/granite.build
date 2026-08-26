@@ -2,14 +2,28 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 from typing import Any
 
 import pytest
-from gbcli.utils.gbconstants import BUILD_LOGALL_PAGE_SIZE  # type: ignore[import-untyped]
+
+# gbcli ships with the granite.build (llmb) backend, which is opt-in and NOT
+# installed on the default `make install` path. Skip this module cleanly when it
+# is absent, mirroring how GbcliLogReader itself degrades (its gbcli imports are
+# lazy). Without this guard a module-scope `from gbcli...` import would *interrupt*
+# pytest collection and yield zero tests on the documented install path.
+# test_registry.py needs no such guard: it imports our gbcli_reader module, whose
+# gbcli imports are deferred to call time.
+pytest.importorskip("gbcli.utils.gbconstants")
 
 from autotunex.core.exceptions import GbLogsUnavailableError, GbLogsUpstreamError
 from autotunex.services.gb_logs.gbcli_reader import GbcliLogReader
+
+# Read the one gbcli constant the tests need off the (now-importable) module,
+# rather than a module-scope `from gbcli...` import that mypy cannot resolve and
+# that ruff would rewrap (splitting an inline type-ignore onto the wrong line).
+BUILD_LOGALL_PAGE_SIZE = importlib.import_module("gbcli.utils.gbconstants").BUILD_LOGALL_PAGE_SIZE
 
 
 def _record(log: str | None) -> dict[str, Any]:

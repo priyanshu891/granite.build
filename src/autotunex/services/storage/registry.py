@@ -64,19 +64,46 @@ def _llmb_enabled(settings: Settings) -> bool:
 
 
 def get_storage_backend(settings: Settings) -> StorageBackend:
-    """Return the storage backend chosen by ``dataset_storage_backend``.
+    """Return the storage backend chosen by ``dataset_storage_backend`` and env.
 
-    ``"local"``/``"huggingface"`` force the choice (a forced ``huggingface`` with
-    either token missing is already refused at settings validation). ``"auto"``
-    resolves to HuggingFace only when ``llmb`` and both tokens are available, else
-    local. Whenever the choice is HuggingFace the backend is wrapped with a local
-    preview fallback (:func:`_huggingface_with_local_fallback`); a plain ``local``
-    backend has nothing to fall back to and is returned unwrapped.
+    ``"local"`` forces local storage. ``"huggingface"`` forces the HF push backend
+    (wrapped with a local preview fallback); a forced ``huggingface`` with a
+    missing token, or in the same-host bash standalone case
+    (``gb_environment="standalone"`` without ``lsf_cluster``), is already refused at
+    settings validation (``Settings._validate_datasets``) — the LSF/SkyPilot
+    standalone variant keeps ``huggingface``. ``"auto"`` resolves to HuggingFace
+    only when ``llmb`` and both tokens are available *and* the CLI is not in
+    standalone mode, else local.
+
+    In granite.build **standalone** mode ``llmb artifact push`` is disabled, so the
+    HF push backend cannot run: storage falls back to local regardless of tokens.
+    For the same-host local-bash build (``lsf_cluster`` unset) the local backend
+    additionally emits a ``file://`` locator that gbserver mounts as its
+    ``dataset_files`` input; the remote LSF/SkyPilot build cannot read a local
+    path, so no locator is emitted there (its dataset hosting is a separate, open
+    concern).
     """
+    root = settings.dataset_storage_dir
+    standalone = settings.gb_environment == "standalone"
+    # Only the same-host bash build consumes the dataset off local disk.
+    local_bash_standalone = standalone and not settings.lsf_cluster
+
     if settings.dataset_storage_backend == "local":
-        return LocalStorageBackend(root=settings.dataset_storage_dir)
+        return LocalStorageBackend(root=root, emit_file_uri=local_bash_standalone)
     if settings.dataset_storage_backend == "huggingface":
+        # Validation refuses a forced `huggingface` only for the same-host bash
+        # standalone case, so this branch is reached for non-standalone deployments
+        # (where `llmb artifact push` works) and for the LSF/SkyPilot standalone
+        # variant (remote cluster; its push limitation is a deferred non-goal).
         return _huggingface_with_local_fallback(settings)
+    # auto:
+    if standalone:
+        logger.info(
+            "dataset_storage_backend=auto with gb_environment=standalone: "
+            "`llmb artifact push` is unavailable; using local storage%s.",
+            " with a file:// locator" if local_bash_standalone else "",
+        )
+        return LocalStorageBackend(root=root, emit_file_uri=local_bash_standalone)
     if _llmb_enabled(settings):
         return _huggingface_with_local_fallback(settings)
     logger.info(
@@ -84,7 +111,7 @@ def get_storage_backend(settings: Settings) -> StorageBackend:
         settings.gb_token_env,
         settings.hf_token_env,
     )
-    return LocalStorageBackend(root=settings.dataset_storage_dir)
+    return LocalStorageBackend(root=root)
 
 
 def resolve_artifact_lister(

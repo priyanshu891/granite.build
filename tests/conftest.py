@@ -59,6 +59,8 @@ def make_settings(
     cors_allow_origins: list[str] | None = None,
     dataset_storage_backend: Literal["auto", "local", "huggingface"] = "auto",
     dataset_storage_dir: Path | None = None,
+    gb_environment: str | None = None,
+    lsf_cluster: str | None = None,
     llm_base_url: str | None = None,
     llm_api_key: str | None = None,
     llm_model: str | None = None,
@@ -155,6 +157,11 @@ def make_settings(
             to ``None``, in which case ``Settings``'s own default
             (``Path("artifacts/datasets")``) is left untouched — only override
             with a tmp dir when a test would otherwise write real files.
+        gb_environment: granite.build's own (unprefixed) environment name, e.g.
+            "standalone". Defaults to ``None`` and is pinned explicitly, so an
+            exported ``GB_ENVIRONMENT`` cannot leak into a test.
+        lsf_cluster: SkyPilot/LSF cluster name. Defaults to ``None`` (the
+            same-host bash path); set it to select the remote LSF variant.
         llm_base_url: OpenAI-compatible gateway base URL, for the LLM
             intelligence feature. Defaults to ``None``, matching ``Settings``'s
             own default (feature disabled).
@@ -208,6 +215,8 @@ def make_settings(
         dataset_storage_dir=(
             dataset_storage_dir if dataset_storage_dir is not None else Path("artifacts/datasets")
         ),
+        gb_environment=gb_environment,
+        lsf_cluster=lsf_cluster,
         llm_base_url=llm_base_url,
         llm_api_key=llm_api_key,
         llm_model=llm_model,

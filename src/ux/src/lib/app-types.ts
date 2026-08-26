@@ -61,6 +61,10 @@ export type Tuning = {
 	trials?: Trial[];
 	tasks?: Task[];
 	config_snapshot?: Record<string, any> | null;
+	// True when the live configuration has drifted from this job's snapshot
+	// (config_data / tuner types differ). Detail response only; merged onto the
+	// snapshot object by `getJobConfigSnapshot` for the drift banner.
+	is_stale?: boolean;
 	output_artifacts?: Record<string, any> | null;
 	assets?: Assets[];
 	build_status?: BuildStatus;

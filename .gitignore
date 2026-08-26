@@ -122,8 +122,6 @@ logs/
 *~
 .ipynb_checkpoints/
 
-# Claude Code worktrees (created by the EnterWorktree tool; local scratch only)
-.claude/worktrees/
 
 # ---------------------------------------------------------------------------
 # OS
@@ -134,12 +132,7 @@ logs/
 Thumbs.db
 desktop.ini
 
-# Superpowers SDD scratch (ledgers, briefs, review packages)
-.superpowers/
 
-# Internal OSS-readiness audit — inventories internal references and security
-# findings; must not ship in the public repo. Keep untracked.
-OSS_AUDIT_REPORT.md
 
 # ---------------------------------------------------------------------------
 # Frontend (src/ux) exceptions — the Python-oriented `lib/` rule above matches
@@ -149,4 +142,3 @@ OSS_AUDIT_REPORT.md
 # ---------------------------------------------------------------------------
 !src/ux/src/lib/
 
-test-envs

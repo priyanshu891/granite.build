@@ -5,6 +5,7 @@
 	import {
 		Button,
 		DataTable,
+		DataTableSkeleton,
 		Toolbar,
 		ToolbarContent,
 		ToolbarSearch,
@@ -65,6 +66,18 @@
 	export let pageSize = 10;
 	export let searchValue = '';
 
+	// When true, the DataTable is swapped for a matching skeleton to signal that a
+	// new page is loading. The parent sets this only for page/page-size changes
+	// (never for search — the search input lives in the toolbar the skeleton would
+	// replace, so skeleton-on-keystroke would drop typing focus). The Pagination
+	// below stays mounted throughout, so the control the user just clicked keeps
+	// focus while the rows reload.
+	export let loading = false;
+
+	// DataTableSkeleton only accepts compact/short/tall (not the DataTable's
+	// "medium" default) — fall back to its own default for anything else.
+	$: skeletonSize = size === 'compact' || size === 'short' || size === 'tall' ? size : undefined;
+
 	let searchDebounce: ReturnType<typeof setTimeout> | undefined;
 	function onSearchInput(value: string) {
 		clearTimeout(searchDebounce);
@@ -120,114 +133,118 @@
 	}
 </script>
 
-<DataTable
-	{size}
-	{batchSelection}
-	{selectable}
-	{expandable}
-	bind:selectedRowIds
-	sortable
-	zebra
-	{sortKey}
-	{sortDirection}
-	{title}
-	{description}
-	{headers}
-	pageSize={dtPageSize}
-	page={dtPage}
-	{rows}
-	on:click:row--expand={(e) => {
-		dispatch('row-expanded', e.detail);
-	}}
->
-	<svelte:fragment slot="expanded-row" let:row>
-		<slot name="expanded-row" {row}>
-			<code>
-				<pre>{JSON.stringify(row, null, 2)}</pre>
-			</code>
-		</slot>
-	</svelte:fragment>
-	<svelte:fragment slot="cell" let:cell let:row>
-		<slot name="cell" {cell} {row}>
-			{cell.display ? cell.display(cell.value, row) : cell.value}
-		</slot>
-	</svelte:fragment>
-	<!-- <svelte:fragment slot="title">
+{#if loading}
+	<DataTableSkeleton {headers} rows={pageSize} zebra size={skeletonSize} />
+{:else}
+	<DataTable
+		{size}
+		{batchSelection}
+		{selectable}
+		{expandable}
+		bind:selectedRowIds
+		sortable
+		zebra
+		{sortKey}
+		{sortDirection}
+		{title}
+		{description}
+		{headers}
+		pageSize={dtPageSize}
+		page={dtPage}
+		{rows}
+		on:click:row--expand={(e) => {
+			dispatch('row-expanded', e.detail);
+		}}
+	>
+		<svelte:fragment slot="expanded-row" let:row>
+			<slot name="expanded-row" {row}>
+				<code>
+					<pre>{JSON.stringify(row, null, 2)}</pre>
+				</code>
+			</slot>
+		</svelte:fragment>
+		<svelte:fragment slot="cell" let:cell let:row>
+			<slot name="cell" {cell} {row}>
+				{cell.display ? cell.display(cell.value, row) : cell.value}
+			</slot>
+		</svelte:fragment>
+		<!-- <svelte:fragment slot="title">
 		<slot name="title">
 			{title ?? ''}
 		</slot>
 	</svelte:fragment> -->
-	<Toolbar>
-		<ToolbarBatchActions>
-			{#if selectedRowIds.length > 1}
-				<Button
-					icon={Compare}
-					on:click={() => {
-						openCompare = true;
-						dispatch('compare', selectedRows);
-					}}
-				>
-					Compare
-				</Button>
-			{:else}
-				<Button
-					icon={View}
-					on:click={() => {
-						openView = true;
-						dispatch('view', { row: selectedRows[0] });
-					}}
-				>
-					View
-				</Button>
-			{/if}
-			<Button
-				icon={TrashCan}
-				disabled={disableDeleteButton}
-				on:click={(e) => {
-					openDelete = true;
-				}}
-			>
-				Delete
-			</Button>
-			<slot name="batch-actions" {selectedRows} />
-		</ToolbarBatchActions>
-		{#if showSearch || showActionButton}
-			<ToolbarContent>
-				{#if showSearch}
-					{#if serverSide}
-						<ToolbarSearch
-							persistent
-							value={searchValue}
-							on:input={handleSearchInput}
-							on:clear={onSearchClear}
-						/>
-					{:else}
-						<ToolbarSearch persistent shouldFilterRows bind:filteredRowIds />
-					{/if}
-				{/if}
-				<slot name="toolbar-actions" />
-				{#if showActionButton}
+		<Toolbar>
+			<ToolbarBatchActions>
+				{#if selectedRowIds.length > 1}
 					<Button
+						icon={Compare}
 						on:click={() => {
-							if (customAction) {
-								dispatch('new');
-							} else {
-								openNew = true;
-							}
+							openCompare = true;
+							dispatch('compare', selectedRows);
 						}}
-						disabled={disableActionButton}
 					>
-						{#if actionButtonText}
-							{actionButtonText}
-						{:else}
-							Create new {entity}
-						{/if}
+						Compare
+					</Button>
+				{:else}
+					<Button
+						icon={View}
+						on:click={() => {
+							openView = true;
+							dispatch('view', { row: selectedRows[0] });
+						}}
+					>
+						View
 					</Button>
 				{/if}
-			</ToolbarContent>
-		{/if}
-	</Toolbar>
-</DataTable>
+				<Button
+					icon={TrashCan}
+					disabled={disableDeleteButton}
+					on:click={(e) => {
+						openDelete = true;
+					}}
+				>
+					Delete
+				</Button>
+				<slot name="batch-actions" {selectedRows} />
+			</ToolbarBatchActions>
+			{#if showSearch || showActionButton}
+				<ToolbarContent>
+					{#if showSearch}
+						{#if serverSide}
+							<ToolbarSearch
+								persistent
+								value={searchValue}
+								on:input={handleSearchInput}
+								on:clear={onSearchClear}
+							/>
+						{:else}
+							<ToolbarSearch persistent shouldFilterRows bind:filteredRowIds />
+						{/if}
+					{/if}
+					<slot name="toolbar-actions" />
+					{#if showActionButton}
+						<Button
+							on:click={() => {
+								if (customAction) {
+									dispatch('new');
+								} else {
+									openNew = true;
+								}
+							}}
+							disabled={disableActionButton}
+						>
+							{#if actionButtonText}
+								{actionButtonText}
+							{:else}
+								Create new {entity}
+							{/if}
+						</Button>
+					{/if}
+				</ToolbarContent>
+			{/if}
+		</Toolbar>
+	</DataTable>
+{/if}
 {#if serverSide}
 	<Pagination bind:page bind:pageSize totalItems={total} pageSizeInputDisabled />
 {:else}

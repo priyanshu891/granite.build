@@ -30,10 +30,15 @@ cd granite.build/autotunex
 
 uv venv && source .venv/bin/activate
 uv pip install -e ".[dev]"
+uv pip install -e "./src/fm-tune"
 
 cp .env.example .env          # defaults work as-is for local development
 uvicorn autotunex.main:app --reload
 ```
+
+The second install supplies the slim, torch-free `autotune` catalog that the
+configuration-template and dataset-format endpoints need; `make install` runs
+both steps for you.
 
 The server starts on <http://127.0.0.1:8000> and creates a local SQLite database
 (`autotunex.db`) in the working directory on first run. No database server
@@ -47,8 +52,11 @@ full list of settings and how to point at PostgreSQL or MySQL instead, see
 
 ## The interactive API docs
 
-Once the server is running, open any of these in a browser. Visiting the bare
-root (`/`) redirects to the Swagger UI.
+Once the server is running, open any of these in a browser. `/` issues a
+temporary redirect to `/autotune`, where the SPA mounts by default, so it 404s
+unless the SPA is built and `AUTOTUNEX_FRONTEND_DIR` is configured. That target
+is hard-coded: changing `AUTOTUNEX_FRONTEND_BASE_PATH` moves the SPA but not this
+redirect. The interactive docs are at `/docs`.
 
 | URL | What it is |
 | --- | --- |
@@ -124,7 +132,7 @@ is not yet referenced by any job, so `associated_jobs` is always empty here.
 ```json
 {
   "id": "8f14e45f-ceea-467d-9a1e-4b2c3d4e5f60",
-  "user_id": "0000000000000000",
+  "user_id": "00000000-0000-4000-8000-000000000000",
   "name": "lora-sweep",
   "tuner_type": null,
   "rl_tuner_type": null,
@@ -146,7 +154,8 @@ CONFIG_ID=8f14e45f-ceea-467d-9a1e-4b2c3d4e5f60   # paste your own id here
 
 > **Tip:** `GET /api/v1/configurations/template` returns a starter template you
 > can adapt instead of writing `config_data` from scratch (it requires the
-> optional `autotune` package to be installed, and returns `503` otherwise).
+> `autotune` catalog from the second install step above, and returns `503`
+> otherwise).
 
 ### 2. Register a dataset
 
@@ -168,7 +177,7 @@ yet.
 ```json
 {
   "id": "9f41b2c3-1d2e-4a5b-8c7d-6e5f4a3b2c1d",
-  "user_id": "0000000000000000",
+  "user_id": "00000000-0000-4000-8000-000000000000",
   "name": "alpaca-sample",
   "description": null,
   "data_format": "jsonl",
@@ -212,7 +221,7 @@ processed off-request.
 ```json
 {
   "id": "9f41b2c3-1d2e-4a5b-8c7d-6e5f4a3b2c1d",
-  "user_id": "0000000000000000",
+  "user_id": "00000000-0000-4000-8000-000000000000",
   "name": "alpaca-sample",
   "description": null,
   "data_format": "jsonl",
@@ -267,7 +276,7 @@ Returns `201 Created` with the job in status `pending`:
 ```json
 {
   "id": "0b1e7a2c-3d4e-4f5a-9b8c-7d6e5f4a3b2c",
-  "user_id": "0000000000000000",
+  "user_id": "00000000-0000-4000-8000-000000000000",
   "status": "pending",
   "seed": 42,
   "config_id": "8f14e45f-ceea-467d-9a1e-4b2c3d4e5f60",
@@ -286,13 +295,19 @@ Returns `201 Created` with the job in status `pending`:
   "num_trials": 0,
   "tasks": [],
   "config_snapshot": {
-    "learning_rate": {"type": "float", "min_val": 1e-05, "max_val": 0.001},
-    "num_epochs": {"type": "int", "min_val": 1, "max_val": 3}
+    "name": "lora-sweep",
+    "tuner_type": null,
+    "rl_tuner_type": null,
+    "config_data": {
+      "learning_rate": {"type": "float", "min_val": 1e-05, "max_val": 0.001},
+      "num_epochs": {"type": "int", "min_val": 1, "max_val": 3}
+    }
   },
   "output_artifacts": null,
   "trials": [],
   "created_at": "2026-08-11T10:05:00Z",
-  "updated_at": "2026-08-11T10:05:00Z"
+  "updated_at": "2026-08-11T10:05:00Z",
+  "finished_at": null
 }
 ```
 
@@ -328,7 +343,7 @@ curl -s "http://127.0.0.1:8000/api/v1/jobs?limit=20&offset=0" | python -m json.t
     {
       "id": "0b1e7a2c-3d4e-4f5a-9b8c-7d6e5f4a3b2c",
       "status": "pending",
-      "user_id": "0000000000000000",
+      "user_id": "00000000-0000-4000-8000-000000000000",
       "user": "standalone@autotunex.local",
       "config_id": "8f14e45f-ceea-467d-9a1e-4b2c3d4e5f60",
       "config_name": "lora-sweep",
@@ -338,7 +353,8 @@ curl -s "http://127.0.0.1:8000/api/v1/jobs?limit=20&offset=0" | python -m json.t
       "experiment_name": "my-first-tuning",
       "seed": 42,
       "created_at": "2026-08-11T10:05:00Z",
-      "updated_at": "2026-08-11T10:05:00Z"
+      "updated_at": "2026-08-11T10:05:00Z",
+      "finished_at": null
     }
   ],
   "total": 1,
@@ -350,6 +366,10 @@ curl -s "http://127.0.0.1:8000/api/v1/jobs?limit=20&offset=0" | python -m json.t
 `model_source`, `tuning_type`, `num_trials`, the nested `tasks`, the `trials`,
 and the JSON blobs live only on the detail response above — fetch them per-job
 after showing the list.
+
+`finished_at` is the latest `gb_tasks.updated_at` for the job, a **string**
+rather than a datetime because the column is `VARCHAR(255)`, and `null` when the
+job has no build tasks — which is the case here.
 
 ### 5. Read the logs
 

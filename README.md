@@ -19,7 +19,7 @@ GET  /api/v1/jobs        →  a lean page of jobs — identity, status, owner/co
 GET  /api/v1/jobs/{id}   →  one job, full detail: tasks, trials, per-trial metrics, JSON blobs
 ```
 
-> ### Project status: submission + read path implemented
+> ### Project status: submission + read path implemented; execution is backend-gated
 >
 > `GET /jobs`, `GET /jobs/{id}`, and `POST /jobs` are real and tested against the production
 > MySQL schema (`resources/autotunex_schema.sql`). `POST /jobs` submits a run referencing an
@@ -40,10 +40,15 @@ cd granite.build/autotunex
 
 uv venv && source .venv/bin/activate
 uv pip install -e ".[dev]"
+uv pip install -e "./src/fm-tune"   # the slim, torch-free autotune catalog
 
 cp .env.example .env          # defaults work as-is for local development
 uvicorn autotunex.main:app --reload
 ```
+
+`make install` runs both installs for you. The second one supplies the slim, torch-free
+`autotune` catalog that the configuration-template and dataset-format endpoints need —
+without it they return `503`.
 
 The server starts on <http://127.0.0.1:8000> and creates a local SQLite database
 (`autotunex.db`) on first run. No database server needed.
@@ -109,16 +114,16 @@ To point at an external database instead of the embedded SQLite file, set
 `-e AUTOTUNEX_DATABASE_URL=...` (the `postgres`/`mysql` drivers are **not** in
 this image — installing those extras is a separate build).
 
-> **Training execution.** This image installs everything except the training
-> core (`autotune`, vendored in-tree at `src/fm-tune/`). Locally, `make install`
-> installs the slim, torch-free catalog by default, so wizard endpoints work
-> out of the box; the heavy training stack (Ray/torch/verl/numpy) remains a
-> separate, opt-in install — `make install-training`
-> (`pip install -e "./src/fm-tune[full,mlx]"`) — a cost a plain API deployment
-> should not pay, and this image does not include it either. Job submission, all CRUD,
-> dataset upload/preview, auth, and the full UI work; a job that reaches the
-> training step surfaces `AutotuneCoreUnavailableError` until the core is
-> installed. See
+> **Training execution.** This image installs the lean `fm-tune[core]` training
+> stack — `torch` plus `ray[tune,default]`, transformers/trl/peft — from the
+> in-tree `src/fm-tune/`, and defaults `AUTOTUNEX_JOB_BACKEND=local`, so tuning
+> runs in-container on CPU. Only the GPU / online-RL extras (`[full]`:
+> verl/vLLM, flash-attn, deepspeed) and `[mlx]` (macOS-arm64 only) are left out.
+> Locally, `make install` installs just the slim, torch-free catalog, so wizard
+> endpoints work out of the box, and those heavy extras stay a separate, opt-in
+> install — `make install-training` (`pip install -e "./src/fm-tune[full,mlx]"`).
+> Job submission, all CRUD, dataset upload/preview, auth, and the full UI work
+> as well. See
 > [job backends](docs/operations/job-backends.md) for the `local` backend's
 > requirements and [production deployment](docs/operations/deployment.md#container-image)
 > for the image's baked defaults.
@@ -137,10 +142,11 @@ tasks relate, plus the job lifecycle — see [concepts](docs/concepts.md).
 
 ## API surface
 
-Resource endpoints are mounted under `/api/v1`; `/auth/*` and `/health` are unprefixed. Reads
-are own-data by default; an admin widens to every owner's rows per request with `?scope=all`
-(a non-admin who asks gets a `403`). Every endpoint is runnable from the browser at
-[Swagger UI](http://127.0.0.1:8000/docs), and the full reference lives in [`docs/api/`](docs/api/).
+Resource endpoints are mounted under `/api/v1`; `/auth/*`, `/health` and `/mcp` are
+unprefixed. Reads are own-data by default; an admin widens to every owner's rows per request
+with `?scope=all` (a non-admin who asks gets a `403`). Every endpoint is runnable from the
+browser at [Swagger UI](http://127.0.0.1:8000/docs), and the full reference lives in
+[`docs/api/`](docs/api/).
 
 | Resource | Endpoints | Reference |
 | --- | --- | --- |
@@ -150,7 +156,7 @@ are own-data by default; an admin widens to every owner's rows per request with 
 | **Datasets** | full CRUD `/datasets`, `POST /datasets/{id}/upload`, `?preview=true` | [datasets.md](docs/api/datasets.md) |
 | **Dataset intelligence** | `POST /datasets/intelligence/{parse-strategy,suggest-mapping,validate-strategy}`, `GET .../formats` | [datasets.md](docs/api/datasets.md) |
 | **Users** | `GET /users`, `GET /users/{id}`, `PATCH /users/{id}` (admin), `GET /users/me/metadata` | [users.md](docs/api/users.md) |
-| **Chat & MCP** | `POST /chat`, `POST /chat/stream`, `/mcp` | [chat.md](docs/api/chat.md), [mcp.md](docs/api/mcp.md) |
+| **Chat & MCP** | `POST /chat`, `POST /chat/stream`, `/mcp` (unprefixed) | [chat.md](docs/api/chat.md), [mcp.md](docs/api/mcp.md) |
 | **Auth** | `GET /auth/{login,callback,me}`, `POST /auth/logout`, `POST /auth/assume/{user_id}` (admin), `POST /auth/unassume` | [authentication.md](docs/api/authentication.md) |
 | **Health** | `GET /health` | [overview.md](docs/api/overview.md) |
 | **App config** | `GET /app-config` (unauthenticated; the upload cap and client gzip/preview knobs the web UI reads at boot) | [overview.md](docs/api/overview.md) |
@@ -227,7 +233,8 @@ make test        # pytest
 make lint        # ruff check + format check
 make format      # apply ruff formatting and autofixes
 make typecheck   # mypy (strict)
-make check       # lint + typecheck + test, exactly what CI runs
+make check       # lint + typecheck + test — the three CI jobs you can run locally
+                 # (CI also runs the migrations matrix, DCO, OSS-compliance and gitleaks)
 make migrate     # alembic upgrade head — see the warning below before using this on a real database
 ```
 

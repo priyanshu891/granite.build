@@ -23,8 +23,24 @@ logger = get_logger(__name__)
 class LocalStorageBackend:
     """Satisfies :class:`~autotunex.services.storage.base.StorageBackend`."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, emit_file_uri: bool = False) -> None:
+        """Store each dataset's files under ``<root>/<dataset_id>/``.
+
+        Args:
+            root: directory the dataset id-scoped folders live under.
+            emit_file_uri: when ``True``, ``persist`` returns the dataset
+                directory as an absolute ``file://`` ``artifact_url`` so a
+                *same-host* consumer — the granite.build local-bash build in
+                standalone mode — can mount it as its ``dataset_files`` input.
+                Default ``False`` keeps the historical ``(None, None)`` return
+                (files stay on disk with no external locator), which is correct
+                for the OSS ``local`` backend and the in-process ``local`` job
+                runner, both of which read the files by path directly. A remote
+                consumer (LSF/SkyPilot) must not be handed a local path, so the
+                registry leaves this ``False`` outside the bash case.
+        """
         self._root = root
+        self._emit_file_uri = emit_file_uri
 
     def _dir(self, dataset_id: UUID) -> Path:
         return self._root / str(dataset_id)
@@ -61,7 +77,12 @@ class LocalStorageBackend:
             shutil.move(
                 str(validation), self._path(dataset_id, name, data_format, split="validation")
             )
-        return None, None
+        # A same-host bash build reads the dataset from this directory; return it
+        # as an absolute file:// locator when asked. `.resolve()` makes a relative
+        # `dataset_storage_dir` absolute (as_uri() requires that); the directory
+        # exists by now (created above). Otherwise no external locator exists.
+        artifact_url = self._dir(dataset_id).resolve().as_uri() if self._emit_file_uri else None
+        return None, artifact_url
 
     async def preview(
         self,

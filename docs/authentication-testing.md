@@ -326,9 +326,9 @@ suite drives these endpoints over `https://testserver`.
 - **No token introspection verifier**, so an access-token-only caller cannot use
   `"oidc"` against W3ID as it stands.
 - **No CSRF tokens.** Every mutating endpoint relies on `samesite=lax` alone:
-  `POST /jobs`, `POST /jobs/{id}/cancel` and `DELETE /jobs/{id}`; the full
-  configuration and dataset CRUD, including `PUT`, `DELETE` and
-  `POST /datasets/{id}/upload`; `PATCH /users/{id}`;
+  `POST /jobs`, `POST /jobs/{id}/cancel`, `POST /jobs/{id}/reconcile` and
+  `DELETE /jobs/{id}`; the full configuration and dataset CRUD, including `PUT`,
+  `DELETE` and `POST /datasets/{id}/upload`; `PATCH /users/{id}`;
   `POST /auth/assume/{user_id}` and `POST /auth/unassume`; and
   `POST /auth/logout`. Double-submit tokens across all mutating endpoints remain
   a tracked repo-wide change — see `CLAUDE.md`'s open decision 6.

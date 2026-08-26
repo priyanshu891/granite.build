@@ -58,6 +58,9 @@
 	let pageSize: number = 10;
 	let q = '';
 	let loaded = false;
+	// True while a page/page-size change is refetching — drives the table skeleton
+	// (see fetchPage). Distinct from `loaded`, which only gates the very first load.
+	let fetching = false;
 	let selectedTabId: number = 0;
 	let selectedRowIds: string[] = [];
 	let tuning: TuningForm | undefined;
@@ -129,7 +132,12 @@
 		pageCount = 1;
 	}
 
-	const fetchPage = async () => {
+	// `showSkeleton` swaps the table for a loading skeleton while this fetch runs.
+	// Callers pass it for page navigation only; create/delete refetches leave it
+	// false (they already show the global loader), and search leaves it false so the
+	// toolbar search input stays mounted and keeps focus.
+	const fetchPage = async (showSkeleton = false) => {
+		if (showSkeleton) fetching = true;
 		try {
 			const res = await api.getJobsPage({
 				limit: pageSize,
@@ -150,6 +158,7 @@
 			});
 		} finally {
 			loaded = true;
+			fetching = false;
 		}
 	};
 
@@ -160,6 +169,18 @@
 	$: {
 		const key = `${pageCount} ${pageSize} ${q}`;
 		if (key !== prevKey) {
+			// Show the skeleton only for a genuine page turn: the page/page-size
+			// portion changed while the search term did not (see fetchPage). A search
+			// always changes `q` — and also resets the page to 1 — so skeletoning then
+			// would unmount the toolbar search input mid-type and drop focus. Both
+			// parts are read back off `prevKey` (format "<pageCount> <pageSize> <q>",
+			// and `q` may itself contain spaces) so this stays correct through the
+			// manual prevKey pre-syncs in createTuning/deleteTuning.
+			const [prevPage, prevSize, ...prevQParts] = (prevKey ?? '').split(' ');
+			const pageChanged =
+				prevKey !== null &&
+				prevQParts.join(' ') === q &&
+				`${prevPage} ${prevSize}` !== `${pageCount} ${pageSize}`;
 			// `rows` is about to be replaced by a different page, so a selection
 			// made against the old page is stale — clear it here rather than in
 			// onSearchInput/Pagination separately, so every path that changes the
@@ -170,7 +191,7 @@
 				selectedRowIds = [];
 			}
 			prevKey = key;
-			fetchPage();
+			fetchPage(pageChanged);
 		}
 	}
 
@@ -255,7 +276,9 @@
 <Grid noGutter fullWidth>
 	<Row>
 		<Column>
-			{#if loaded}
+			{#if !loaded || fetching}
+				<DataTableSkeleton {headers} rows={pageSize} zebra />
+			{:else}
 				<DataTable
 					zebra
 					sortable
@@ -278,8 +301,8 @@
 							job.status === 'RUNNING'
 								? Utils.getTimeElapsed(job.created_at, new Date(), true)
 								: job.finished_at
-									? Utils.getTimeElapsed(job.created_at, job.finished_at)
-									: '—';
+								  ? Utils.getTimeElapsed(job.created_at, job.finished_at)
+								  : '—';
 						return { ...job, total_time };
 					})}
 					on:click:row--expand={async (e) => {
@@ -447,9 +470,9 @@
 						{/if}
 					</svelte:fragment>
 				</DataTable>
+			{/if}
+			{#if loaded}
 				<Pagination bind:pageSize bind:page={pageCount} totalItems={total} pageSizeInputDisabled />
-			{:else}
-				<DataTableSkeleton />
 			{/if}
 		</Column>
 	</Row>

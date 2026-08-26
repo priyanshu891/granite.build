@@ -36,7 +36,7 @@ Everything in AutoTuneX is one of a small number of entities. Understanding how 
 
 A **user** is an identity — the owner of configurations, datasets, and jobs. It is not itself an owned resource; it is *who owns* the resources.
 
-A user's **role** is free text rather than a fixed two-value field: only the exact value `admin` grants the ability to widen scope, and anything else — including an unset role — is a regular user. Ownership matters on every read: resources are scoped per caller, so by default you see only your own configurations, datasets, and jobs — and this is true for admins too. An admin can *choose* to widen a request to see everyone's data, but being an admin does not remove the ownership filter automatically; it grants the ability to ask for the wider view. A regular user cannot ask for it at all.
+A user's **role** is strict on the way in and lenient on the way out: a write accepts only `admin` or `user` (`PATCH /users/{id}` rejects anything else with a `422`, and the same two values are the only ones `standalone_role` will start up with), while a read tolerates whatever the column happens to hold — it is nullable, and may carry a legacy or tuning-pipeline-written value. On that read side only the exact value `admin` grants the ability to widen scope, and anything else — including an unset role — is a regular user. Ownership matters on every read: resources are scoped per caller, so by default you see only your own configurations, datasets, and jobs — and this is true for admins too. An admin can *choose* to widen a request to see everyone's data, but being an admin does not remove the ownership filter automatically; it grants the ability to ask for the wider view. A regular user cannot ask for it at all.
 
 The practical consequence: when you list your jobs, you get *your* jobs. That is a feature, not a limitation.
 
@@ -67,7 +67,12 @@ A dataset is more than a label: you upload a file to it, and it moves through a 
 empty  →  uploading  →  ready
                   ↘
                    error
+
+ready  →  uploading            (a re-upload)
+error  →  uploading            (a re-upload)
 ```
+
+The lifecycle is not one-way: a `ready` or `error` dataset can be uploaded again, re-entering `uploading`. The only status that refuses a new upload is `uploading` itself — an in-flight upload has to finish first.
 
 | Status | Meaning |
 | --- | --- |

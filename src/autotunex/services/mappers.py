@@ -189,6 +189,34 @@ def trial_to_read(trial: TrialTable) -> TrialRead:
     )
 
 
+def _config_is_stale(job: JobTable) -> bool:
+    """Return True when the live configuration has drifted from the job's snapshot.
+
+    Content comparison, not a timestamp: fires only when a *behavioural* field the
+    snapshot froze — ``config_data``, ``tuner_type`` or ``rl_tuner_type`` — differs
+    from the live configuration. A cosmetic rename or a no-op re-save therefore does
+    not flag historical jobs, and an edit-then-revert correctly reads not-stale. This
+    deliberately supersedes the pre-rewrite ``updated_at > created_at`` proxy, which
+    over-reported because ``configurations.updated_at`` bumps on any column write.
+
+    The ``config_data`` comparison is a recursive, key-order-independent ``dict``
+    compare, so MySQL's JSON key reordering cannot cause a false diff (compare parsed
+    JSON, never raw strings). A job with no ``config_snapshot`` — some pipeline-written
+    rows — has no baseline, so it is reported not-stale rather than guessed.
+    ``job.configuration`` is always eager-loaded on the detail path (``_view_shaped``),
+    so this triggers no async lazy load.
+    """
+    snapshot = job.config_snapshot
+    if not snapshot:
+        return False
+    live = job.configuration
+    return (
+        snapshot.get("config_data") != live.config_data
+        or snapshot.get("tuner_type") != live.tuner_type
+        or snapshot.get("rl_tuner_type") != live.rl_tuner_type
+    )
+
+
 def job_to_read(job: JobTable) -> JobRead:
     """Convert a job row to the full detail representation.
 
@@ -222,6 +250,7 @@ def job_to_read(job: JobTable) -> JobRead:
         config_snapshot=job.config_snapshot,
         output_artifacts=job.output_artifacts,
         trials=[trial_to_read(trial) for trial in job.trials],
+        is_stale=_config_is_stale(job),
     )
 
 

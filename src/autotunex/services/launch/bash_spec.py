@@ -33,9 +33,13 @@ def build_bash_spec(
 ) -> str:
     """Return the local-bash ``build.yaml`` text for ``ctx``.
 
-    HuggingFace-only: the model is emitted as ``hf:///<model>`` (three slashes,
-    the local-bash convention for a bare HF repo id). The dataset is referenced by
-    its HF ``artifact_url`` (``ctx.dataset_uri``); a caller must ensure it is set.
+    HuggingFace-only model: emitted as ``hf:///<model>`` (three slashes, the
+    local-bash convention for a bare HF repo id). The dataset is referenced by
+    ``ctx.dataset_uri`` (the dataset's ``artifact_url``) verbatim — the builder is
+    scheme-agnostic: an ``hf://`` artifact is pulled by gbserver, and, in
+    standalone mode, a local ``file://`` directory (what upload persists there;
+    see the 2026-08-25 standalone-dataset-upload spec) is mounted by the same-host
+    gbserver. A caller must ensure it is set.
     ``config_data`` is embedded verbatim as ``autotune-config`` (deep-copied so the
     caller's object is never mutated). No reward-function injection here — mirror
     2025 (the ``local`` runner handles online RL).

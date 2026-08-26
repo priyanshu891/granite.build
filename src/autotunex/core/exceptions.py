@@ -229,6 +229,20 @@ class RewardExecutionUnavailableError(ServiceUnavailableError):
         super().__init__("The reward-function execution sandbox is unavailable.")
 
 
+class DatabaseUnavailableError(ServiceUnavailableError):
+    """The database is unreachable — raised by the readiness probe.
+
+    A subclass of :class:`ServiceUnavailableError` so it maps to 503, but a
+    distinct type so a readiness failure is legible in logs and separable from
+    the LLM/reward 503s above. Turns an uncaught ``SQLAlchemyError`` — which the
+    global handler would render as a generic 500 — into the 503 an orchestrator
+    reads to keep traffic away until the database is back.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("The database is not reachable.")
+
+
 class CannotImpersonateSelfError(AutoTuneXError):
     """An admin tried to assume their own identity — a confusing no-op."""
 

@@ -100,8 +100,10 @@ Return one dataset, optionally with a bounded row preview. Returns `DatasetRead`
 | `preview_rows` | query | int | `10` | 1–100 |
 | `scope` | query | string | `own` | `own` \| `all` (admin only for `all`) |
 
-`preview` is populated only when `preview=true` **and** `status=ready`. A backend failure
-while previewing degrades `preview` to `null` and never fails the metadata read.
+`preview` is populated when `preview=true` **and** the dataset has data to read — either
+`status=ready`, or a non-empty `artifact_url` (a dataset registered out-of-band by the tuning
+pipeline, which never flips `status` to `ready`). A backend failure while previewing degrades
+`preview` to `null` and never fails the metadata read.
 
 ### The `DatasetRead` shape
 
@@ -125,7 +127,7 @@ while previewing degrades `preview` to `null` and never fails the metadata read.
 | `associated_jobs` | `DatasetJobRef[]` | Compact refs to jobs using this dataset (owner-scoped) |
 | `created_at` | datetime | ISO 8601 |
 | `updated_at` | datetime | ISO 8601 |
-| `preview` | object \| null | Present only when requested and ready; see below |
+| `preview` | object \| null | Present only when requested and readable (`ready` or `artifact_url`); see below |
 
 **`DatasetJobRef`:** `{ id: UUID, experiment_name: string|null, status: string }`.
 
@@ -349,8 +351,11 @@ Dry-run a parsing strategy against a sample with **no LLM call**. Returns a
 | --- | --- | --- |
 | `success` | bool | Whether the dry run succeeded |
 | `parsed_count` | int | Rows successfully parsed (≥ 0) |
-| `sample_results` | array of objects | Parsed sample outputs |
+| `sample_results` | array of objects | Parsed sample outputs, first 5 at most |
 | `errors` | array of strings | Per-row or overall errors |
+
+`sample_results` holds at most the first 5 parsed pairs, whereas `parsed_count` is the full
+count — the two are expected to differ once a sample parses more than 5 rows.
 
 ### Notable statuses
 

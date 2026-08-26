@@ -102,3 +102,49 @@ def test_huggingface_backend_receives_gb_tags(
     hf = backend._primary
     assert isinstance(hf, HuggingFaceStorageBackend)
     assert hf._tags == settings.gb_tags
+
+
+def test_auto_standalone_bash_uses_local_with_file_uri(monkeypatch: pytest.MonkeyPatch) -> None:
+    # llmb + both tokens present would normally pick HF, but standalone can't push.
+    _both_tokens(monkeypatch)
+    monkeypatch.setattr("shutil.which", lambda cmd: f"/usr/bin/{cmd}")
+
+    backend = get_storage_backend(
+        make_settings(dataset_storage_backend="auto", gb_environment="standalone")
+    )
+
+    assert isinstance(backend, LocalStorageBackend)
+    assert backend._emit_file_uri is True
+
+
+def test_auto_standalone_lsf_uses_local_without_file_uri(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Remote LSF build: store locally but emit NO local locator (it can't reach it).
+    _both_tokens(monkeypatch)
+    monkeypatch.setattr("shutil.which", lambda cmd: f"/usr/bin/{cmd}")
+
+    backend = get_storage_backend(
+        make_settings(
+            dataset_storage_backend="auto",
+            gb_environment="standalone",
+            lsf_cluster="my-cluster",
+        )
+    )
+
+    assert isinstance(backend, LocalStorageBackend)
+    assert backend._emit_file_uri is False
+
+
+def test_forced_local_standalone_bash_emits_file_uri(monkeypatch: pytest.MonkeyPatch) -> None:
+    backend = get_storage_backend(
+        make_settings(dataset_storage_backend="local", gb_environment="standalone")
+    )
+
+    assert isinstance(backend, LocalStorageBackend)
+    assert backend._emit_file_uri is True
+
+
+def test_forced_local_non_standalone_emits_no_file_uri(monkeypatch: pytest.MonkeyPatch) -> None:
+    backend = get_storage_backend(make_settings(dataset_storage_backend="local"))
+
+    assert isinstance(backend, LocalStorageBackend)
+    assert backend._emit_file_uri is False

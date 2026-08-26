@@ -12,9 +12,25 @@ from uuid import uuid4
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from autotunex.db.tables import GbTaskTable, JobTable, ResultTable, TrialTable
+from autotunex.db.tables import (
+    ConfigurationTable,
+    GbTaskTable,
+    JobTable,
+    ResultTable,
+    TrialTable,
+)
 from autotunex.models.status import GbTaskType, RunStatus
 from tests.conftest import API
+
+
+def _snapshot_of(configuration: ConfigurationTable) -> dict[str, object]:
+    """Build the snapshot a job captures at submit — mirrors ``JobService.create``."""
+    return {
+        "name": configuration.name,
+        "tuner_type": configuration.tuner_type,
+        "rl_tuner_type": configuration.rl_tuner_type,
+        "config_data": configuration.config_data,
+    }
 
 
 async def test_detail_includes_the_config_snapshot(
@@ -140,6 +156,82 @@ async def test_detail_carries_model_source_and_num_trials(
     body = response.json()
     assert body["model_source"] == "huggingface"
     assert body["num_trials"] == 1
+
+
+async def test_detail_is_stale_is_false_when_the_snapshot_matches_the_live_config(
+    client: AsyncClient, session: AsyncSession, job: JobTable, configuration: ConfigurationTable
+) -> None:
+    job.config_snapshot = _snapshot_of(configuration)
+    session.add(job)
+    await session.commit()
+
+    response = await client.get(f"{API}/jobs/{job.id}?scope=all")
+
+    assert response.status_code == 200
+    assert response.json().get("is_stale") is False
+
+
+async def test_detail_is_stale_is_true_when_the_configuration_data_changed(
+    client: AsyncClient, session: AsyncSession, job: JobTable, configuration: ConfigurationTable
+) -> None:
+    job.config_snapshot = _snapshot_of(configuration)
+    session.add(job)
+    await session.commit()
+
+    configuration.config_data = {"learning_rate": {"kind": "float", "low": 1e-5, "high": 1e-2}}
+    session.add(configuration)
+    await session.commit()
+
+    response = await client.get(f"{API}/jobs/{job.id}?scope=all")
+
+    assert response.json().get("is_stale") is True
+
+
+async def test_detail_is_stale_stays_false_after_a_pure_rename(
+    client: AsyncClient, session: AsyncSession, job: JobTable, configuration: ConfigurationTable
+) -> None:
+    """A rename bumps ``configurations.updated_at`` but changes no behaviour.
+
+    This is the case the content comparison exists to get right, and the old
+    timestamp proxy got wrong: renaming a configuration must not flag every
+    historical job that ran its (unchanged) settings.
+    """
+    job.config_snapshot = _snapshot_of(configuration)
+    session.add(job)
+    await session.commit()
+
+    configuration.name = "lora-sweep-renamed"
+    session.add(configuration)
+    await session.commit()
+
+    response = await client.get(f"{API}/jobs/{job.id}?scope=all")
+
+    assert response.json().get("is_stale") is False
+
+
+async def test_detail_is_stale_is_true_when_the_tuner_type_changed(
+    client: AsyncClient, session: AsyncSession, job: JobTable, configuration: ConfigurationTable
+) -> None:
+    job.config_snapshot = _snapshot_of(configuration)
+    session.add(job)
+    await session.commit()
+
+    configuration.tuner_type = "hyperband"
+    session.add(configuration)
+    await session.commit()
+
+    response = await client.get(f"{API}/jobs/{job.id}?scope=all")
+
+    assert response.json().get("is_stale") is True
+
+
+async def test_detail_is_stale_is_false_when_the_job_has_no_snapshot(
+    client: AsyncClient, job: JobTable
+) -> None:
+    """A job with no ``config_snapshot`` has no baseline to compare, so is never stale."""
+    response = await client.get(f"{API}/jobs/{job.id}?scope=all")
+
+    assert response.json().get("is_stale") is False
 
 
 async def test_detail_nests_all_tasks_with_the_view_aliases(

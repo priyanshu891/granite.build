@@ -30,10 +30,13 @@ and never depends on the order providers are listed:
 | Browser session | httpOnly `session` cookie        |
 
 Send **exactly one** credential per request. Presenting both a bearer token and
-an API key is rejected with `400 Bad Request`. A request with no usable
-credential gets `401 Unauthorized`. A credential routed to a provider that is not
-enabled fails with the same opaque `401` as a genuinely invalid one — the service
-never reveals which schemes a deployment has configured.
+an API key is rejected with `400 Bad Request`. A `session` cookie sent alongside
+either of those is **ignored**, not a `400` — an explicit credential takes
+precedence over the ambient cookie (bearer, then API key, then session). A
+request with no usable credential gets `401 Unauthorized`. A credential routed to
+a provider that is not enabled fails with the same opaque `401` as a genuinely
+invalid one — the service never reveals which schemes a deployment has
+configured.
 
 ## Modes at a glance
 
@@ -128,7 +131,9 @@ error (and the offending key is withheld from the message).
 > The mapped email must belong to a real `users` row — or enable just-in-time
 > provisioning with `AUTOTUNEX_AUTO_PROVISION_USERS=true` — for the key to see
 > anything. A key mapped to an unknown email **authenticates successfully but
-> sees an empty result set**, never an error.
+> owns nothing**: reads return an empty result set, and a *write* is refused with
+> `403 Forbidden` (`CallerNotProvisionedError`) — the case just-in-time
+> provisioning below addresses.
 
 ---
 
@@ -224,7 +229,7 @@ The flow uses these endpoints, plus two admin-only impersonation endpoints docum
 | Endpoint            | Method | Purpose                                                                  |
 | ------------------- | ------ | ------------------------------------------------------------------------ |
 | `/auth/login`       | GET    | Starts an authorization-code + PKCE (`S256`) flow; redirects to the IdP. |
-| `/auth/callback`    | GET    | Exchanges the code server-side and mints the httpOnly session cookie.    |
+| `/auth/callback`    | GET    | Exchanges the code server-side, mints the httpOnly session cookie, then redirects (`302`) to `AUTOTUNEX_PUBLIC_BASE_URL`. |
 | `/auth/me`          | GET    | Reports the current principal (the `Principal` body below).               |
 | `/auth/logout`      | POST   | Clears the session cookie and the `autotunex_assume` impersonation overlay (and returns the IdP logout endpoint, if set); requires authentication. |
 
@@ -233,6 +238,12 @@ httpOnly cookie — never server memory — so the flow works identically behind
 number of workers. `/auth/callback` validates `state`, exchanges the code for
 tokens (the client secret never reaches the browser), verifies the returned ID
 token, and mints the session cookie.
+
+Both `/auth/login` and `/auth/callback` are mounted unconditionally, so the routes
+exist even when `"session"` is not among `AUTOTUNEX_AUTH_PROVIDERS`. Whether the
+provider is disabled or merely configured incompletely, they answer with the same
+opaque `401` as a rejected credential rather than a `404` — deliberately, so that
+probing cannot distinguish the two cases.
 
 ### The `/auth/me` response
 
@@ -340,9 +351,12 @@ Two omissions in this flow are deliberate — a decision, not an oversight:
 ### Impersonation (assume / unassume)
 
 Two further endpoints let an **admin** act as another user's data-owner identity —
-the "assume user" control the UI drives. They are layered on the browser session
-and gated on the **real** caller, so the control can never be exercised *through*
-an existing impersonation.
+the "assume user" control the UI drives. They are gated on the **real** caller,
+so the control can never be exercised *through* an existing impersonation. The
+overlay is not tied to the browser session, though: it requires only an admin
+caller, a configured `AUTOTUNEX_SESSION_SECRET`, and the `autotunex_assume`
+cookie, so it works with **any** credential kind — an API key or bearer token
+included, not just a `"session"` login.
 
 | Endpoint                 | Method | Purpose                                                              |
 | ------------------------ | ------ | -------------------------------------------------------------------- |

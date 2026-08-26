@@ -877,13 +877,39 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_datasets(self) -> Settings:
-        """Fail startup if ``huggingface`` is forced but its token is absent.
+        """Fail startup on an unusable dataset-storage configuration.
 
-        Mirrors ``_validate_auth``'s fail-fast stance: a forced backend with no
-        credential would otherwise fail on the first upload, far from the
-        misconfiguration. ``"auto"`` never fails here — it degrades to ``local``.
+        Two fail-fast checks, mirroring ``_validate_auth``'s stance (a
+        misconfiguration should fail at startup, not on the first upload):
+
+        - A forced ``huggingface`` backend is impossible for the same-host
+          *bash* standalone runner (``gb_environment="standalone"`` with
+          ``lsf_cluster`` unset): the HF push runs ``llmb artifact push``,
+          which the CLI disables under ``GB_ENVIRONMENT=STANDALONE``. Checked
+          first, so it fires regardless of whether the tokens happen to be
+          set. The remote LSF/SkyPilot standalone variant (``lsf_cluster``
+          set) is exempt: it runs on a cluster a local ``file://`` locator
+          cannot reach, so ``huggingface`` is the intended storage there —
+          its own ``llmb artifact push`` limitation is a separate, deferred
+          non-goal, not something this check tries to solve.
+        - A forced ``huggingface`` backend with either token absent would
+          otherwise fail on the first upload, far from the misconfiguration.
+
+        ``"auto"`` never fails here — it degrades to ``local`` (and, in
+        bash-standalone, emits a ``file://`` locator for the bash build; see
+        ``services/storage/registry.get_storage_backend``).
         """
         if self.dataset_storage_backend == "huggingface":
+            if self.gb_environment == "standalone" and not self.lsf_cluster:
+                raise ValueError(
+                    'dataset_storage_backend="huggingface" is not supported by '
+                    "the same-host bash standalone runner (gb_environment="
+                    '"standalone" without lsf_cluster): the HuggingFace push '
+                    "runs `llmb artifact push`, which granite.build disables in "
+                    'standalone mode. Use "auto" (stores locally with a file:// '
+                    'locator in standalone) or "local". The remote LSF/SkyPilot '
+                    "standalone variant (lsf_cluster set) still uses huggingface."
+                )
             missing = [
                 env for env in (self.gb_token_env, self.hf_token_env) if not os.environ.get(env)
             ]

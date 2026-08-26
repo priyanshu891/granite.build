@@ -196,7 +196,7 @@ mode, and the environment variable named by `AUTOTUNEX_GB_TOKEN_ENV` must be pre
 | `AUTOTUNEX_JOB_TRAINER_REPO` | Trainer source repository the build checks out. **Required** in this mode. | *(unset)* |
 | `AUTOTUNEX_JOB_TRAINER_REF` | Branch, tag, or commit of the trainer repo to check out. | `main` |
 | `AUTOTUNEX_JOB_OUTPUT_URI_ROOT` | Root URI for run artifacts; each run's output is written under a subpath. **Required** in this mode. | *(unset)* |
-| `AUTOTUNEX_JOB_CALLBACK_URL` | Base URL a cluster worker reports back to. Emitted into the build's start command only when set. | *(unset)* |
+| `AUTOTUNEX_JOB_CALLBACK_URL` | The api-bridge / callback base URL the build reports to. The `custom_code` and LSF start commands emit it as `--autotunex_server_url` **only when it is set**; the local-`bash` variant always emits it, with a default (see that table below). | *(unset)* |
 | `AUTOTUNEX_GB_SERVER_URL` | Base URL of the build server the reconcile loop polls for job status, e.g. `https://gb.example.com`. **Required** whenever `job_backend=llmb` (all three variants) — without it, accepted jobs sit `pending` forever. | *(unset)* |
 | `AUTOTUNEX_GB_TOKEN_ENV` | **Name** of the environment variable holding the build-server auth token. The token **value** is read at the subprocess/request boundary and never loaded into settings. Set the named variable (`GB_TOKEN` by default) in the environment. | `GB_TOKEN` |
 | `AUTOTUNEX_JOB_SPEC_DIR` | Directory the generated `build.yaml` is written to, one per job at `<dir>/<job_id>/build.yaml`. Relative paths resolve against the working directory. The spec is kept after submission (including on failure) so it can be inspected or replayed. | `tmp` |
@@ -223,6 +223,7 @@ spec anchors each run's output under `AUTOTUNEX_ARTIFACT_DIR`, resolved to an ab
 | `AUTOTUNEX_BASH_FM_TUNE_REF` | Branch/tag/commit of the trainer to check out; unset uses the repo's default branch. | *(unset)* |
 | `AUTOTUNEX_BASH_FM_TUNE_EXTRA` | The extras to install in the bash spec. | `full,mlx` |
 | `AUTOTUNEX_BASH_BACKEND` | Compute backend for the bash spec: `mlx` (Apple Silicon) or `torch`. | `mlx` |
+| `AUTOTUNEX_JOB_CALLBACK_URL` | The api-bridge / callback base URL the build reports to, injected into the bash spec's environment as `AUTOTUNEX_SERVER_URL`. Unlike the `custom_code` and LSF start commands — which emit `--autotunex_server_url` only when it is set — the bash spec **always** emits it, falling back to `http://localhost:8001` (the api-bridge's default port) when unset. | *(unset — the bash spec then emits `http://localhost:8001`)* |
 
 ### `llmb` backend (LSF / SkyPilot variant)
 

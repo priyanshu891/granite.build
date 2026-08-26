@@ -258,8 +258,16 @@ export class API {
 
 	getAllTaskByJob = async (jobId: string) => (await this.getJob(jobId)).tasks ?? [];
 
-	getJobConfigSnapshot = async (jobId: string) =>
-		(await this.getJob(jobId)).config_snapshot ?? null;
+	// `is_stale` is a top-level, read-time field on the job detail (not baked into the
+	// frozen snapshot); merge it onto the snapshot object the drift banner reads.
+	// `Object.assign` (not object spread) keeps the snapshot's index signature so callers
+	// still read `snapshot.name`, `.config_data`, etc. without a type error.
+	getJobConfigSnapshot = async (jobId: string) => {
+		const job = await this.getJob(jobId);
+		return job.config_snapshot
+			? Object.assign({}, job.config_snapshot, { is_stale: job.is_stale ?? false })
+			: null;
+	};
 
 	// --- Datasets (CRUD + upload) ------------------------------------------------
 

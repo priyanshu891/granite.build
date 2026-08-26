@@ -45,8 +45,16 @@
 	let pageSize = 10;
 	let q = '';
 	let loaded = false;
+	// True while a page/page-size change is refetching — drives the table skeleton
+	// (see fetchPage). Distinct from `loaded`, which only gates the very first load.
+	let fetching = false;
 
-	const fetchPage = async () => {
+	// `showSkeleton` swaps the table for a loading skeleton while this fetch runs.
+	// Callers pass it for page navigation only; create/delete refetches leave it
+	// false (they already show the global loader), and search leaves it false so the
+	// toolbar search input stays mounted and keeps focus.
+	const fetchPage = async (showSkeleton = false) => {
+		if (showSkeleton) fetching = true;
 		try {
 			const res = await api.getDatasetsPage({ limit: pageSize, offset: (page - 1) * pageSize, q });
 			// Preserve the existing zero-fill for record counts.
@@ -66,6 +74,7 @@
 			});
 		} finally {
 			loaded = true;
+			fetching = false;
 		}
 	};
 
@@ -81,8 +90,20 @@
 	$: {
 		const key = `${page} ${pageSize} ${q}`;
 		if (key !== prevKey) {
+			// Show the skeleton only for a genuine page turn: the page/page-size
+			// portion changed while the search term did not (see fetchPage). A search
+			// always changes `q` — and also resets the page to 1 — so skeletoning then
+			// would unmount the toolbar search input mid-type and drop focus. Both
+			// parts are read back off `prevKey` (format "<page> <pageSize> <q>", and
+			// `q` may itself contain spaces) so this stays correct through the manual
+			// prevKey pre-syncs in the create/delete handlers.
+			const [prevPage, prevSize, ...prevQParts] = (prevKey ?? '').split(' ');
+			const pageChanged =
+				prevKey !== null &&
+				prevQParts.join(' ') === q &&
+				`${prevPage} ${prevSize}` !== `${page} ${pageSize}`;
 			prevKey = key;
-			fetchPage();
+			fetchPage(pageChanged);
 		}
 	}
 
@@ -183,6 +204,7 @@
 		bind:openNew={openCreateDataset}
 		{rows}
 		serverSide
+		loading={fetching}
 		{total}
 		bind:page
 		bind:pageSize
@@ -276,5 +298,5 @@
 		</svelte:fragment>
 	</Table>
 {:else}
-	<DataTableSkeleton />
+	<DataTableSkeleton headers={datasetHeaders} rows={pageSize} zebra />
 {/if}

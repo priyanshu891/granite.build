@@ -162,3 +162,12 @@ class JobRead(JobSummary):
     config_snapshot: dict[str, Any] | None = None
     output_artifacts: dict[str, Any] | None = None
     trials: list[TrialRead] = Field(default_factory=list)
+    is_stale: bool = Field(
+        default=False,
+        description=(
+            "True when the live configuration's behavioural settings no longer match "
+            "what this job snapshotted at submit — config_data, tuner_type, or "
+            "rl_tuner_type differs. A cosmetic rename does not set it. Computed at read "
+            "time on the detail response only; never present on the JobSummary list shape."
+        ),
+    )

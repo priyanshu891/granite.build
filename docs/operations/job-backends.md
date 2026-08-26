@@ -5,10 +5,15 @@
 `POST /jobs` never blocks on training. When a job is accepted it is validated,
 persisted as `pending`, and handed to a **`JobRunner`** off the request path —
 the HTTP response returns immediately. The job then stays `pending` until a
-runner picks it up and moves it through its six-state lifecycle
-(`pending → running → paused | completed | error | terminated`, with `paused`
-returning only to `running` or a terminal state — see `ALLOWED_JOB_TRANSITIONS`
-in `models/job.py` for the exact transitions).
+runner picks it up and moves it through its six-state lifecycle:
+`pending → running | completed | error | terminated`;
+`running → paused | completed | error | terminated`;
+`paused → running | terminated | error` (see `ALLOWED_JOB_TRANSITIONS` in
+`models/job.py` for the exact transitions). A `pending` job may jump **straight
+to a terminal state**, and that is what makes the reconcile loop below
+restart-safe: a sweep can observe a build that already finished while the service
+was not watching, and record what genuinely happened instead of leaving the job a
+permanent zombie.
 
 Which runner is built is chosen by a single setting,
 `AUTOTUNEX_JOB_BACKEND`. There is **no external broker or task queue yet** — the
@@ -60,12 +65,14 @@ Because the run happens in-process, no reconcile loop is started for this backen
 
 ### Requirements
 
-- **The optional `autotune` trainer package.** It ships via the optional
-  `granite-build` extra and may require its own access to install. Whether it is
-  installed is a **runtime** concern, not a startup gate: a `local`-configured
-  deployment starts fine even without it, and a submitted job fails cleanly (the
-  job lands in `error`) only when a run is attempted and the package cannot be
-  imported. Ray is pulled in the same way.
+- **The optional `autotune` trainer package.** It is vendored in-tree at
+  `src/fm-tune/`, so it needs no credentials and no network fetch: `make install`
+  installs the slim, torch-free catalog from that path, and `make install-training`
+  installs the heavy training stack (`src/fm-tune[full,mlx]`), which is what pulls
+  in Ray and Torch. Whether it is installed is a **runtime** concern, not a startup
+  gate: a `local`-configured deployment starts fine even without it, and a submitted
+  job fails cleanly (the job lands in `error`) only when a run is attempted and the
+  package cannot be imported.
 - **The dataset's files on local disk.** This runner reads training data from
   disk, never from a remote host. Files are resolved at
   `<AUTOTUNEX_DATASET_STORAGE_DIR>/<dataset_id>/<name>_<split>.<ext>`; a missing

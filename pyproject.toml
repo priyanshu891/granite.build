@@ -96,10 +96,13 @@ mysql = ["asyncmy==0.2.11", "cryptography==48.0.1"]
 # fastapi/starlette/pydantic left untouched — see api/mcp.py's module docstring).
 mcp = ["fastmcp>=2.3,<4"]
 # Granite build integration. Unlike every other group here this is a VCS (git)
-# dependency rather than a PyPI release, so it cannot carry the exact version pin
-# the rest of this file relies on for reproducible installs; it tracks the repo's
-# default branch unless a ref is appended (`....git@<tag-or-commit>`). Direct
-# references like this require `allow-direct-references` under
+# dependency rather than a PyPI release, so it cannot carry the exact PyPI-style
+# version pin the rest of this file relies on. It is pinned to the upstream
+# `stable` release tag (`....git@stable`) rather than tracking the default
+# branch, so an unrelated upstream commit can no longer turn a green install red
+# with no local change. Note `stable` is a *moving* tag that advances with each
+# release; pin `@vX.Y.Z` (e.g. `@v0.3.4`) instead for a fully immutable ref.
+# Direct references like this require `allow-direct-references` under
 # `[tool.hatch.metadata]` below.
 #
 # `autotune` (the fm-tune training core) is NOT listed here: it is vendored in-tree
@@ -108,7 +111,7 @@ mcp = ["fastmcp>=2.3,<4"]
 # `make install`. A standalone install that wants only the core can still use:
 #   pip install "autotune[full,mlx] @ git+<public-repo>#subdirectory=autotunex/src/fm-tune"
 granite-build = [
-  "granite.build @ git+https://github.com/ibm-granite/granite.build.git",
+  "granite.build @ git+https://github.com/ibm-granite/granite.build.git@stable",
 ]
 dev = [
   "pytest==9.1.1",

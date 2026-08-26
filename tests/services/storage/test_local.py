@@ -37,6 +37,23 @@ async def test_persist_moves_files_and_returns_no_artifact_refs(tmp_path: Path) 
     assert not train.exists()  # moved, not copied
 
 
+async def test_persist_emits_dataset_dir_file_uri_when_enabled(tmp_path: Path) -> None:
+    backend = LocalStorageBackend(root=tmp_path / "store", emit_file_uri=True)
+    dataset_id = uuid4()
+    staging = tmp_path / "staging"
+    train = _staged_jsonl(staging, "train.jsonl", [{"i": 1}])
+
+    artifact_id, artifact_url = await backend.persist(
+        dataset_id=dataset_id, name="ds", data_format="jsonl", train=train, validation=None
+    )
+
+    expected = (tmp_path / "store" / str(dataset_id)).resolve().as_uri()
+    assert artifact_id is None
+    assert artifact_url == expected
+    assert artifact_url.startswith("file:///")  # absolute URI, mountable by same-host gbserver
+    assert (tmp_path / "store" / str(dataset_id) / "ds_train.jsonl").exists()
+
+
 async def test_preview_returns_bounded_rows(tmp_path: Path) -> None:
     backend = LocalStorageBackend(root=tmp_path / "store")
     dataset_id = uuid4()

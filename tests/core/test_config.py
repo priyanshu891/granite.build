@@ -591,6 +591,44 @@ def test_forcing_huggingface_with_both_token_env_vars_is_accepted(
     assert settings.dataset_storage_backend == "huggingface"
 
 
+def test_forcing_huggingface_in_standalone_refuses_to_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Both tokens present, so the ONLY reason to fail is the standalone conflict.
+    monkeypatch.setenv("HF_TOKEN", "hf_xxx")
+    monkeypatch.setenv("GB_TOKEN", "gb_xxx")
+
+    with pytest.raises(ValueError, match="standalone"):
+        make_settings(dataset_storage_backend="huggingface", gb_environment="standalone")
+
+
+def test_forcing_huggingface_in_lsf_standalone_is_accepted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The remote LSF/SkyPilot standalone variant genuinely needs HF-hosted data
+    # (a local file:// cannot reach the cluster); its push limitation is a
+    # separate, deferred non-goal. So huggingface must remain valid there.
+    monkeypatch.setenv("HF_TOKEN", "hf_xxx")
+    monkeypatch.setenv("GB_TOKEN", "gb_xxx")
+
+    settings = make_settings(
+        dataset_storage_backend="huggingface",
+        gb_environment="standalone",
+        lsf_cluster="example-cluster",
+    )
+
+    assert settings.dataset_storage_backend == "huggingface"
+    assert settings.lsf_cluster == "example-cluster"
+
+
+def test_auto_in_standalone_is_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
+    # auto degrades to local in standalone; it must NOT be rejected at startup.
+    settings = make_settings(dataset_storage_backend="auto", gb_environment="standalone")
+
+    assert settings.dataset_storage_backend == "auto"
+    assert settings.gb_environment == "standalone"
+
+
 def test_llm_settings_default_to_unset() -> None:
     settings = Settings(_env_file=None, environment="test")
 

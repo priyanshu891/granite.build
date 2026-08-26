@@ -100,3 +100,31 @@ These are the integration points that cannot be checked at build time:
 3. `docker exec <container> supervisorctl status` → all three `RUNNING`.
 4. Submit a job through AutoTuneX and confirm the `llmb` CLI reaches the local
    gbserver (see the design doc's "assumptions to validate").
+
+## Debugging SQLite state inside a running container
+
+The image ships the `sqlite3` CLI for this. Two things in the stack can be
+SQLite-backed: gbserver's standalone metadata (`GBSERVER_METADATA_STORAGE=sqlite`,
+written under `$HOME` = `/data`, the persistent volume) and AutoTuneX's own
+database whenever `AUTOTUNEX_DATABASE_URL` is left at its SQLite default instead
+of pointing at MySQL. Neither path is fixed by this image, so locate the file
+first:
+
+```bash
+# Podman/Docker: podman exec -it <container> bash    OpenShift: oc rsh <pod>
+find /data /app \( -name '*.db' -o -name '*.sqlite*' \) 2>/dev/null
+
+sqlite3 /data/<file>.db '.tables'
+sqlite3 /data/<file>.db '.schema <table>'
+sqlite3 -header -column /data/<file>.db 'select * from <table> order by rowid desc limit 5;'
+```
+
+Pass `-readonly` when a service is live — a second writer on the same file can
+block the process that owns it:
+
+```bash
+sqlite3 -readonly /data/<file>.db 'select count(*) from <table>;'
+```
+
+AutoTuneX's MySQL database is not reachable this way; the image carries no
+`mysql` client. Query it from the API, or from the AutoTuneX venv's driver.

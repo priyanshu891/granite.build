@@ -184,3 +184,20 @@ def test_build_bash_spec_does_not_mutate_config_data() -> None:
     )
 
     assert original == {"tune_config": {"num_samples": {"default": 4}}}
+
+
+def test_build_bash_spec_passes_file_uri_dataset_through() -> None:
+    # A standalone local dataset is referenced by an absolute file:// directory
+    # URI; the bash spec is scheme-agnostic and must carry it verbatim.
+    file_uri = "file:///data/artifacts/datasets/193a11ef-0000-0000-0000-000000000000"
+    text = build_bash_spec(
+        _ctx(dataset_uri=file_uri),
+        fm_tune_root="R",
+        fm_tune_ref=None,
+        fm_tune_extra="full,mlx",
+        backend="mlx",
+        callback_url=None,
+        output_uri_root="file:///data/artifacts",
+    )
+
+    assert _custom(text)["inputs"]["dataset_files"]["uri"] == file_uri

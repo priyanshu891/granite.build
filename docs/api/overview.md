@@ -35,7 +35,10 @@ curl https://api.example.com/health
 
 `GET /health` never touches the database — it is a liveness probe, not a
 readiness one — and it does not require authentication. The bare service root
-(`/`) redirects to the interactive docs.
+(`/`) issues a temporary redirect to `/autotune`, where the SPA mounts by
+default, so it 404s unless the SPA is built and `AUTOTUNEX_FRONTEND_DIR` is
+configured. That target is hard-coded: changing `AUTOTUNEX_FRONTEND_BASE_PATH`
+moves the SPA but not this redirect. The interactive docs are at `/docs`.
 
 `GET /api/v1/app-config` is the one *prefixed* endpoint that likewise needs no
 credential: it returns non-sensitive, backend-defined values the web UI reads at

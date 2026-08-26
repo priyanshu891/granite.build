@@ -37,6 +37,8 @@ _ALLOWLIST = frozenset(
     {
         "/",
         "/health",
+        "/health/live",
+        "/health/ready",
         "/api/v1/app-config",
         "/docs",
         "/docs/oauth2-redirect",
@@ -50,7 +52,10 @@ _ALLOWLIST = frozenset(
 
 ``/`` because it is a bare convenience redirect to ``/docs`` that exposes no
 data — gating it would only mean a browser cannot even be bounced to a public
-docs page. ``/health`` because a liveness probe cannot present a credential;
+docs page. ``/health``, ``/health/live`` and ``/health/ready`` because an
+orchestrator's liveness and readiness probes cannot present a credential — and
+``/health/ready`` deliberately fails closed on its own terms, returning a 503
+when the database is unreachable rather than depending on this walk;
 ``/api/v1/app-config`` because the frontend needs it before and independent of
 any user request; the four doc routes because they publish schema, not data, and
 gating ``/docs`` would break the Authorize workflow — you cannot log in through

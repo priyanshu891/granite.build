@@ -34,7 +34,8 @@
 		'ray_address',
 		'seed',
 		'autotune',
-		'updated_at'
+		'updated_at',
+		'precision'
 	];
 </script>
 
@@ -80,18 +81,23 @@
 				</Column>
 			</Column>
 		{/each}
-		{#if dict['created_at'] && dict['updated_at']}
+		<!-- Total time = job start -> end. A running job ticks live to now; a finished
+		     job uses finished_at (the latest gb_tasks.updated_at). Jobs with no build
+		     task (e.g. local-backend) have no end -> show a dash. NOT updated_at: it is
+		     ON UPDATE CURRENT_TIMESTAMP, so any later write bumps it and inflates the
+		     duration. Mirrors the Tunings table's total_time. -->
+		{#if dict['created_at']}
 			<Column sm={1} padding>
 				<Column noGutter>
 					<FormLabel>Total time</FormLabel>
 				</Column>
 				<Column noGutter>
 					<span style="font-family: monospace">
-						{Utils.getTimeElapsed(
-							dict['created_at'],
-							dict['updated_at'],
-							dict['status'] === 'RUNNING'
-						)}
+						{dict['status'] === 'RUNNING'
+							? Utils.getTimeElapsed(dict['created_at'], new Date(), true)
+							: dict['finished_at']
+							  ? Utils.getTimeElapsed(dict['created_at'], dict['finished_at'])
+							  : '—'}
 					</span>
 				</Column>
 			</Column>
@@ -99,7 +105,7 @@
 		{#if $currentUser?.role === 'admin' && dict['github_pr_url']}
 			<Column sm={1} padding>
 				<Column noGutter>
-					<FormLabel>LLM.Build PR</FormLabel>
+					<FormLabel>Granite.Build</FormLabel>
 				</Column>
 				<Column noGutter>
 					<OutboundLink href={dict['github_pr_url']}>Open Dashboard</OutboundLink>

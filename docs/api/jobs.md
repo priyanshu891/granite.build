@@ -84,6 +84,7 @@ only on the detail endpoint.
 | `user` | string | Owner's email |
 | `created_at` | datetime | ISO 8601 |
 | `updated_at` | datetime | ISO 8601 |
+| `finished_at` | string \| null | The latest `gb_tasks.updated_at` for the job — a string rather than a datetime because the column is `VARCHAR(255)`; `null` when the job has no build tasks (e.g. the `local` backend, or a job still `pending`) |
 
 ```json
 {
@@ -101,7 +102,8 @@ only on the detail endpoint.
       "experiment_name": "sweep-2026-08",
       "user": "you@example.com",
       "created_at": "2026-08-11T09:00:00Z",
-      "updated_at": "2026-08-11T09:12:00Z"
+      "updated_at": "2026-08-11T09:12:00Z",
+      "finished_at": null
     }
   ],
   "total": 1,
@@ -322,7 +324,8 @@ Return one job with its current status and full detail. Returns `JobRead`.
   "output_artifacts": { "best_trial": "a1b2c3" },
   "trials": [],
   "created_at": "2026-08-11T09:00:00Z",
-  "updated_at": "2026-08-11T10:30:00Z"
+  "updated_at": "2026-08-11T10:30:00Z",
+  "finished_at": "2026-08-11 10:28:14"
 }
 ```
 
