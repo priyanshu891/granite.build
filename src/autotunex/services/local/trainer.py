@@ -114,7 +114,9 @@ class AutotuneLocalTrainer:
         except ImportError as exc:
             raise AutotuneCoreUnavailableError() from exc
 
-        class _SinkCallback(Callback):
+        # ``Callback`` resolves to ``Any`` under mypy (ray is follow_imports=skip in
+        # pyproject.toml), and strict mode forbids subclassing ``Any``.
+        class _SinkCallback(Callback):  # type: ignore[misc]
             """Ray Tune callback forwarding trial lifecycle events to ``sink``.
 
             The local analogue of the 2025 ``CustomLoggerCallback``: instead of

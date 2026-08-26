@@ -239,6 +239,30 @@ follow_imports = "skip"
 follow_imports_for_stubs = true
 ignore_missing_imports = true
 
+# ray backs the local runner's in-process HPO (services/local/trainer.py), installed
+# only via src/fm-tune[full,mlx] — never through the base `.[dev]` install CI type-checks
+# against (see CLAUDE.md "Open decisions" 2). Skip following it even when it *is*
+# installed, exactly like numpy above: that keeps mypy's view of trainer.py identical
+# whether or not the heavy extra is present, so the `# type: ignore[misc]` on the Ray
+# Tune Callback subclass there (strict mode forbids subclassing the `Any` that ray
+# resolves to) is neither spuriously "unused" with ray present nor missing without it.
+[[tool.mypy.overrides]]
+module = ["ray", "ray.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
+ignore_missing_imports = true
+
+# gbcli is the granite.build CLI, imported lazily by services/gb_logs/gbcli_reader.py
+# only when the llmb backend is deployed; it is absent from the base `.[dev]` install and
+# ships no stubs. Treat it as untyped, exactly like autotune above. This replaces the
+# per-import `# type: ignore[import-untyped]` comments that file used to carry: they
+# silenced the found-but-untyped case but not the module-absent (`import-not-found`)
+# case CI actually hits, which then failed both as an unresolved import and as an
+# "unused" ignore under strict `warn_unused_ignores`.
+[[tool.mypy.overrides]]
+module = ["gbcli", "gbcli.*"]
+ignore_missing_imports = true
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------

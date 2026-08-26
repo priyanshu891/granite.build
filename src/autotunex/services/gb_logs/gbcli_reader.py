@@ -34,12 +34,14 @@ class GbcliLogReader:
         return await asyncio.to_thread(self._fetch, token, build_id, fetch_all)
 
     def _fetch(self, token: str, build_id: str, fetch_all: bool) -> list[str]:
-        # gbcli ships no py.typed marker, so mypy cannot resolve these lazy
-        # imports; ignored inline here rather than via a pyproject.toml override,
-        # which this file's scope does not touch (see the autotune/pyarrow
-        # overrides there for the same situation elsewhere).
+        # gbcli ships no py.typed marker and is absent from the base install CI
+        # type-checks against, so mypy cannot resolve these lazy imports. It is
+        # treated as untyped via a `[tool.mypy]` override in pyproject.toml
+        # (module = "gbcli.*"), exactly like the autotune/pyarrow overrides there —
+        # an inline `# type: ignore[import-untyped]` covered only the found-but-
+        # untyped case, not the module-absent one CI hits.
         try:
-            from gbcli.utils.cli_config import configureGBWorkingEnv  # type: ignore[import-untyped]
+            from gbcli.utils.cli_config import configureGBWorkingEnv
         except ImportError as exc:  # gbcli not installed in this deployment
             raise GbLogsUnavailableError() from exc
 
@@ -53,8 +55,8 @@ class GbcliLogReader:
         configureGBWorkingEnv()
 
         try:
-            from gbcli.utils.gbconstants import BUILD_LOGALL_PAGE_SIZE  # type: ignore[import-untyped]  # noqa: I001
-            from gbcli.utils.log_query import run_logquery  # type: ignore[import-untyped]
+            from gbcli.utils.gbconstants import BUILD_LOGALL_PAGE_SIZE
+            from gbcli.utils.log_query import run_logquery
         except ImportError as exc:  # gbcli not installed in this deployment
             raise GbLogsUnavailableError() from exc
 
