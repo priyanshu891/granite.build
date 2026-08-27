@@ -51,6 +51,8 @@ interface CreateConfigFormProps {
   hideNameField?: boolean
   presetGoal: TuningGoal | null
   presetAlgorithm?: string | null
+  /** When false (HPO off), the search-space controls (Strategy/Values/Min/Max) are disabled — only Default is used. */
+  hpoEnabled?: boolean
 }
 
 /**
@@ -65,7 +67,7 @@ interface CreateConfigFormProps {
  * Mode" radio group from the source is also dropped: this wizard always
  * supplies a `presetGoal` (from Step 0), so that branch is unreachable here.
  */
-export function CreateConfigForm({ config, setConfig, configurations, editMode = false, existingConfig, presetGoal, presetAlgorithm }: CreateConfigFormProps) {
+export function CreateConfigForm({ config, setConfig, configurations, editMode = false, existingConfig, presetGoal, presetAlgorithm, hpoEnabled = true }: CreateConfigFormProps) {
   const trainingMode: 'offline_tuning' | 'online_tuning' = presetGoal === 'online_rl' ? 'online_tuning' : 'offline_tuning'
   const [mode, setMode] = useState(false) // false = Basic, true = Advanced
 
@@ -187,7 +189,7 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
       return (
         <div className={styles.hyperparamRow} key={paramName}>
           <div>
-            <Select id={`${fieldId}-strategy`} labelText="Strategy" value={paramConfig.strategy} onChange={(e) => update({ strategy: e.target.value })}>
+            <Select id={`${fieldId}-strategy`} labelText="Strategy" value={paramConfig.strategy} disabled={!hpoEnabled} onChange={(e) => update({ strategy: e.target.value })}>
               {paramConfig.options.map((option: string) => (
                 <SelectItem key={option} value={option} text={getOption(option as any)} />
               ))}
@@ -213,6 +215,7 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
                   label="Min value"
                   step={paramConfig.type === 'float' ? 0.01 : 1}
                   value={paramConfig.min_val}
+                  disabled={!hpoEnabled}
                   onChange={(_e, { value }) => update({ min_val: typeof value === 'number' ? value : Number(value) })}
                 />
               </div>
@@ -222,6 +225,7 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
                   label="Max value"
                   step={paramConfig.type === 'float' ? 0.01 : 1}
                   value={paramConfig.max_val}
+                  disabled={!hpoEnabled}
                   onChange={(_e, { value }) => update({ max_val: typeof value === 'number' ? value : Number(value) })}
                 />
               </div>
@@ -238,6 +242,7 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
                 value={valueDrafts[fieldId] ?? formatValues(paramConfig.values)}
                 invalid={errorFields[fieldId]?.error}
                 invalidText={errorFields[fieldId]?.message}
+                disabled={!hpoEnabled}
                 onChange={(e) => setValueDrafts((prev) => ({ ...prev, [fieldId]: e.target.value }))}
                 onBlur={(e) => commitValues(fieldId, e.target.value, paramConfig, update)}
               />
@@ -271,7 +276,7 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
       return (
         <div className={styles.hyperparamRow} key={paramName}>
           <div>
-            <Select id={`${fieldId}-strategy`} labelText="Strategy" value={paramConfig.strategy} onChange={(e) => update({ strategy: e.target.value })}>
+            <Select id={`${fieldId}-strategy`} labelText="Strategy" value={paramConfig.strategy} disabled={!hpoEnabled} onChange={(e) => update({ strategy: e.target.value })}>
               {paramConfig.options.map((option: string) => (
                 <SelectItem key={option} value={option} text={getOption(option as any)} />
               ))}
@@ -295,6 +300,7 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
               items={valueItems}
               selectedItems={valueItems.filter((item) => selectedValues.includes(item.id))}
               itemToString={(item: ValueItem | null) => item?.text ?? ''}
+              disabled={!hpoEnabled}
               onChange={({ selectedItems }) => {
                 const next = (selectedItems ?? []).flatMap((item) => (item ? [item.id] : []))
                 // Belt-and-braces alongside the per-item guard above: a hyperparameter
@@ -325,6 +331,9 @@ export function CreateConfigForm({ config, setConfig, configurations, editMode =
     return (
       <div className={styles.hyperparamsSection}>
         <h5>{sectionKey === 'tuners_config' ? 'Hyperparameter search space settings' : 'RL Hyperparameter search space settings'}</h5>
+        {!hpoEnabled && (
+          <p className={styles.hpoDisabledNote}>HPO off — only Default values are used.</p>
+        )}
         {Object.entries(tuner.hyperparams).map(([paramName, paramConfig]) => (
           <div className={styles.configItem} key={paramName}>
             <FormLabel className={styles.paramLabel}>
