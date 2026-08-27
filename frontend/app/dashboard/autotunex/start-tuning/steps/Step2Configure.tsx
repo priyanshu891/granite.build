@@ -372,7 +372,7 @@ export function Step2Configure({
       <div>
         {hpoHeader}
         <div className={layoutStyles.rowWrap} key={selectedAlgorithm}>
-        <div className={styles.leftColumn}>
+          <div className={styles.leftColumn}>
             <Tile style={{ padding: '1.25rem' }}>
               {isEditingConfig ? (
                 <>
@@ -434,9 +434,9 @@ export function Step2Configure({
                 </>
               )}
             </Tile>
-        </div>
+          </div>
 
-        <div className={styles.rightColumn}>
+          <div className={styles.rightColumn}>
             <Tile className={styles.configPreviewTile}>
               {isEditingConfig ? (
                 isLoadingEditConfig ? (
@@ -474,7 +474,7 @@ export function Step2Configure({
                 )
               )}
             </Tile>
-        </div>
+          </div>
         </div>
       </div>
     )
