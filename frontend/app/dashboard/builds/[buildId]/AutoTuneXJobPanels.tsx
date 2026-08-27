@@ -60,7 +60,7 @@ export function AutoTuneXTrialsPanel({ buildId }: { buildId: string }) {
 
   return (
     <div style={{ padding: '1rem 1.5rem' }}>
-      <TrialsTable jobId={job.id} trials={job.trials} />
+      <TrialsTable job={job} />
     </div>
   )
 }

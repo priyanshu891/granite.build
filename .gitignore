@@ -38,6 +38,11 @@ var/
 wheels/
 share/python-wheels/
 *.egg-info/
+
+# frontend/lib/ is application source, not Python build output. The `lib/` rule
+# in the packaging block above matches it at any depth, which silently drops new
+# files added there (frontend/lib/sse.ts only survives because it predates it).
+!frontend/lib/
 .installed.cfg
 *.egg
 MANIFEST

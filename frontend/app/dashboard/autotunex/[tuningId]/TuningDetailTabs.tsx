@@ -120,7 +120,7 @@ export function TuningDetailTabs({ job }: Props) {
           </TabPanel>
           {job.autotune && (
             <TabPanel>
-              <TrialsTable jobId={job.id} trials={job.trials} />
+              <TrialsTable job={job} />
             </TabPanel>
           )}
           <TabPanel>

@@ -28,7 +28,8 @@ import { RadarChart } from '@carbon/charts-react'
 import { useChartsTheme } from '@/hooks/useTheme'
 import { TrialLogViewer } from '@/components/TrialLogViewer'
 import { TrialCompare } from '@/components/TrialCompare'
-import type { Trial } from '@/types'
+import { TrialProgressSummary } from '@/components/TrialProgressSummary'
+import type { JobDetail, Trial } from '@/types'
 
 const HEADERS = [
   { key: 'created_at', header: 'Created on' },
@@ -93,17 +94,24 @@ function toRadarData(trials: Trial[]): { product: string; feature: string; score
 }
 
 interface Props {
-  jobId: string
-  trials: Trial[]
+  job: JobDetail
 }
 
-export function TrialsTable({ jobId, trials }: Props) {
+export function TrialsTable({ job }: Props) {
+  const { id: jobId, trials } = job
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [showCompare, setShowCompare] = useState(false)
   const theme = useChartsTheme()
 
   if (trials.length === 0) {
-    return <InlineNotification kind="info" title="No trial data available" hideCloseButton />
+    // Still show progress here when the job declared a planned total: "12 queued"
+    // before any trial row exists is exactly what users were missing.
+    return (
+      <div>
+        <TrialProgressSummary job={job} />
+        <InlineNotification kind="info" title="No trial data available" hideCloseButton />
+      </div>
+    )
   }
 
   // Full-screen compare view: replaces the table + radar, mirroring AutoTuneX.
@@ -120,7 +128,7 @@ export function TrialsTable({ jobId, trials }: Props) {
           onClick={() => setShowCompare(false)}
           style={{ marginBottom: '1rem' }}
         >
-          Back to trials
+          Back to Hyperparameters
         </Button>
         <TrialCompare trials={selectedForCompare} />
       </div>
@@ -161,6 +169,7 @@ export function TrialsTable({ jobId, trials }: Props) {
 
   return (
     <div>
+      <TrialProgressSummary job={job} />
       {canOpenCompare && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
           <Button size="sm" onClick={() => setShowCompare(true)}>
