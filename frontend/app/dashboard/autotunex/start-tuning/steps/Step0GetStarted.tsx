@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import {
-  SelectableTile,
   FormGroup,
   RadioButtonGroup,
   RadioButton,
@@ -17,7 +16,15 @@ import {
   InlineLoading,
   TextInput,
 } from '@carbon/react'
-import { Education, Compare, Growth, View, Launch } from '@carbon/icons-react'
+import {
+  Education,
+  Compare,
+  Growth,
+  View,
+  Launch,
+  CheckboxCheckedFilled,
+  Checkbox as CheckboxOutline,
+} from '@carbon/icons-react'
 import ReactMarkdown from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 import type { HuggingFaceModel, ModelSource, TuningGoal } from '@/types'
@@ -232,18 +239,33 @@ export function Step0GetStarted({
       <div className={styles.sectionLabel}>
         <span className={styles.sectionNumber}>1</span> What do you want to achieve?
       </div>
-      <div className={layoutStyles.rowWrap} role="group" aria-label="Select tuning goal">
+      <div className={layoutStyles.rowWrap} role="radiogroup" aria-label="Select tuning goal">
         {GOAL_OPTIONS.map((goal) => {
           const Icon = GOAL_ICONS[goal.id]
           const isSelected = selectedGoal === goal.id
           return (
             <div className={styles.goalTileColumn} key={goal.id}>
-              <SelectableTile
-                selected={isSelected}
+              {/* Radio semantics: exactly one goal is always selected. Re-clicking the
+                  selected tile is a no-op (never deselects). A plain Tile — not
+                  SelectableTile — keeps selection fully controlled by `selectedGoal`. */}
+              <Tile
+                role="radio"
+                aria-checked={isSelected}
+                aria-label={goal.title}
+                tabIndex={0}
                 onClick={() => selectGoal(goal.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    selectGoal(goal.id)
+                  }
+                }}
                 className={`${styles.goalSelectableTile} ${GOAL_TILE_CLASS[goal.id]}`}
                 style={{ minHeight: 120, padding: '1.25rem' }}
               >
+                <span className={styles.goalCheckmark} aria-hidden="true">
+                  {isSelected ? <CheckboxCheckedFilled size={20} /> : <CheckboxOutline size={20} />}
+                </span>
                 <div className={styles.goalTile}>
                   <div className={`${styles.goalIcon} ${isSelected ? 'active' : ''}`}>
                     <Icon size={32} />
@@ -258,7 +280,7 @@ export function Step0GetStarted({
                     </div>
                   </div>
                 </div>
-              </SelectableTile>
+              </Tile>
             </div>
           )
         })}

@@ -77,7 +77,10 @@ export function StartTuningWizard() {
   const [completedSteps, setCompletedSteps] = useState<boolean[]>([false, false, false, false, false])
 
   // Step 0: Get Started
-  const [selectedGoal, setSelectedGoal] = useState<TuningGoal | null>(null)
+  // Pre-select the first goal so a tile is always selected (the tiles are radio,
+  // not deselectable). `prevGoalRef` below is seeded with the same value, so this
+  // does not trigger the goal-change reset on mount.
+  const [selectedGoal, setSelectedGoal] = useState<TuningGoal | null>('sft')
   const [selectedAlgorithm, setSelectedAlgorithm] = useState('lora')
   const [selectedModel, setSelectedModel] = useState('ibm-granite/granite-4.0-h-micro')
   const [modelSource, setModelSource] = useState<ModelSource>('huggingface')
