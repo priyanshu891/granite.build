@@ -542,8 +542,6 @@ export function StartTuningWizard() {
             setSelectedModel={setSelectedModel}
             modelSource={modelSource}
             setModelSource={setModelSource}
-            autotuneEnabled={autotuneEnabled}
-            setAutotuneEnabled={setAutotuneEnabled}
             prefetchedModels={prefetchedModels ?? null}
           />
         )}
@@ -594,6 +592,8 @@ export function StartTuningWizard() {
             onPendingConfig={handlePendingConfig}
             onPendingConfigUpdate={handlePendingConfigUpdate}
             onClearPendingConfig={handleClearPendingConfig}
+            autotuneEnabled={autotuneEnabled}
+            setAutotuneEnabled={setAutotuneEnabled}
           />
         )}
         {currentStep === 3 && hasRewardStep && (

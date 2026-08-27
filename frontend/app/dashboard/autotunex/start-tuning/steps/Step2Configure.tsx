@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Tile, Select, SelectItem, Button, TextInput, Tag, InlineLoading, InlineNotification } from '@carbon/react'
+import { Tile, Select, SelectItem, Button, TextInput, Tag, InlineLoading, InlineNotification, Checkbox } from '@carbon/react'
 import { Add, Settings, Edit } from '@carbon/icons-react'
 import type { Configuration, ConfigData, ConfigForm, ListResult, PendingConfigData, PendingConfigUpdate, TuningGoal } from '@/types'
 import { getConfiguration, getConfigurations, getConfigurationTemplate } from '@/api/autotunex'
@@ -60,6 +60,8 @@ interface Step2ConfigureProps {
   onPendingConfig: (data: PendingConfigData) => void
   onPendingConfigUpdate: (data: PendingConfigUpdate) => void
   onClearPendingConfig: () => void
+  autotuneEnabled: boolean
+  setAutotuneEnabled: (v: boolean) => void
 }
 
 export function Step2Configure({
@@ -76,6 +78,8 @@ export function Step2Configure({
   onPendingConfig,
   onPendingConfigUpdate,
   onClearPendingConfig,
+  autotuneEnabled,
+  setAutotuneEnabled,
 }: Step2ConfigureProps) {
   const queryClient = useQueryClient()
   const { data: configsResult, isLoading } = useQuery({
@@ -347,9 +351,27 @@ export function Step2Configure({
     return <InlineLoading description="Loading configurations..." />
   }
 
+  const hpoHeader = (
+    <div className={styles.hpoToggleRow}>
+      <Checkbox
+        id="autotune-enabled"
+        checked={autotuneEnabled}
+        onChange={(_, { checked }) => setAutotuneEnabled(checked)}
+        labelText="Use hyperparameter optimization"
+      />
+      <p className={styles.hpoToggleHelper}>
+        {autotuneEnabled
+          ? 'Search across each hyperparameter’s value space.'
+          : 'Off — a single run using each hyperparameter’s Default value.'}
+      </p>
+    </div>
+  )
+
   if (isEditingConfig || isCreatingConfig) {
     return (
-      <div className={layoutStyles.rowWrap} key={selectedAlgorithm}>
+      <div>
+        {hpoHeader}
+        <div className={layoutStyles.rowWrap} key={selectedAlgorithm}>
         <div className={styles.leftColumn}>
             <Tile style={{ padding: '1.25rem' }}>
               {isEditingConfig ? (
@@ -430,6 +452,7 @@ export function Step2Configure({
                       hideNameField
                       presetGoal={presetGoal}
                       presetAlgorithm={selectedAlgorithm}
+                      hpoEnabled={autotuneEnabled}
                     />
                   )
                 )
@@ -446,17 +469,21 @@ export function Step2Configure({
                     hideNameField
                     presetGoal={presetGoal}
                     presetAlgorithm={selectedAlgorithm}
+                    hpoEnabled={autotuneEnabled}
                   />
                 )
               )}
             </Tile>
+        </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className={layoutStyles.rowWrap} key={selectedAlgorithm}>
+    <div>
+      {hpoHeader}
+      <div className={layoutStyles.rowWrap} key={selectedAlgorithm}>
         <div className={styles.leftColumn}>
           <Tile style={{ padding: '1.25rem' }}>
             {selectedConfigId === '__pending__' && selectedConfig ? (
@@ -540,6 +567,7 @@ export function Step2Configure({
             </Tile>
           )}
         </div>
+      </div>
     </div>
   )
 }

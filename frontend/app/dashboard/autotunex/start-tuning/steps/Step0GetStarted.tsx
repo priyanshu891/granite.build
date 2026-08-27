@@ -8,7 +8,6 @@ import {
   ComboBox,
   Modal,
   Button,
-  Checkbox,
   Accordion,
   AccordionItem,
   Tile,
@@ -88,8 +87,6 @@ interface Step0GetStartedProps {
   setSelectedModel: (v: string) => void
   modelSource: ModelSource
   setModelSource: (v: ModelSource) => void
-  autotuneEnabled: boolean
-  setAutotuneEnabled: (v: boolean) => void
   prefetchedModels: HuggingFaceModel[] | null
 }
 
@@ -102,8 +99,6 @@ export function Step0GetStarted({
   setSelectedModel,
   modelSource,
   setModelSource,
-  autotuneEnabled,
-  setAutotuneEnabled,
   prefetchedModels,
 }: Step0GetStartedProps) {
   const [models, setModels] = useState<HuggingFaceModel[]>([])
@@ -359,13 +354,6 @@ export function Step0GetStarted({
                 </div>
               </FormGroup>
             </div>
-
-            <Checkbox
-              id="autotune-enabled"
-              checked={autotuneEnabled}
-              onChange={(_, { checked }) => setAutotuneEnabled(checked)}
-              labelText="Use hyperparameter optimization"
-            />
         </>
       )}
 
