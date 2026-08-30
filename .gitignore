@@ -227,4 +227,6 @@ src/gbserver/static/ui/
 # Superpowers SDD scratch (ledger, briefs, review packages) — local only
 .superpowers/
 
+
+# autotunex SvelteKit source lives under autotunex/src/ux/src/lib; re-include it.
 !autotunex/**/lib/
