@@ -12,6 +12,8 @@ import type {
 	Dataset,
 	Estimation,
 	LogPage,
+	MetricPage,
+	MetricPoint,
 	Resources,
 	Tuning,
 	TuningForm,
@@ -643,6 +645,36 @@ export class API {
 			credentials: 'include'
 		}).then(this.handleResponse);
 	};
+
+	// --- Training metrics (per-step; ascending keyset by id) ----------------------
+
+	// Page a metrics endpoint to completion. The endpoint returns ascending keyset
+	// pages (default limit 1000) and a trial is only ~10 points/epoch, so this is
+	// usually a single request — but loop on has_more to be safe. Mirrors the
+	// getLogs/getTrialLogs URL+auth pattern. No api-mappers entry: MetricPage maps
+	// 1:1 to the frontend type. `handleResponse` returns undefined on a 401 (it
+	// redirects), so the `?.` guards yield [] rather than throwing.
+	pageMetrics = async (url: string): Promise<MetricPoint[]> => {
+		const out: MetricPoint[] = [];
+		let afterId = 0;
+		for (;;) {
+			const sep = url.includes('?') ? '&' : '?';
+			const page: MetricPage = await fetch(`${url}${sep}after_id=${afterId}`, {
+				credentials: 'include'
+			}).then(this.handleResponse);
+			out.push(...(page?.metrics ?? []));
+			if (!page?.has_more || page.next_after_id == null || page.next_after_id <= afterId) break;
+			afterId = page.next_after_id;
+		}
+		return out;
+	};
+
+	getTrialMetrics = async (jobId: string, trialId: string): Promise<MetricPoint[]> =>
+		this.pageMetrics(`${API_BASE}/jobs/${jobId}/trials/${trialId}/metrics`);
+
+	// Phase 2 (cross-trial overlay). Added now to unblock it; no Phase 1 UI consumes it.
+	getJobMetrics = async (jobId: string): Promise<MetricPoint[]> =>
+		this.pageMetrics(`${API_BASE}/jobs/${jobId}/metrics`);
 
 	// Live build (gb) logs: oldest-first string lines. 503 when the reader is disabled.
 	getGBLogs = async (jobId: string, all = false): Promise<string[]> => {

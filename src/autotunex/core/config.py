@@ -576,10 +576,6 @@ class Settings(BaseSettings):
     returning ``JobCancellationInProgressError``. The cancel is latched regardless;
     this only bounds the wait. Read as ``AUTOTUNEX_LOCAL_CANCEL_TIMEOUT_SECONDS``."""
 
-    # --- Limits ----------------------------------------------------------
-    max_trials_limit: int = Field(default=100, ge=1)
-    """Server-side ceiling on ``max_trials`` for any submitted job."""
-
     # --- Auth --------------------------------------------------------------
     auth_providers: list[AuthProviderName] = Field(
         default_factory=_default_auth_providers, min_length=1
@@ -625,7 +621,7 @@ class Settings(BaseSettings):
     ``UNIQUE(email)`` insert and re-reads the winner rather than erroring). Note
     this makes even a ``GET`` write to the database on a caller's first request —
     the deliberate cost of JIT, which is why it is opt-in. See CLAUDE.md open
-    decision 5.
+    decision 4.
     """
 
     allow_insecure_no_auth: bool = False

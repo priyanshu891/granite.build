@@ -75,7 +75,7 @@ Misconfiguration is caught at startup, not at request time. The service refuses 
 | `AUTOTUNEX_ENVIRONMENT` | Deployment environment: `dev`, `test`, or `prod`. `prod` enables the fail-fast auth checks above. | `dev` |
 | `AUTOTUNEX_DEBUG` | Verbose error output. Keep `false` in production. | `false` |
 | `AUTOTUNEX_LOG_LEVEL` | Log verbosity: `DEBUG`, `INFO`, `WARNING`, or `ERROR`. | `INFO` |
-| `AUTOTUNEX_API_PREFIX` | Path prefix the versioned API is mounted under. `/health` sits outside it. | `/api/v1` |
+| `AUTOTUNEX_API_PREFIX` | Path prefix the versioned API is mounted under. `/health*` and `/auth/*` sit outside it. | `/api/v1` |
 
 ## Frontend (optional)
 
@@ -128,7 +128,7 @@ migrations.
 | `AUTOTUNEX_DATASET_STORAGE_BACKEND` | Where datasets are stored: `auto`, `local`, or `huggingface`. `auto` resolves to `local` whenever `GB_ENVIRONMENT` is `standalone` (where `llmb artifact push` is unavailable), regardless of tokens; otherwise it resolves to `huggingface` when the `llmb` tooling and **both** token env vars are present, and `local` if not. Forcing `huggingface` without both tokens is refused at startup. | `auto` |
 | `AUTOTUNEX_HF_TOKEN_ENV` | **Name** of the environment variable holding the HuggingFace token used for the HuggingFace storage backend. Only the variable's presence is checked; its value is never loaded into settings. | `HF_TOKEN` |
 | `AUTOTUNEX_HF_NAMESPACE` | Optional HuggingFace org/namespace prefix for the derived dataset-repo name. | *(unset)* |
-| `AUTOTUNEX_HF_PREVIEW_ENABLED` | Enable dataset preview via the HuggingFace dataset viewer. When off, HuggingFace-stored datasets return an empty preview; locally-stored datasets read rows from disk regardless. | `true` |
+| `AUTOTUNEX_HF_PREVIEW_ENABLED` | Enable dataset preview via the HuggingFace dataset viewer. When off, the viewer is never called — but the HuggingFace backend is always wrapped in a local-disk preview fallback, so a HuggingFace-stored dataset whose files also exist under `AUTOTUNEX_DATASET_STORAGE_DIR` still previews from disk; the preview is empty only when they are not there. Locally-stored datasets read rows from disk regardless. | `true` |
 | `AUTOTUNEX_HF_VIEWER_BASE_URL` | Base URL of the HuggingFace dataset-viewer service; the client appends `/rows`. Override to point at a mirror. | `https://datasets-server.huggingface.co` |
 | `AUTOTUNEX_HF_VIEWER_TIMEOUT_SECONDS` | Per-call HTTP timeout for one viewer fetch. Must be > 0. | `2.5` |
 | `AUTOTUNEX_HF_HUB_BASE_URL` | HuggingFace Hub API base URL used to list/download a job's output-model files (result-report endpoint). | `https://huggingface.co` |
@@ -161,7 +161,7 @@ the wall-clock kill always applies.
 
 | Variable | Meaning | Default |
 | --- | --- | --- |
-| `AUTOTUNEX_REWARD_TIMEOUT_SECONDS` | Hard wall-clock (and CPU rlimit) budget for one sandboxed reward-function run. Must be ≥ 1. | `5` |
+| `AUTOTUNEX_REWARD_TIMEOUT_SECONDS` | Hard wall-clock budget for one sandboxed reward-function run; the child's `RLIMIT_CPU` is set to this plus 30 s of slack, so the parent's kill always wins the race. Must be ≥ 1. | `5` |
 | `AUTOTUNEX_REWARD_MEMORY_BYTES` | Address-space rlimit for the reward-sandbox child. Must be ≥ 1. | `536870912` (512 MiB) |
 
 ## Chat assistant + MCP server
@@ -266,12 +266,6 @@ the optional in-process HPO package is installed is a runtime concern.
 | `AUTOTUNEX_LOCAL_RAY_ADDRESS` | Ray cluster address. Unset means a local Ray (`ray.init()`). | *(unset — local Ray)* |
 | `AUTOTUNEX_LOCAL_OUTPUT_DIR` | Root for a local run's output; the per-job subdir is `<dir>/<job_id>/`. Defaults to a subdirectory of the artifact directory, so overriding `AUTOTUNEX_ARTIFACT_DIR` moves it too unless set explicitly. | `<ARTIFACT_DIR>/local` (i.e. `artifacts/local`) |
 | `AUTOTUNEX_LOCAL_CANCEL_TIMEOUT_SECONDS` | Seconds `LocalJobRunner.cancel` waits for an in-process run to stop before returning `JobCancellationInProgressError`. The cancel is latched regardless; this only bounds the wait. | `30.0` |
-
-## Limits
-
-| Variable | Meaning | Default |
-| --- | --- | --- |
-| `AUTOTUNEX_MAX_TRIALS_LIMIT` | **Reserved / not currently enforced.** A server-side ceiling on a job's trial count that no code path checks today. Must be ≥ 1. Do not rely on it to bound trials. | `100` |
 
 ## Authentication
 

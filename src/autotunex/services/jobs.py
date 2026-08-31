@@ -142,11 +142,13 @@ class JobService:
 
         Ownership comes from ``principal.user_id``, never the request. Both the
         configuration and the dataset are re-verified against the caller's own
-        ownership (create never widens scope, so even an admin may only
-        reference its own configuration and dataset), the dataset must be
-        ``ready``, and an online-RL configuration must carry a reward function.
-        The configuration is snapshotted so later edits do not rewrite what
-        this job ran.
+        ownership or the shared system tier (``include_shared=True`` widens the
+        lookup only that far — even an admin may not reference another real
+        owner's configuration or dataset), the dataset must be ``ready``, and
+        an online-RL configuration must carry a reward function. The created
+        job is always owned by the caller regardless of which tier the
+        configuration or dataset came from, and the configuration is
+        snapshotted so later edits do not rewrite what this job ran.
 
         Raises:
             CallerNotProvisionedError: the caller has no ``user_id`` to own the job.
@@ -164,12 +166,14 @@ class JobService:
         owner_filter = owner_id
 
         configuration = await self._configuration_repository.get(
-            data.config_id, owner_id=owner_filter
+            data.config_id, owner_id=owner_filter, include_shared=True
         )
         if configuration is None:
             raise ConfigurationNotFoundError(data.config_id)
 
-        dataset = await self._dataset_repository.get(data.dataset_id, owner_id=owner_filter)
+        dataset = await self._dataset_repository.get(
+            data.dataset_id, owner_id=owner_filter, include_shared=True
+        )
         if dataset is None:
             raise DatasetNotFoundError(data.dataset_id)
         if dataset.status != DatasetStatus.READY:

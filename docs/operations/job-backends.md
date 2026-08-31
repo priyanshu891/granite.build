@@ -113,6 +113,11 @@ The generated spec is written to `<AUTOTUNEX_JOB_SPEC_DIR>/<job_id>/build.yaml`
 (default `AUTOTUNEX_JOB_SPEC_DIR=tmp`) and is **kept** after submission — even on
 failure — so it can be inspected or replayed by hand.
 
+Cancellation goes through the same CLI: `POST /jobs/{id}/cancel` — and the
+auto-cancel that `DELETE /jobs/{id}` performs on a job with live work — runs
+`llmb build cancel <build_id>`. A job with no recorded build handle never reached
+the cluster, so there the cancel is a no-op.
+
 There are three spec variants, chosen by granite.build's own `GB_ENVIRONMENT`
 variable and, within `standalone`, by `AUTOTUNEX_LSF_CLUSTER`.
 
@@ -137,6 +142,7 @@ Optional in this mode:
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `AUTOTUNEX_JOB_TRAINER_REF` | `main` | Branch/tag/commit of the trainer repo to check out. Not part of the fail-fast set. |
+| `AUTOTUNEX_JOB_CALLBACK_URL` | unset | The api-bridge base URL the build reports its logs and metrics to. Emitted into the start command as `--autotunex_server_url` **only when set**. |
 
 ```
 AUTOTUNEX_JOB_BACKEND=llmb
@@ -172,6 +178,7 @@ polls the local server) plus:
 | `AUTOTUNEX_BASH_FM_TUNE_REF` | unset | Branch/tag/commit of the trainer to check out; unset uses the repo's default branch. Leave unset when `FM_TUNE_ROOT` is a local checkout, since the tree is already at the right commit. |
 | `AUTOTUNEX_BASH_FM_TUNE_EXTRA` | `full,mlx` | The extras to install. |
 | `AUTOTUNEX_BASH_BACKEND` | `mlx` | `mlx` for Apple Silicon, or `torch`. |
+| `AUTOTUNEX_JOB_CALLBACK_URL` | unset (spec emits `http://localhost:8001`) | The api-bridge base URL the build reports its logs and metrics to, injected into the spec's environment as `AUTOTUNEX_SERVER_URL`. Unlike the other two variants the bash spec **always** emits it, falling back to `http://localhost:8001` (the api-bridge's default port) when unset. |
 
 `AUTOTUNEX_BASH_FM_TUNE_ROOT` accepts **either** a repo URL **or** a local checkout path.
 With fm-tune vendored in-tree (`src/fm-tune/`), point it at the local checkout instead of
@@ -230,6 +237,13 @@ Required settings (startup **fails fast** if any is missing):
 discriminator, so leaving it unset does not fail startup — it simply selects the bash
 spec above.
 
+Optional in this mode:
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `AUTOTUNEX_JOB_TRAINER_REF` | `main` | Branch/tag/commit of the trainer repo to check out. |
+| `AUTOTUNEX_JOB_CALLBACK_URL` | unset | The api-bridge base URL the build reports its logs and metrics to. Like the `custom_code` spec, emitted as `--autotunex_server_url` **only when set**. |
+
 The remaining `AUTOTUNEX_LSF_*` knobs (accelerators, queue, memory, CPUs and memory
 per node, venv path, CUDA home, poll interval) are optional and documented in
 [configuration.md](configuration.md#execution-job-launch). Like the bash spec, the
@@ -277,6 +291,14 @@ The loop is restart-safe: its whole working set is one query per sweep, so a
 process restart resumes where it left off. Repeated `401`/`403` responses (almost
 always one expired token affecting every read) are logged once per sweep rather
 than once per job.
+
+**On-demand reconcile.** Reconcile is not background-only. An admin can force one
+job to re-sync immediately with `POST /jobs/{id}/reconcile` (admin-only, enforced
+transitively via the endpoint's gbserver-reader dependency); it needs the same
+`AUTOTUNEX_GB_SERVER_URL` as the loop. Because it force-writes the
+gbserver-reported status — bypassing `check_transition`, but bounded by
+`to_run_status`, which never rewinds a job to a pre-run state — it is the way to
+repair a job stuck in a *wrong* terminal state.
 
 **Fail-fast.** Startup refuses to run if a required `llmb` setting — or the token
 environment variable — is missing, so a misconfiguration surfaces at boot rather

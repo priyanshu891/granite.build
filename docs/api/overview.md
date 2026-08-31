@@ -145,7 +145,7 @@ The response is a `Page` object:
   to compute how many pages exist, not `len(items)`.
 - `limit` and `offset` echo back the effective window.
 
-Two kinds of endpoint deliberately do not follow that shape:
+Three kinds of endpoint deliberately do not follow that shape:
 
 - **Log endpoints** (`GET /jobs/{id}/logs` and
   `GET /jobs/{id}/trials/{trial_id}/logs`) use **keyset** pagination and return a
@@ -153,6 +153,13 @@ Two kinds of endpoint deliberately do not follow that shape:
   newest page) and their own `limit` (int, **1–500**, default **50**), and answer
   with `logs`, `has_more`, and `next_before_id` — the `before_id` to send for the
   next, older page.
+- **Metrics endpoints** (`GET /jobs/{id}/metrics` and
+  `GET /jobs/{id}/trials/{trial_id}/metrics`) also use **keyset** pagination, but
+  ascending: they take `after_id` (int, ≥ 0, default `0` — the oldest page) and
+  walk forward from it, rather than the log endpoints' descending `before_id`.
+  Their `limit` is int, **1–2000**, default **500**, and they answer with a
+  `MetricPage`, not a `Page` or a `LogPage` — `metrics`, `has_more`, and
+  `next_after_id`, the `after_id` to send for the next, newer page.
 - **Some sub-resources return a bare array**, with no window at all:
   `GET /jobs/{id}/result-report` returns a list of output-asset records, and
   `GET /jobs/{id}/gb-logs` returns a list of log lines (oldest-first).
@@ -161,14 +168,15 @@ Two kinds of endpoint deliberately do not follow that shape:
 
 Reads, updates, and deletes on **jobs**, **configurations**, and **datasets** are
 scoped to the caller's own rows by default. You see and act on what you own; you
-do not see other owners' data.
+do not see other owners' data — with one exception, the shared system tier
+described below.
 
 A `scope` query parameter widens that view:
 
-| Value        | Effect                                            |
-| ------------ | ------------------------------------------------- |
-| `own`        | Only the caller's own rows (default).             |
-| `all`        | All owners' rows.                                 |
+| Value        | Effect                                                        |
+| ------------ | ------------------------------------------------------------- |
+| `own`        | The caller's own rows, plus the shared system tier (default). |
+| `all`        | All owners' rows.                                             |
 
 ```bash
 # Default — your own jobs only
@@ -182,6 +190,20 @@ curl "https://api.example.com/api/v1/jobs?scope=all" -H "X-API-Key: <admin-key>"
 `403 Forbidden`. Being an admin grants the *ability* to ask for the cross-user
 view — it is not an automatic all-tenants result: an admin who omits `scope`
 still sees only their own rows.
+
+**Configurations** and **datasets** carry one documented exception to that rule:
+a shared system tier. A reserved *system user* — the fixed id
+`00000000-0000-0000-0000-000000000001` — owns a curated set of starter
+configurations and datasets, and **every** caller reads those in addition to its
+own rows, including under the default `scope=own`. System-owned rows appear
+inline in `GET /configurations` and `GET /datasets` alongside your own,
+distinguishable only by that `user_id`, and a job may reference one at submit
+time. **Jobs themselves have no shared tier.**
+
+The tier is read-only. Mutations never widen to it, so `PUT` or `DELETE` on a
+system-owned row — and `POST /datasets/{id}/upload` into one — returns `404`,
+exactly as another owner's row would. Only the system user itself, or an admin
+passing `?scope=all`, may modify them.
 
 > User-management endpoints are gated differently. They are admin-only in whole
 > (there is no per-row "own" view of an identity) and take no `scope` parameter.

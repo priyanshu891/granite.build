@@ -162,8 +162,9 @@ CONFIG_ID=8f14e45f-ceea-467d-9a1e-4b2c3d4e5f60   # paste your own id here
 Registering a dataset happens in two parts: first create the metadata record,
 then upload the training file to it.
 
-**Create the record.** Only a `name` and a `data_format` (`jsonl`, `csv`, or
-`parquet`) are needed; `description` is optional.
+**Create the record.** Only a `name` is required; `data_format` defaults to
+`jsonl` (`csv` and `parquet` are the other accepted values) and `description`
+is optional.
 
 ```bash
 curl -s -X POST http://127.0.0.1:8000/api/v1/datasets \
@@ -364,9 +365,10 @@ curl -s "http://127.0.0.1:8000/api/v1/jobs?limit=20&offset=0" | python -m json.t
 }
 ```
 
-`model_source`, `tuning_type`, `num_trials`, the nested `tasks`, the `trials`,
-`is_stale`, and the JSON blobs live only on the detail response above — fetch
-them per-job after showing the list.
+`model_source`, `tuning_type`, `rl_tuner_type`, `autotune`, `ray_address`,
+`cleanup`, `num_trials`, the nested `tasks`, the `trials`, `is_stale`, and the
+JSON blobs live only on the detail response above — fetch them per-job after
+showing the list.
 
 `is_stale` is `true` when the live configuration's behavioural settings no longer
 match what the job snapshotted at submit; it is detail-only, never on

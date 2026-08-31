@@ -268,17 +268,21 @@ class EstimationService:
     ) -> tuple[dict[str, Any] | None, str | None, str | None]:
         """Return ``(config_data, tuner_type, rl_tuner_type)`` for ``request``.
 
-        Reads a saved configuration, owner-scoped, when ``config_id`` is set
-        (fixing the 2025 unscoped lookup); otherwise passes through the
-        inline fields, which :class:`EstimateUsagesRequest` already validated
-        to be present exactly when ``config_id`` is not.
+        Reads a saved configuration when ``config_id`` is set, scoped to the
+        caller's own configurations or the shared system tier
+        (``include_shared=True``; fixing the 2025 unscoped lookup — no caller
+        may reach another real owner's configuration); otherwise passes
+        through the inline fields, which :class:`EstimateUsagesRequest`
+        already validated to be present exactly when ``config_id`` is not.
         """
         if request.config_id is not None:
             repository = self._configuration_repository
             if repository is None:
                 raise ConfigurationNotFoundError(request.config_id)
 
-            config = await repository.get(request.config_id, owner_id=self._principal.user_id)
+            config = await repository.get(
+                request.config_id, owner_id=self._principal.user_id, include_shared=True
+            )
             if config is None:
                 raise ConfigurationNotFoundError(request.config_id)
 

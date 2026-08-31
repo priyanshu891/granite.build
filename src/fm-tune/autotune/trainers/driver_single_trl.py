@@ -38,6 +38,8 @@ from trl import (
     KTOTrainer,
 )
 
+from autotune.callbacks.training_metrics import TrainingMetricsCallback
+
 # Local
 from autotune.trainers._alora_gc import (
     AloraGradCheckpointDrainCallback,
@@ -452,6 +454,11 @@ def train_driver_single_gpu(config: Dict[str, Any]) -> Dict[str, Any]:
     if peft_type == "ALORA":
         install_alora_gc_safety_wrapper(trainer.model)
         trainer.add_callback(AloraGradCheckpointDrainCallback())
+
+    # Persist per-step training metrics (loss/grad_norm/lr/epoch) to AutotuneX.
+    # Added unconditionally — all trials AND final training — independent of the
+    # per-epoch top-rung gate below.
+    trainer.add_callback(TrainingMetricsCallback(trial_id=trial_id))
 
     # Per-epoch reporting for early-stopping schedulers (ASHA). Without this,
     # the single-GPU TRL driver only emits the terminal tune.report() and

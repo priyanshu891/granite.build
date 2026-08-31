@@ -128,6 +128,12 @@ class DatasetService:
         dataset". Any backend failure still degrades to ``preview=None`` and is
         logged — a preview never fails the metadata read.
 
+        Reads opt into the shared system tier (``include_shared=True``): a
+        dataset owned by the reserved system user
+        (:data:`~autotunex.core.constants.SYSTEM_USER_ID`) is visible to every
+        caller alongside their own, even though ``update``/``delete``/``upload``
+        stay strict — so a non-owner cannot modify, remove, or upload into it.
+
         Raises:
             ScopeNotPermittedError: a non-admin requested ``scope=all``.
             DatasetNotFoundError: no such dataset, or it belongs to someone else.
@@ -135,7 +141,7 @@ class DatasetService:
         owner_id = resolve_owner_filter(self._principal, scope)
         if sees_nothing(self._principal, scope):
             raise DatasetNotFoundError(dataset_id)
-        dataset = await self._repository.get(dataset_id, owner_id=owner_id)
+        dataset = await self._repository.get(dataset_id, owner_id=owner_id, include_shared=True)
         if dataset is None:
             raise DatasetNotFoundError(dataset_id)
         preview_result = None
@@ -173,6 +179,9 @@ class DatasetService:
         """Return one page of datasets, newest first — own rows by default.
 
         ``q`` is an optional case-insensitive substring filter on ``name``.
+        Like :meth:`get`, this opts into the shared system tier
+        (``include_shared=True``), so datasets owned by the reserved system
+        user appear in every caller's list alongside their own.
 
         Raises:
             ScopeNotPermittedError: a non-admin requested ``scope=all``.
@@ -181,7 +190,7 @@ class DatasetService:
         if sees_nothing(self._principal, scope):
             return Page[DatasetRead](items=[], total=0, limit=limit, offset=offset)
         datasets, total = await self._repository.list(
-            limit=limit, offset=offset, owner_id=owner_id, q=q
+            limit=limit, offset=offset, owner_id=owner_id, q=q, include_shared=True
         )
         grouped = await self._repository.jobs_for_dataset(
             [dataset.id for dataset in datasets], owner_id=owner_id

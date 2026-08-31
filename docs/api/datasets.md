@@ -10,10 +10,16 @@ for owner resolution, and [../concepts.md](../concepts.md) for the domain model.
 
 ## Ownership and scope
 
-Reads and mutations are owner-scoped. By default a caller — admin included — sees only its
-own datasets. An admin widens to all owners per request with `scope=all` (`own` | `all`,
-default `own`); a non-admin passing `scope=all` gets a **403**. `POST` and `upload` are
-always own-scoped.
+Reads and mutations are owner-scoped. By default a caller — admin included — sees its own
+datasets **plus** the shared system tier: rows owned by the reserved system user
+(`00000000-0000-0000-0000-000000000001`), the curated starter datasets every caller can
+read and launch a job from. An admin widens to all owners per request with `scope=all`
+(`own` | `all`, default `own`); a non-admin passing `scope=all` gets a **403**. `POST` and
+`upload` are always own-scoped.
+
+Mutations never widen to the shared tier, so `PUT`, `DELETE` and `upload` against a
+system-owned dataset return **404** — only the system user itself, or an admin via
+`scope=all`, may modify one.
 
 ## Endpoints
 
@@ -78,8 +84,8 @@ List the caller's datasets, newest first. Returns a `Page<DatasetRead>`.
 
 ### Response `200` — `Page<DatasetRead>`
 
-`{ "items": DatasetRead[], "total": int, "limit": int, "offset": int }`. List responses do
-not include a `preview` (that is a per-item detail option).
+`{ "items": DatasetRead[], "total": int, "limit": int, "offset": int }`. List responses
+always report `preview` as `null` — a populated preview is a detail-endpoint option.
 
 ### Notable statuses
 
@@ -116,10 +122,10 @@ pipeline, which never flips `status` to `ready`). A backend failure while previe
 | `data_format` | string | `jsonl` \| `csv` \| `parquet` |
 | `status` | string | Lifecycle: `empty` \| `uploading` \| `ready` \| `error` |
 | `status_detail` | string \| null | Extra detail, e.g. an error message |
-| `train_file` | string | Stored train-file name/path |
+| `train_file` | string | Generated from `name` as `<name>_train`; not writable |
 | `train_records` | int \| null | Row count once processed |
 | `train_file_size` | int \| null | Bytes once processed |
-| `validation_file` | string | Stored validation-file name/path |
+| `validation_file` | string | Generated from `name` as `<name>_validation`; not writable |
 | `validation_records` | int \| null | Row count once processed |
 | `validation_file_size` | int \| null | Bytes once processed |
 | `artifact_id` | string \| null | Stored-artifact id (server-set) |
@@ -143,10 +149,10 @@ pipeline, which never flips `status` to `ready`). A backend failure while previe
   "data_format": "jsonl",
   "status": "ready",
   "status_detail": null,
-  "train_file": "train.jsonl",
+  "train_file": "support-tickets_train",
   "train_records": 1200,
   "train_file_size": 240000,
-  "validation_file": "validation.jsonl",
+  "validation_file": "support-tickets_validation",
   "validation_records": 200,
   "validation_file_size": 40000,
   "artifact_id": "b7c1...",

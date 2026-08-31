@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from autotunex.api.deps import get_autotune_core, get_session
 from autotunex.core.auth.disabled import SYSTEM_STANDALONE_EMAIL
 from autotunex.core.config import get_settings
+from autotunex.core.constants import SYSTEM_USER_ID
 from autotunex.core.exceptions import AutotuneCoreUnavailableError
 from autotunex.db.tables import ConfigurationTable, JobTable, UserTable
 from autotunex.main import create_app
@@ -398,6 +399,90 @@ async def test_a_non_admin_requesting_scope_all_on_get_is_403(
 
     assert response.status_code == HTTPStatus.FORBIDDEN
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+# Shared system tier: reads surface it, writes stay strict.
+
+
+async def _seed_system_config(
+    session: AsyncSession, *, name: str = "starter"
+) -> ConfigurationTable:
+    """Persist the system owner and one configuration it owns."""
+    session.add(UserTable(id=SYSTEM_USER_ID, email="system@autotunex.local", role="user"))
+    await session.commit()
+    config = ConfigurationTable(
+        id=uuid4(),
+        user_id=str(SYSTEM_USER_ID),
+        name=name,
+        tuner_type="optuna",
+        rl_tuner_type=None,
+        config_data=SPACE,
+    )
+    session.add(config)
+    await session.commit()
+    return config
+
+
+async def test_list_includes_system_configs_for_a_normal_user(
+    client: AsyncClient,
+    as_principal: Callable[[Principal], None],
+    user: UserTable,
+    session: AsyncSession,
+) -> None:
+    _act_as(as_principal, user)
+    system_config = await _seed_system_config(session)
+
+    response = await client.get(f"{API}/configurations")
+
+    assert response.status_code == HTTPStatus.OK
+    assert str(system_config.id) in {item["id"] for item in response.json()["items"]}
+
+
+async def test_get_returns_a_system_config_for_a_normal_user(
+    client: AsyncClient,
+    as_principal: Callable[[Principal], None],
+    user: UserTable,
+    session: AsyncSession,
+) -> None:
+    _act_as(as_principal, user)
+    system_config = await _seed_system_config(session)
+
+    response = await client.get(f"{API}/configurations/{system_config.id}")
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.json()["id"] == str(system_config.id)
+    assert response.json()["user_id"] == str(SYSTEM_USER_ID)
+
+
+async def test_update_of_a_system_config_by_a_normal_user_is_404(
+    client: AsyncClient,
+    as_principal: Callable[[Principal], None],
+    user: UserTable,
+    session: AsyncSession,
+) -> None:
+    _act_as(as_principal, user)
+    system_config = await _seed_system_config(session)
+
+    response = await client.put(
+        f"{API}/configurations/{system_config.id}",
+        json={"name": "hijacked", "config_data": SPACE},
+    )
+
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+async def test_delete_of_a_system_config_by_a_normal_user_is_404(
+    client: AsyncClient,
+    as_principal: Callable[[Principal], None],
+    user: UserTable,
+    session: AsyncSession,
+) -> None:
+    _act_as(as_principal, user)
+    system_config = await _seed_system_config(session)
+
+    response = await client.delete(f"{API}/configurations/{system_config.id}")
+
+    assert response.status_code == HTTPStatus.NOT_FOUND
 
 
 # Update (PUT — full replace).

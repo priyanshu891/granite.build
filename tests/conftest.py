@@ -189,7 +189,6 @@ def make_settings(
         environment="test",
         database_url="sqlite+aiosqlite:///:memory:",
         auto_create_schema=False,
-        max_trials_limit=50,
         log_level="WARNING",
         auth_providers=resolved_auth_providers,
         api_keys=api_keys if api_keys is not None else {},

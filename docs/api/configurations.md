@@ -10,10 +10,16 @@ for owner resolution, and [../concepts.md](../concepts.md) for the domain model.
 
 ## Ownership and scope
 
-Reads and mutations are owner-scoped. By default a caller — admin included — sees only its
-own configurations. An admin widens to all owners per request with `scope=all` (`own` |
-`all`, default `own`); a non-admin passing `scope=all` gets a **403**. `POST` is always
-own-scoped; a caller with no resolvable owner gets a **403** on create.
+Reads and mutations are owner-scoped. By default a caller — admin included — sees its own
+configurations **plus** the shared system tier: rows owned by the reserved system user
+(`00000000-0000-0000-0000-000000000001`), the curated starter configurations every caller
+can read and launch a job from. An admin widens to all owners per request with `scope=all`
+(`own` | `all`, default `own`); a non-admin passing `scope=all` gets a **403**. `POST` is
+always own-scoped; a caller with no resolvable owner gets a **403** on create.
+
+Mutations never widen to the shared tier, so `PUT` and `DELETE` against a system-owned
+configuration return **404** — only the system user itself, or an admin via `scope=all`,
+may modify one.
 
 `config_data` shape is **not** validated. The tuning pipeline writes a rich, evolving
 structure, so the API requires only that `config_data` be a non-empty JSON object.

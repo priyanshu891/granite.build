@@ -5,15 +5,15 @@
 A *configuration* is a named, reusable set of tuning settings, stored in the
 schema-less ``configurations.config_data`` JSON column. Unlike jobs,
 configurations are the one resource this API creates, updates and deletes — see
-``CLAUDE.md`` open decision 6 for why job submission stayed retired while this
+``CLAUDE.md`` open decision 5 for why job submission stayed retired while this
 did not.
 
-``config_data`` is *not* validated against
-:mod:`autotunex.models.search_space` — that toy ``SearchSpace`` shape belongs to
-the unbuilt search layer and does not match the far richer structure the tuning
-pipeline actually writes (``tune_config`` / ``tuners_config`` /
-``training_config`` / ``tuners_rl_config`` / ``training_rl_config``). The API
-requires only that it be a non-empty JSON object.
+``config_data`` is deliberately *not* validated against a fixed schema. The
+tuning pipeline writes a rich, evolving structure (``tune_config`` /
+``tuners_config`` / ``training_config`` / ``tuners_rl_config`` /
+``training_rl_config``) that is the tuning core's contract to change, so pinning
+a shape here would reject every real configuration. The API requires only that
+it be a non-empty JSON object.
 """
 
 from __future__ import annotations

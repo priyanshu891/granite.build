@@ -15,6 +15,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from autotunex.core.constants import SYSTEM_USER_ID
 from autotunex.core.exceptions import ConfigurationInUseError, ConfigurationNameConflictError
 from autotunex.db.repositories.sqlalchemy import SqlAlchemyConfigurationRepository
 from autotunex.db.tables import ConfigurationTable, DatasetTable, JobTable, UserTable
@@ -321,3 +322,72 @@ async def test_jobs_for_config_returns_referencing_jobs_scoped_to_owner(
     assert {j.experiment_name for j in scoped[configuration.id]} == {"mine"}
     assert {j.experiment_name for j in unscoped[configuration.id]} == {"mine", "theirs"}
     assert empty == {}
+
+
+async def _make_system_user(session: AsyncSession) -> UserTable:
+    """Persist the reserved system owner (FK target for system-owned rows)."""
+    user = UserTable(id=SYSTEM_USER_ID, email="system@autotunex.local", role="user")
+    session.add(user)
+    await session.commit()
+    return user
+
+
+async def test_get_includes_a_system_owned_config_when_shared(session: AsyncSession) -> None:
+    await _make_system_user(session)
+    owner = await _make_user(session, email="owner@example.com")
+    system_config = await _seed_configuration(session, user_id=str(SYSTEM_USER_ID), name="starter")
+    repository = SqlAlchemyConfigurationRepository(session)
+
+    found = await repository.get(system_config.id, owner_id=owner.id, include_shared=True)
+
+    assert found is not None
+    assert found.id == system_config.id
+
+
+async def test_get_excludes_a_system_owned_config_by_default(session: AsyncSession) -> None:
+    await _make_system_user(session)
+    owner = await _make_user(session, email="owner@example.com")
+    system_config = await _seed_configuration(session, user_id=str(SYSTEM_USER_ID), name="starter")
+    repository = SqlAlchemyConfigurationRepository(session)
+
+    found = await repository.get(system_config.id, owner_id=owner.id)
+
+    assert found is None
+
+
+async def test_list_includes_own_and_system_configs_when_shared(session: AsyncSession) -> None:
+    await _make_system_user(session)
+    owner = await _make_user(session, email="owner@example.com")
+    await _seed_configuration(session, user_id=str(owner.id), name="mine")
+    await _seed_configuration(session, user_id=str(SYSTEM_USER_ID), name="starter")
+    repository = SqlAlchemyConfigurationRepository(session)
+
+    rows, total = await repository.list(limit=20, offset=0, owner_id=owner.id, include_shared=True)
+
+    assert {row.name for row in rows} == {"mine", "starter"}
+    assert total == 2
+
+
+async def test_list_excludes_system_configs_by_default(session: AsyncSession) -> None:
+    await _make_system_user(session)
+    owner = await _make_user(session, email="owner@example.com")
+    await _seed_configuration(session, user_id=str(owner.id), name="mine")
+    await _seed_configuration(session, user_id=str(SYSTEM_USER_ID), name="starter")
+    repository = SqlAlchemyConfigurationRepository(session)
+
+    rows, total = await repository.list(limit=20, offset=0, owner_id=owner.id)
+
+    assert {row.name for row in rows} == {"mine"}
+    assert total == 1
+
+
+async def test_list_with_no_owner_returns_all_rows_including_system(session: AsyncSession) -> None:
+    await _make_system_user(session)
+    owner = await _make_user(session, email="owner@example.com")
+    await _seed_configuration(session, user_id=str(owner.id), name="mine")
+    await _seed_configuration(session, user_id=str(SYSTEM_USER_ID), name="starter")
+    repository = SqlAlchemyConfigurationRepository(session)
+
+    _rows, total = await repository.list(limit=20, offset=0, owner_id=None)
+
+    assert total == 2

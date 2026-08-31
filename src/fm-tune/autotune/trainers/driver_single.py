@@ -32,6 +32,7 @@ from transformers import (
     TrainingArguments,
 )
 
+from autotune.callbacks.training_metrics import TrainingMetricsCallback
 from autotune.device import (
     detect_accelerator,
     model_load_kwargs,
@@ -259,6 +260,11 @@ def train_driver_single_gpu(config: Dict[str, Any]) -> Dict[str, Any]:
         percentage = training_config.get("hpo_dataset_percentage", 0.1)
         assert percentage > 0.0 and percentage <= 1.0, "Dataset percentage for HPO search cannot be 0."
         num_train_total, num_eval_total = len(raw_datasets["train"]), len(raw_datasets["eval"])
+        # Default to the full split; only sub-sample when percentage < 1.0.
+        # These must be bound here, not just inside the branch: at
+        # percentage == 1.0 the branch is skipped, and the logger.info below
+        # would otherwise raise UnboundLocalError on num_train/num_eval.
+        num_train, num_eval = num_train_total, num_eval_total
         if percentage < 1.0:
             num_train = int(percentage * num_train_total)
             num_eval = int(percentage * num_eval_total)
@@ -407,6 +413,11 @@ def train_driver_single_gpu(config: Dict[str, Any]) -> Dict[str, Any]:
     if peft_type == "ALORA":
         install_alora_gc_safety_wrapper(trainer.model)
         trainer.add_callback(AloraGradCheckpointDrainCallback())
+
+    # Persist per-step training metrics (loss/grad_norm/lr/epoch) to AutotuneX.
+    # Added unconditionally — all trials AND final training — independent of the
+    # per-epoch top-rung gate below.
+    trainer.add_callback(TrainingMetricsCallback(trial_id=trial_id))
 
     # Per-epoch reporting for early-stopping schedulers (ASHA). Without this,
     # the single-GPU driver only emits the terminal tune.report() and ASHA

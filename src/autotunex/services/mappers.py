@@ -16,6 +16,7 @@ from autotunex.db.tables import (
     GbTaskTable,
     JobTable,
     LogEntryTable,
+    TrainingMetricTable,
     TrialTable,
     UserTable,
 )
@@ -23,6 +24,7 @@ from autotunex.models.configuration import ConfigurationJobRef, ConfigurationRea
 from autotunex.models.dataset import DatasetJobRef, DatasetPreview, DatasetRead
 from autotunex.models.job import JobRead, JobSummary
 from autotunex.models.log import LogEntryRead
+from autotunex.models.metric import MetricPointRead
 from autotunex.models.task import GbTaskRead
 from autotunex.models.trial import TrialRead
 from autotunex.models.user import UserRead
@@ -264,6 +266,22 @@ def log_entry_to_read(entry: LogEntryTable) -> LogEntryRead:
         iteration=entry.iteration,
         epoch=entry.epoch,
         timestamp=entry.timestamp,
+    )
+
+
+def metric_point_to_read(row: TrainingMetricTable) -> MetricPointRead:
+    """Convert a ``training_metrics`` row to its API shape (field-by-field, per house style)."""
+    return MetricPointRead(
+        id=row.id,
+        trial_id=row.trial_id,
+        global_step=row.global_step,
+        epoch=row.epoch,
+        loss=row.loss,
+        grad_norm=row.grad_norm,
+        learning_rate=row.learning_rate,
+        split=row.split,
+        extra=row.extra,
+        created_at=row.created_at,
     )
 
 

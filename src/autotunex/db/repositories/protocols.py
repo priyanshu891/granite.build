@@ -21,6 +21,7 @@ from autotunex.db.tables import (
     GbTaskTable,
     JobTable,
     LogEntryTable,
+    TrainingMetricTable,
     UserTable,
 )
 from autotunex.models.status import DatasetStatus, GbTaskType, RunStatus
@@ -306,6 +307,32 @@ class ResultRepository(Protocol):
         ...
 
 
+class TrainingMetricsRepository(Protocol):
+    """Write + keyset-read for the per-step ``training_metrics`` time series."""
+
+    async def insert(
+        self,
+        job_id: UUID,
+        *,
+        trial_id: str | None,
+        global_step: int,
+        epoch: float | None,
+        loss: float | None,
+        grad_norm: float | None,
+        learning_rate: float | None,
+        split: str,
+        extra: dict[str, Any] | None,
+    ) -> None:
+        """Append one metrics row to ``job_id``, committing."""
+        ...
+
+    async def metrics_page(
+        self, job_id: UUID, *, trial_id: str | None, after_id: int, limit: int
+    ) -> tuple[Sequence[TrainingMetricTable], bool]:
+        """Ascending keyset page of metrics rows (oldest first) for charting."""
+        ...
+
+
 class ConfigurationRepository(Protocol):
     """Persistence operations for configurations.
 
@@ -323,19 +350,33 @@ class ConfigurationRepository(Protocol):
     """
 
     async def get(
-        self, configuration_id: UUID, *, owner_id: UUID | None = None
+        self,
+        configuration_id: UUID,
+        *,
+        owner_id: UUID | None = None,
+        include_shared: bool = False,
     ) -> ConfigurationTable | None:
-        """Return the configuration with ``configuration_id``, or ``None``."""
+        """Return the configuration with ``configuration_id``, scoped to ``owner_id``.
+
+        ``include_shared`` additionally admits rows owned by the reserved system
+        user; ignored when ``owner_id`` is ``None``.
+        """
         ...
 
     async def list(
-        self, *, limit: int, offset: int, owner_id: UUID | None = None, q: str | None = None
+        self,
+        *,
+        limit: int,
+        offset: int,
+        owner_id: UUID | None = None,
+        q: str | None = None,
+        include_shared: bool = False,
     ) -> tuple[Sequence[ConfigurationTable], int]:
         """Return one page of configurations, newest first, plus the total.
 
-        The ``owner_id`` filter applies to both the page and the total count, so
-        the two numbers never disagree. ``q``, when given, is a case-insensitive
-        substring filter on ``name``, applied to both for the same reason.
+        The ``owner_id`` filter applies to both the page and the total count;
+        ``include_shared`` widens it to the system tier. ``owner_id=None``
+        applies no filter.
         """
         ...
 
@@ -419,18 +460,35 @@ class DatasetRepository(Protocol):
     from ``update`` because they touch server-owned columns a client never sends.
     """
 
-    async def get(self, dataset_id: UUID, *, owner_id: UUID | None = None) -> DatasetTable | None:
-        """Return the dataset with ``dataset_id`` owned by ``owner_id``, or ``None``."""
+    async def get(
+        self,
+        dataset_id: UUID,
+        *,
+        owner_id: UUID | None = None,
+        include_shared: bool = False,
+    ) -> DatasetTable | None:
+        """Return the dataset with ``dataset_id``, scoped to ``owner_id``.
+
+        ``include_shared`` additionally admits rows owned by the reserved
+        system user; ignored when ``owner_id`` is ``None``.
+        """
         ...
 
     async def list(
-        self, *, limit: int, offset: int, owner_id: UUID | None = None, q: str | None = None
+        self,
+        *,
+        limit: int,
+        offset: int,
+        owner_id: UUID | None = None,
+        q: str | None = None,
+        include_shared: bool = False,
     ) -> tuple[Sequence[DatasetTable], int]:
         """Return one page of datasets, newest first, plus the total.
 
         The ``owner_id`` filter applies to both the page and the count. ``q``,
         when given, is a case-insensitive substring filter on ``name``, applied
-        to both for the same reason.
+        to both for the same reason. ``include_shared`` widens the ``owner_id``
+        filter to the system tier.
         """
         ...
 

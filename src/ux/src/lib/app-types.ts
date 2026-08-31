@@ -515,6 +515,29 @@ export type LogPage = {
 	next_before_id: number | null;
 };
 
+// Per-step training metrics (GET /jobs/{id}/trials/{trial_id}/metrics and
+// /jobs/{id}/metrics). One row per HF Trainer log event; maps 1:1 to the backend
+// MetricPointRead (no api-mappers entry needed). `split` is 'train' | 'eval' but
+// kept as string — the backend column is not an enum.
+export type MetricPoint = {
+	id: number;
+	trial_id: string | null;
+	global_step: number;
+	epoch: number | null;
+	loss: number | null;
+	grad_norm: number | null;
+	learning_rate: number | null;
+	split: string;
+	extra: Record<string, unknown> | null;
+	created_at: string | null;
+};
+
+export type MetricPage = {
+	metrics: MetricPoint[];
+	has_more: boolean;
+	next_after_id: number | null;
+};
+
 export type Assets = {
 	path: string;
 	size: number;

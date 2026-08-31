@@ -43,6 +43,7 @@ from transformers.utils.logging import disable_progress_bar, enable_progress_bar
 from trl import DPOConfig, DPOTrainer, KTOConfig, KTOTrainer
 
 # Local
+from autotune.callbacks.training_metrics import TrainingMetricsCallback
 from autotune.trainers._alora_gc import (
     AloraGradCheckpointDrainCallback,
     install_alora_gc_safety_wrapper,
@@ -544,6 +545,11 @@ def train_loop_per_worker(train_loop_config: Dict[str, Any]):
     if peft_type == "ALORA":
         install_alora_gc_safety_wrapper(trainer.model)
         trainer.add_callback(AloraGradCheckpointDrainCallback())
+
+    # Persist per-step training metrics (loss/grad_norm/lr/epoch) to AutotuneX.
+    # Added unconditionally on every worker; on_log self-guards to rank 0 via
+    # state.is_world_process_zero.
+    trainer.add_callback(TrainingMetricsCallback(trial_id=trial_id))
 
     # RayTrainReportCallback reports metrics from the worker back to the
     # driver process via Ray Train. Without it, train_result.metrics is empty.

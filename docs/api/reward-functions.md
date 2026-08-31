@@ -56,9 +56,12 @@ argument alongside them.
 | `extra_info` | object \| null | no | `null` | Free-form extra context |
 | *(any other key)* | any | no | — | Allowed and forwarded as a kwarg |
 
-Each case is passed to the function as `fn(**case)`, with the canonical keys always present
-(a `null` field is sent as `null`, not omitted). Only the **first 10** cases of a list are
-executed.
+Each case is passed to the function as `fn(**case)`. For a supplied `test_inputs`, the
+canonical keys are always present (a `null` field is sent as `null`, not omitted). The
+built-in default case used when `test_inputs` is `null` sends only `data_source` and
+`solution_str` — `ground_truth` and `extra_info` are absent, not `null` — so a function with
+a required third parameter raises `TypeError` against it. Only the **first 10** cases of a
+list are executed.
 
 ```bash
 curl -X POST https://example.com/api/v1/reward-functions/validate \
@@ -85,7 +88,7 @@ curl -X POST https://example.com/api/v1/reward-functions/validate \
 | `validation` | `RewardValidationChecks` | The four status booleans |
 | `security_issues` | string[] | One human-readable finding per blocked import, call, or attribute; `[]` if clean |
 | `syntax_errors` | string[] | The syntax/size/empty-code errors on an early failure; otherwise the function-found and signature errors |
-| `test_result` | `RewardTestResult` \| null | `null` unless `test_execution` was `true` |
+| `test_result` | `RewardTestResult` \| null | `null` unless `test_execution` was `true`, and still `null` when blank, oversized, or unparseable `code` short-circuited the request |
 
 **`RewardValidationChecks`** — what the UI renders as status pills:
 
@@ -94,13 +97,13 @@ curl -X POST https://example.com/api/v1/reward-functions/validate \
 | `syntax_valid` | bool | The source parsed as Python |
 | `security_valid` | bool | `security_issues` is empty |
 | `function_found` | bool | A `def` named `function_name` exists |
-| `function_signature_valid` | bool | That `def` declares at least two positional parameters |
+| `function_signature_valid` | bool | That `def` declares at least two ordinary (positional-or-keyword) parameters |
 
 **`RewardTestResult`**:
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `executed` | bool | — | `false` when the sandbox never ran the code (static checks failed, timeout, or abnormal exit) |
+| `executed` | bool | — | `false` when the sandbox never ran the code (a security, function-found, or signature check failed, timeout, or abnormal exit). Blank, oversized, or unparseable `code` gives `test_result: null` instead of an `executed: false` object |
 | `results` | `RewardCaseResult[]` | `[]` | One entry per executed case |
 | `stdout` | string | `""` | Captured `print` output, truncated to 2 000 characters |
 | `error` | string \| null | `null` | A whole-run failure (import/compile error, timeout, sandbox crash) |
@@ -189,10 +192,12 @@ Three pure, in-process phases run over the AST before the sandbox is even consid
      `__import__`, `__builtins__`, `__subclasses__`, `__class__`, `__bases__`,
      `__globals__`, `__code__`, `__closure__`, `__dict__`, `__module__`, `__qualname__`.
 3. **Signature** — a `def` named `function_name` must exist and declare **at least two**
-   positional parameters, matching the `(data_source, solution_str, …)` contract. Extra
-   parameters and defaults are fine; fewer than two is
-   `function_signature_valid: false`. Only a plain `def` is matched, so an `async def` of
-   that name reports `function_found: false`.
+   ordinary (positional-or-keyword) parameters, matching the
+   `(data_source, solution_str, …)` contract. Extra parameters and defaults are fine; fewer
+   than two is `function_signature_valid: false`. Positional-only (`/`) and keyword-only
+   (`*`) parameters are not counted, so `def compute_score(data_source, solution_str, /)`
+   reports `function_signature_valid: false` despite taking two positional parameters. Only
+   a plain `def` is matched, so an `async def` of that name reports `function_found: false`.
 
 The blocklists are the security boundary and are carried forward deliberately rather than
 tuned; they live in `services/reward/constants.py`.
@@ -233,8 +238,11 @@ A compile/exec failure inside the sandbox — for example importing a module the
 rejects — comes back as `executed: true` with a whole-run `error` string, still inside a
 `200` response.
 
-If `test_execution` is `true` but a static check failed, no process is started and
-`test_result` is `{"executed": false, "error": "Cannot execute: validation failed"}`.
+If `test_execution` is `true` but a security, function-found, or signature check failed, no
+process is started and `test_result` is
+`{"executed": false, "error": "Cannot execute: validation failed"}`. The three earlier
+failures short-circuit before that point: blank `code`, source above 50 000 bytes, and a
+syntax error each return `test_result: null` even when `test_execution` is `true`.
 
 ### Operator settings
 
@@ -256,8 +264,9 @@ schemas in `models/reward.py`:
   sample model answers to seed the test cases you then validate against.
 
 Validating a function is independent of submitting a job — nothing here is persisted. A job
-whose referenced configuration is for an online-RL tuner requires `reward_function_code` and
-`reward_function_name` on the submission itself; see [jobs.md](jobs.md).
+whose referenced configuration is for an online-RL tuner requires `reward_function_code` on
+the submission itself; `reward_function_name` is optional and defaults to `compute_score`.
+See [jobs.md](jobs.md).
 
 ## See also
 

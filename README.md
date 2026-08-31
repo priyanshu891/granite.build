@@ -47,8 +47,8 @@ uvicorn autotunex.main:app --reload
 ```
 
 `make install` runs both installs for you. The second one supplies the slim, torch-free
-`autotune` catalog that the configuration-template and dataset-format endpoints need —
-without it they return `503`.
+`autotune` catalog that the configuration-template, dataset-format and `suggest-mapping`
+endpoints need — without it they return `503`.
 
 The server starts on <http://127.0.0.1:8000> and creates a local SQLite database
 (`autotunex.db`) on first run. No database server needed.
@@ -143,14 +143,15 @@ tasks relate, plus the job lifecycle — see [concepts](docs/concepts.md).
 ## API surface
 
 Resource endpoints are mounted under `/api/v1`; `/auth/*`, `/health` and `/mcp` are
-unprefixed. Reads are own-data by default; an admin widens to every owner's rows per request
-with `?scope=all` (a non-admin who asks gets a `403`). Every endpoint is runnable from the
-browser at [Swagger UI](http://127.0.0.1:8000/docs), and the full reference lives in
+unprefixed. Reads and owner-scoped writes are own-data by default; an admin widens reads,
+updates and deletes to every owner's rows per request with `?scope=all` (a non-admin who asks
+gets a `403`). Every endpoint is runnable from the browser at
+[Swagger UI](http://127.0.0.1:8000/docs), and the full reference lives in
 [`docs/api/`](docs/api/).
 
 | Resource | Endpoints | Reference |
 | --- | --- | --- |
-| **Jobs** | `POST`/`GET` `/jobs`, `GET`/`DELETE` `/jobs/{id}`, `POST /jobs/{id}/cancel`, `POST /jobs/{id}/reconcile`, `POST /jobs/estimate-usages`, `POST /jobs/generate-test-solutions`, `GET /jobs/by-build-id/{build_id}`, result-report (list/file/archive), job/trial/gb logs | [jobs.md](docs/api/jobs.md) |
+| **Jobs** | `POST`/`GET` `/jobs`, `GET`/`DELETE` `/jobs/{id}`, `POST /jobs/{id}/cancel`, `POST /jobs/{id}/reconcile` (admin), `POST /jobs/estimate-usages`, `POST /jobs/generate-test-solutions`, `GET /jobs/by-build-id/{build_id}`, result-report (list/file/archive), job/trial/gb logs, per-step training metrics (`GET /jobs/{id}/metrics`, `GET /jobs/{id}/trials/{trial_id}/metrics`) | [jobs.md](docs/api/jobs.md) |
 | **Reward functions** | `POST /reward-functions/validate` (validate an online-RL reward function, sandboxed) | [reward-functions.md](docs/api/reward-functions.md) |
 | **Configurations** | full CRUD `/configurations` (+ `GET /configurations/template`) | [configurations.md](docs/api/configurations.md) |
 | **Datasets** | full CRUD `/datasets`, `POST /datasets/{id}/upload`, `?preview=true` | [datasets.md](docs/api/datasets.md) |
@@ -185,9 +186,10 @@ selected by `AUTOTUNEX_LSF_CLUSTER`).
 AutoTuneX ships a natural-language **assistant** that can query and act on your jobs,
 configurations, datasets, and account, and — optionally — a standalone **MCP server** exposing
 the same operations to external MCP clients (Claude Desktop, Cursor). Both run in-process as the
-authenticated caller, so a tool only ever sees your own data. They reuse the same
+authenticated caller, so a tool only ever sees your own data. The assistant reuses the same
 OpenAI-compatible LLM gateway as dataset intelligence (`AUTOTUNEX_LLM_BASE_URL`,
-`AUTOTUNEX_LLM_API_KEY`, `AUTOTUNEX_LLM_MODEL`) and return `503` when it is unset.
+`AUTOTUNEX_LLM_API_KEY`, `AUTOTUNEX_LLM_MODEL`) and returns `503` when it is unset; the MCP
+server exposes the same shared tool registry and needs no LLM at all.
 
 The MCP server is off by default and lives behind an optional dependency:
 

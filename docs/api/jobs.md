@@ -16,8 +16,9 @@ jobs. An admin widens to all owners per request by passing `scope=all`; a non-ad
 passes `scope=all` gets a **403**. This `scope` query parameter (`own` | `all`, default
 `own`) is accepted on every owner-scoped endpoint below; `POST /jobs`, the admin-only
 `reconcile` endpoint, and the `estimate-usages`/`generate-test-solutions` endpoints do
-not take it. Submission is always own-scoped — even an admin submits against its own
-configuration and dataset.
+not take it. Submission takes no `scope` because it needs none: it accepts a configuration
+and dataset that are the caller's own **or** from the shared system tier, and even an admin
+cannot submit against another *real* owner's — see [Validation rules](#validation-rules).
 
 ## Endpoints
 
@@ -37,6 +38,8 @@ configuration and dataset.
 | `GET` | `/api/v1/jobs/{job_id}/result-report/archive` | Download all of a job's output files as a ZIP |
 | `GET` | `/api/v1/jobs/{job_id}/logs` | Get a job's log lines (keyset paginated) |
 | `GET` | `/api/v1/jobs/{job_id}/trials/{trial_id}/logs` | Get one trial's log lines |
+| `GET` | `/api/v1/jobs/{job_id}/metrics` | Get a job's per-step training metrics (keyset paginated) |
+| `GET` | `/api/v1/jobs/{job_id}/trials/{trial_id}/metrics` | Get one trial's per-step training metrics |
 | `GET` | `/api/v1/jobs/{job_id}/gb-logs` | Get live build logs for the job |
 
 ---
@@ -131,8 +134,8 @@ are rejected (`extra="forbid"`).
 
 | Field | Type | Required | Default | Notes |
 | --- | --- | --- | --- | --- |
-| `config_id` | UUID | yes | — | Configuration to optimize; must be owned by the caller |
-| `dataset_id` | UUID | yes | — | Dataset to train on; must be owned by the caller and `ready` |
+| `config_id` | UUID | yes | — | Configuration to optimize; must be the caller's own or a shared system configuration |
+| `dataset_id` | UUID | yes | — | Dataset to train on; must be the caller's own or a shared system dataset, and `ready` |
 | `model` | string | yes | — | Non-empty; model to fine-tune |
 | `model_source` | string | no | `huggingface` | `huggingface` \| `custom_path` |
 | `experiment_name` | string | yes | — | Non-empty; human-readable run label |
@@ -157,7 +160,11 @@ curl -X POST https://example.com/api/v1/jobs \
 
 ### Validation rules
 
-- The caller must own the referenced configuration **and** dataset.
+- The referenced configuration **and** dataset must each be either the caller's own or
+  owned by the reserved system user (`00000000-0000-0000-0000-000000000001`) — the curated
+  shared "starter content" tier every caller may read and use. Another *real* owner's row is
+  never accepted. The created job is always owned by the caller, whichever tier the
+  configuration and dataset came from.
 - The dataset must be in status `ready`.
 - An **online-RL** configuration (its `rl_tuner_type` is one of `ppo` / `grpo` / `dapo`,
   compared case-insensitively) requires a non-empty `reward_function_code`.
@@ -171,7 +178,7 @@ See [the `JobRead` shape](#the-jobread-shape) below.
 | Status | When |
 | --- | --- |
 | `403` | Caller has no resolvable owner (unprovisioned) |
-| `404` | The referenced configuration or dataset does not exist or is not the caller's |
+| `404` | The referenced configuration or dataset does not exist, or is neither the caller's own nor shared system content |
 | `409` | The dataset is not `ready`, or a referenced row was deleted mid-submission |
 | `422` | Body fails validation, or an online-RL config is missing its reward function |
 
@@ -196,8 +203,8 @@ Exactly one of `config_id` / `config_data` must be supplied. Unknown fields are 
 | `gpu_memory` | int | no | `80` | Per-GPU memory in GB; must be ≥ 1 |
 | `config_id` | UUID \| null | no | `null` | A saved, caller-owned configuration; mutually exclusive with `config_data` |
 | `config_data` | object \| null | no | `null` | An inline configuration; mutually exclusive with `config_id` |
-| `tuner_type` | string \| null | no | `null` | Tuner variant override |
-| `rl_tuner_type` | string \| null | no | `null` | RL tuner variant override |
+| `tuner_type` | string \| null | no | `null` | Tuner variant; used only with `config_data` — ignored when `config_id` is given (the saved configuration's value wins) |
+| `rl_tuner_type` | string \| null | no | `null` | RL tuner variant; used only with `config_data` — ignored when `config_id` is given (the saved configuration's value wins) |
 
 ```bash
 curl -X POST https://example.com/api/v1/jobs/estimate-usages \
@@ -266,6 +273,7 @@ curl -X POST https://example.com/api/v1/jobs/generate-test-solutions \
 
 | Status | When |
 | --- | --- |
+| `502` | Declared for a failed upstream LLM call (`LlmUnavailableError`). A prompt whose completion fails degrades to `""` instead of propagating, so no code path raises it today |
 | `503` | No LLM provider is configured on this server |
 
 ---
@@ -482,8 +490,12 @@ See [the `JobRead` shape](#the-jobread-shape) above.
 List the job's downloadable output files (the Results panel). Owner-scoped like the rest of
 the read path. The list is computed **on read** from the job's artifact source — the request
 never writes server state. If the job's `output_artifacts` column has already been populated
-(the tuning pipeline may write it), that is served directly; otherwise the files are listed
-from the job's produced-model location, resolved from its `TUNING` task's `artifact_uri`:
+(the tuning pipeline may write it) **and** yields at least one recognizable file entry — an
+entry needs a `filename` or a `name` — that is served directly. A column that is populated but
+unmappable (an unexpected shape, or no named entry) yields nothing and falls through to the
+physical source, so such a job can still answer **409** or **404** rather than `200`. Otherwise
+the files are listed from the job's produced-model location, resolved from its `TUNING` task's
+`artifact_uri`:
 
 - `hf://…` — the produced HuggingFace model repo (listed via the HuggingFace Hub API);
 - `file://…` — a directory on the server (granite.build standalone output);
@@ -682,6 +694,89 @@ Same `LogPage` shape and pagination as the job-logs endpoint, scoped to a single
 
 ---
 
+## GET /api/v1/jobs/{job_id}/metrics
+
+Return one keyset page of the job's per-step training metrics across **all** trials,
+**oldest first**. Returns a `MetricPage`. Unlike the log endpoints — which read an append
+stream backward from the newest line — a metrics series is charted forward from the start,
+so this pages *ascending* with an `after_id` cursor.
+
+Rows are written by the training run itself: the in-process `local` runner captures
+fm-tune's marked metric lines, and the remote/`llmb` backend posts them through the
+api-bridge. A job that has not run, or ran before this table existed, simply returns an
+empty page.
+
+### Path & query parameters
+
+| Name | In | Type | Default | Constraints |
+| --- | --- | --- | --- | --- |
+| `job_id` | path | UUID | — | Job id |
+| `after_id` | query | int | `0` | ≥ 0; return rows newer than this id (`0` = first page) |
+| `limit` | query | int | `500` | 1–2000. Denser than the log endpoints' `50`/`500` because a chart consumes the whole series, and the client pages until `has_more` is false |
+| `scope` | query | string | `own` | `own` \| `all` (admin only for `all`) |
+
+### Response `200` — `MetricPage`
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `metrics` | `MetricPointRead[]` | Metric rows, oldest first |
+| `has_more` | bool | Whether a newer page exists |
+| `next_after_id` | int \| null | Pass as `after_id` for the next page; `null` when `has_more` is false |
+
+**`MetricPointRead`:**
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | int | Row id (the keyset cursor) |
+| `trial_id` | string \| null | Owning trial; `null` for a final-training run with no trial row |
+| `global_step` | int | Training step the row was logged at |
+| `epoch` | float \| null | Fractional epoch, if recorded |
+| `loss` | float \| null | `null` when the emitted value was NaN/Inf (a diverged step) |
+| `grad_norm` | float \| null | Gradient norm, if recorded |
+| `learning_rate` | float \| null | Learning rate at this step |
+| `split` | string | `train` or `eval` |
+| `extra` | object \| null | Any further metrics the trainer reported |
+| `created_at` | datetime \| null | When the row was written |
+
+```json
+{
+  "metrics": [
+    { "id": 41, "trial_id": "a1b2c3d4", "global_step": 10, "epoch": 0.04, "loss": 15.3477,
+      "grad_norm": 2.85, "learning_rate": 6.5e-07, "split": "train", "extra": {},
+      "created_at": "2026-08-26T10:15:00Z" }
+  ],
+  "has_more": true,
+  "next_after_id": 41
+}
+```
+
+### Notable statuses
+
+`403` (non-admin requesting `scope=all`), `404` (no such job, or not the caller's).
+
+---
+
+## GET /api/v1/jobs/{job_id}/trials/{trial_id}/metrics
+
+Same `MetricPage` shape and ascending pagination as the job-metrics endpoint, scoped to a
+single trial — the per-trial training curves the UI charts.
+
+### Path & query parameters
+
+| Name | In | Type | Default | Constraints |
+| --- | --- | --- | --- | --- |
+| `job_id` | path | UUID | — | Job id |
+| `trial_id` | path | string | — | Trial id (short opaque string) |
+| `after_id` | query | int | `0` | ≥ 0 |
+| `limit` | query | int | `500` | 1–2000 |
+| `scope` | query | string | `own` | `own` \| `all` (admin only for `all`) |
+
+### Notable statuses
+
+`403`, `404`.
+
+---
+
 ## GET /api/v1/jobs/{job_id}/gb-logs
 
 Return the job's **live build logs** from the configured build backend, oldest first.
@@ -708,7 +803,7 @@ The response is a plain JSON array of strings.
 | `403` | Non-admin requesting `scope=all` |
 | `404` | No such job, or not the caller's |
 | `502` | The build backend returned an error |
-| `503` | The build backend is unavailable |
+| `503` | The build-log integration is not configured, **or** this job has no build to query — no `TUNING` task carrying a `build_id`/`pr_url`, as for a `local`-backend or not-yet-launched job. Such a job gets a `503`, not an empty list |
 
 ---
 

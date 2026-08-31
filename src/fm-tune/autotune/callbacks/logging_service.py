@@ -38,6 +38,7 @@ class RecordType(Enum):
     RECORD_TRIAL = "record_trial"
     UPDATE_STATUS = "update_status"
     RECORD_RESULT = "insert_trial_result"
+    RECORD_METRICS = "record_metrics"
 
 
 class DatabaseProtocol(Protocol):

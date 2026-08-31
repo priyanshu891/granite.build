@@ -10,12 +10,13 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Select, String, cast, delete, func, or_, select, update
+from sqlalchemy import ColumnElement, Select, String, cast, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import InstrumentedAttribute, joinedload, selectinload
 
 from autotunex.core.config import ADMIN_ROLE
+from autotunex.core.constants import SYSTEM_USER_ID
 from autotunex.core.exceptions import (
     AmbiguousIdentityError,
     ConfigurationInUseError,
@@ -33,6 +34,7 @@ from autotunex.db.tables import (
     JobTable,
     LogEntryTable,
     ResultTable,
+    TrainingMetricTable,
     TrialTable,
     UserTable,
 )
@@ -60,6 +62,28 @@ def _search_pattern(q: str) -> str:
     """
     escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
+
+
+def _owner_or_shared(
+    user_id_column: InstrumentedAttribute[str], owner_id: UUID, *, include_shared: bool
+) -> ColumnElement[bool]:
+    """Ownership predicate: the caller's rows, plus the shared system tier when asked.
+
+    ``include_shared`` widens the filter to rows owned by the reserved system
+    user (:data:`~autotunex.core.constants.SYSTEM_USER_ID`) — the curated
+    starter configs/datasets every caller may read and use, but that only the
+    system user itself (or an admin via ``scope=all``) may modify. Read and
+    read-for-use paths pass ``include_shared=True``; every mutation leaves it
+    ``False``, so system rows stay read-only by construction.
+
+    The comparison is a raw, unfolded string match, matching
+    :class:`SqlAlchemyJobRepository`'s equivalent predicate: ``str(owner_id)``
+    is already canonical lowercase, and folding case here would cost the index.
+    """
+    own = user_id_column == str(owner_id)
+    if include_shared:
+        return or_(own, user_id_column == str(SYSTEM_USER_ID))
+    return own
 
 
 class SqlAlchemyJobRepository:
@@ -557,6 +581,60 @@ class SqlAlchemyResultRepository:
         await self._session.commit()
 
 
+class SqlAlchemyTrainingMetricsRepository:
+    """Per-step metrics persistence backed by an :class:`AsyncSession`.
+
+    Satisfies :class:`~autotunex.db.repositories.protocols.TrainingMetricsRepository`.
+    Append-only; owns its transactions.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def insert(
+        self,
+        job_id: UUID,
+        *,
+        trial_id: str | None,
+        global_step: int,
+        epoch: float | None,
+        loss: float | None,
+        grad_norm: float | None,
+        learning_rate: float | None,
+        split: str,
+        extra: dict[str, Any] | None,
+    ) -> None:
+        """Append one metrics row to ``job_id``, committing."""
+        self._session.add(
+            TrainingMetricTable(
+                job_id=job_id,
+                trial_id=trial_id,
+                global_step=global_step,
+                epoch=epoch,
+                loss=loss,
+                grad_norm=grad_norm,
+                learning_rate=learning_rate,
+                split=split,
+                extra=extra,
+            )
+        )
+        await self._session.commit()
+
+    async def metrics_page(
+        self, job_id: UUID, *, trial_id: str | None, after_id: int, limit: int
+    ) -> tuple[Sequence[TrainingMetricTable], bool]:
+        """Ascending keyset page (oldest first) for charting; see the Protocol."""
+        statement = select(TrainingMetricTable).where(TrainingMetricTable.job_id == job_id)
+        if trial_id is not None:
+            statement = statement.where(TrainingMetricTable.trial_id == trial_id)
+        if after_id > 0:
+            statement = statement.where(TrainingMetricTable.id > after_id)
+        statement = statement.order_by(TrainingMetricTable.id.asc()).limit(limit + 1)
+        rows = (await self._session.execute(statement)).scalars().all()
+        has_more = len(rows) > limit
+        return rows[:limit], has_more
+
+
 _CONFIG_PAGE_ORDER = (ConfigurationTable.created_at.desc(), ConfigurationTable.id.desc())
 """Newest-first ordering for the configuration list, with an ``id`` tiebreaker.
 
@@ -583,33 +661,56 @@ class SqlAlchemyConfigurationRepository:
         self._session = session
 
     async def get(
-        self, configuration_id: UUID, *, owner_id: UUID | None = None
+        self,
+        configuration_id: UUID,
+        *,
+        owner_id: UUID | None = None,
+        include_shared: bool = False,
     ) -> ConfigurationTable | None:
-        """Return the configuration with ``configuration_id`` owned by ``owner_id``."""
+        """Return the configuration with ``configuration_id``, scoped to ``owner_id``.
+
+        With ``include_shared`` and an ``owner_id`` set, rows owned by the
+        reserved system user (the shared starter-content tier) are visible too.
+        ``include_shared`` is ignored when ``owner_id`` is ``None`` — the
+        admin/standalone unscoped view already returns every row.
+        """
         statement = select(ConfigurationTable).where(ConfigurationTable.id == configuration_id)
         if owner_id is not None:
-            # Raw, unfolded string comparison, matching SqlAlchemyJobRepository:
-            # str(owner_id) is canonical lowercase, and folding would cost the index.
-            statement = statement.where(ConfigurationTable.user_id == str(owner_id))
+            statement = statement.where(
+                _owner_or_shared(
+                    ConfigurationTable.user_id, owner_id, include_shared=include_shared
+                )
+            )
         result = await self._session.execute(statement)
         return result.scalar_one_or_none()
 
     async def list(
-        self, *, limit: int, offset: int, owner_id: UUID | None = None, q: str | None = None
+        self,
+        *,
+        limit: int,
+        offset: int,
+        owner_id: UUID | None = None,
+        q: str | None = None,
+        include_shared: bool = False,
     ) -> tuple[Sequence[ConfigurationTable], int]:
         """Return one page of configurations, newest first, plus the total.
 
         ``q``, when given, is a case-insensitive substring filter on ``name``,
         applied to both statements so ``total`` can never disagree with the
-        number of items returned.
+        number of items returned. ``include_shared`` widens the ``owner_id``
+        filter to also admit the reserved system user's rows (the shared
+        starter-content tier); ignored when ``owner_id`` is ``None``.
         """
         total_statement = select(func.count()).select_from(ConfigurationTable)
         page_statement = (
             select(ConfigurationTable).order_by(*_CONFIG_PAGE_ORDER).limit(limit).offset(offset)
         )
         if owner_id is not None:
-            total_statement = total_statement.where(ConfigurationTable.user_id == str(owner_id))
-            page_statement = page_statement.where(ConfigurationTable.user_id == str(owner_id))
+            predicate = _owner_or_shared(
+                ConfigurationTable.user_id, owner_id, include_shared=include_shared
+            )
+            total_statement = total_statement.where(predicate)
+            page_statement = page_statement.where(predicate)
         if q:
             predicate = ConfigurationTable.name.ilike(_search_pattern(q), escape="\\")
             total_statement = total_statement.where(predicate)
@@ -716,30 +817,54 @@ class SqlAlchemyDatasetRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get(self, dataset_id: UUID, *, owner_id: UUID | None = None) -> DatasetTable | None:
-        """Return the dataset with ``dataset_id`` owned by ``owner_id``, or ``None``."""
+    async def get(
+        self,
+        dataset_id: UUID,
+        *,
+        owner_id: UUID | None = None,
+        include_shared: bool = False,
+    ) -> DatasetTable | None:
+        """Return the dataset with ``dataset_id``, scoped to ``owner_id``.
+
+        With ``include_shared`` and an ``owner_id`` set, system-owned datasets
+        (the shared starter tier) are visible too; ignored when ``owner_id`` is
+        ``None``.
+        """
         statement = select(DatasetTable).where(DatasetTable.id == dataset_id)
         if owner_id is not None:
-            statement = statement.where(DatasetTable.user_id == str(owner_id))
+            statement = statement.where(
+                _owner_or_shared(DatasetTable.user_id, owner_id, include_shared=include_shared)
+            )
         result = await self._session.execute(statement)
         return result.scalar_one_or_none()
 
     async def list(
-        self, *, limit: int, offset: int, owner_id: UUID | None = None, q: str | None = None
+        self,
+        *,
+        limit: int,
+        offset: int,
+        owner_id: UUID | None = None,
+        q: str | None = None,
+        include_shared: bool = False,
     ) -> tuple[Sequence[DatasetTable], int]:
         """Return one page of datasets, newest first, plus the total.
 
         ``q``, when given, is a case-insensitive substring filter on ``name``,
         applied to both statements so ``total`` can never disagree with the
-        number of items returned.
+        number of items returned. ``include_shared`` widens the ``owner_id``
+        filter to also admit the reserved system user's rows (the shared
+        starter-content tier); ignored when ``owner_id`` is ``None``.
         """
         total_statement = select(func.count()).select_from(DatasetTable)
         page_statement = (
             select(DatasetTable).order_by(*_DATASET_PAGE_ORDER).limit(limit).offset(offset)
         )
         if owner_id is not None:
-            total_statement = total_statement.where(DatasetTable.user_id == str(owner_id))
-            page_statement = page_statement.where(DatasetTable.user_id == str(owner_id))
+            predicate = _owner_or_shared(
+                DatasetTable.user_id, owner_id, include_shared=include_shared
+            )
+            total_statement = total_statement.where(predicate)
+            page_statement = page_statement.where(predicate)
         if q:
             predicate = DatasetTable.name.ilike(_search_pattern(q), escape="\\")
             total_statement = total_statement.where(predicate)
@@ -917,7 +1042,7 @@ class SqlAlchemyUserRepository:
         raises rather than choosing, because the rows can carry different
         ``role`` values and a tiebreak would decide admin-ness by row order while
         hiding the duplication. The root fix is a ``UNIQUE INDEX ON users
-        (lower(email))``, tracked under CLAUDE.md open decision 7's schema work;
+        (lower(email))``, tracked under CLAUDE.md open decision 6's schema work;
         this method only has to fail safely until then.
 
         Raises:

@@ -56,10 +56,10 @@ class ConfigurationService:
         ``configurations.config_data`` is a schema-less ``JSON`` column, and the
         tuning pipeline writes a far richer, evolving structure than any model
         here owns (``tune_config``, ``tuners_config``, ``training_config`` and
-        friends). So the API does not impose an internal shape — validating
-        against :mod:`autotunex.models.search_space` would reject every real
-        configuration. The one rule kept is that a configuration must carry some
-        settings: an empty object is a domain 422, not a stored no-op. FastAPI's
+        friends). So the API does not impose an internal shape — any fixed schema
+        asserted here would reject every real configuration. The one rule kept is
+        that a configuration must carry some settings: an empty object is a domain
+        422, not a stored no-op. FastAPI's
         request validation already rejects a non-object body upstream.
 
         Raises:
@@ -101,6 +101,12 @@ class ConfigurationService:
     ) -> ConfigurationRead:
         """Return the configuration with ``configuration_id``, scoped to the caller.
 
+        Reads opt into the shared system tier (``include_shared=True``): a
+        configuration owned by the reserved system user
+        (:data:`~autotunex.core.constants.SYSTEM_USER_ID`) is visible to every
+        caller alongside their own, even though ``update``/``delete`` stay
+        strict — so a non-owner cannot modify or remove it.
+
         Raises:
             ScopeNotPermittedError: a non-admin requested ``scope=all``.
             ConfigurationNotFoundError: no such configuration, or another owner's.
@@ -108,7 +114,9 @@ class ConfigurationService:
         owner_id = resolve_owner_filter(self._principal, scope)
         if sees_nothing(self._principal, scope):
             raise ConfigurationNotFoundError(configuration_id)
-        configuration = await self._repository.get(configuration_id, owner_id=owner_id)
+        configuration = await self._repository.get(
+            configuration_id, owner_id=owner_id, include_shared=True
+        )
         if configuration is None:
             raise ConfigurationNotFoundError(configuration_id)
         return configuration_to_read(
@@ -126,6 +134,9 @@ class ConfigurationService:
         """Return one page of the caller's configurations, newest first.
 
         ``q`` is an optional case-insensitive substring filter on ``name``.
+        Like :meth:`get`, this opts into the shared system tier
+        (``include_shared=True``), so configurations owned by the reserved
+        system user appear in every caller's list alongside their own.
 
         Raises:
             ScopeNotPermittedError: a non-admin requested ``scope=all``.
@@ -134,7 +145,7 @@ class ConfigurationService:
         if sees_nothing(self._principal, scope):
             return Page[ConfigurationRead](items=[], total=0, limit=limit, offset=offset)
         configurations, total = await self._repository.list(
-            limit=limit, offset=offset, owner_id=owner_id, q=q
+            limit=limit, offset=offset, owner_id=owner_id, q=q, include_shared=True
         )
         grouped = await self._repository.jobs_for_config(
             [configuration.id for configuration in configurations], owner_id=owner_id

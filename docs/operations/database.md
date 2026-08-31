@@ -121,7 +121,8 @@ The revisions form a single linear chain from the baseline to the current head:
 | `7f175ebf55ad` | Adds dataset `status` and `status_detail`. |
 | `b27a008ed0cf` | Makes `datasets.description` nullable. |
 | `c628b830e8a3` | Adds the `jobs` reward-function columns. |
-| `0a2caef2a185` | Widens `trials.id` and `results.trial_id` to `VARCHAR(16)` (**current head**). |
+| `0a2caef2a185` | Widens `trials.id` and `results.trial_id` to `VARCHAR(16)`. |
+| `f09bd54b61b7` | Adds the `training_metrics` table, keyset-indexed for the read path (**current head**). |
 
 ## Fresh or empty database (local dev, tests, CI)
 
@@ -163,7 +164,7 @@ Two things to know about these steps:
   executing its `upgrade()`. This is the whole point: the tables it would create already
   exist, so it must be marked applied, never run.
 - **`alembic upgrade head` then applies the later revisions** — beginning with
-  `78f6bb7de0df` and continuing through the current head (`0a2caef2a185`). The first of
+  `78f6bb7de0df` and continuing through the current head (`f09bd54b61b7`). The first of
   these, `78f6bb7de0df`, **modifies data**: it copies every existing `jobs.precision`
   value into `config_snapshot['precision']` (a JSON field) and then drops the `precision`
   column. Nothing is lost — its `downgrade()` re-adds the column (as nullable) and restores

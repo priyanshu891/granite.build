@@ -33,12 +33,14 @@ from autotunex.db.repositories.protocols import (
     ConfigurationRepository,
     DatasetRepository,
     JobRepository,
+    TrainingMetricsRepository,
     UserRepository,
 )
 from autotunex.db.repositories.sqlalchemy import (
     SqlAlchemyConfigurationRepository,
     SqlAlchemyDatasetRepository,
     SqlAlchemyJobRepository,
+    SqlAlchemyTrainingMetricsRepository,
     SqlAlchemyUserRepository,
 )
 from autotunex.db.session import get_session_factory
@@ -62,6 +64,7 @@ from autotunex.services.llm.registry import get_llm_client as build_llm_client
 from autotunex.services.local.runner import LocalJobRunner
 from autotunex.services.local.trainer import AutotuneLocalTrainer
 from autotunex.services.logs import LogService
+from autotunex.services.metrics import MetricsService
 from autotunex.services.protocols import JobRunner
 from autotunex.services.reconcile.on_demand import OnDemandReconciler
 from autotunex.services.reconcile.protocols import BuildStatusReader
@@ -510,6 +513,27 @@ def get_log_service(
 
 
 LogServiceDep = Annotated[LogService, Depends(get_log_service)]
+
+
+def get_training_metrics_repository(session: SessionDep) -> TrainingMetricsRepository:
+    """Provide the training-metrics repository implementation."""
+    return SqlAlchemyTrainingMetricsRepository(session)
+
+
+def get_metrics_service(
+    metrics_repository: Annotated[
+        TrainingMetricsRepository, Depends(get_training_metrics_repository)
+    ],
+    job_repository: Annotated[JobRepository, Depends(get_job_repository)],
+    principal: PrincipalDep,
+) -> MetricsService:
+    """Provide the metrics service, scoped to the resolved principal."""
+    return MetricsService(
+        metrics_repository=metrics_repository, job_repository=job_repository, principal=principal
+    )
+
+
+MetricsServiceDep = Annotated[MetricsService, Depends(get_metrics_service)]
 
 
 def get_configuration_repository(session: SessionDep) -> ConfigurationRepository:

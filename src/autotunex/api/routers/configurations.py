@@ -4,7 +4,7 @@
 
 Unlike jobs, configurations are created, updated and deleted through this API —
 they are the one resource whose full CRUD is wanted (see ``CLAUDE.md`` open
-decision 6). Updates are ``PUT``-only full replacements; there is no ``PATCH``.
+decision 5). Updates are ``PUT``-only full replacements; there is no ``PATCH``.
 Every body here is one or two lines: parse, delegate, serialize.
 """
 

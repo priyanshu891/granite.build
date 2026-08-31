@@ -22,6 +22,7 @@ from autotunex.api.deps import (
     EstimationServiceDep,
     JobServiceDep,
     LogServiceDep,
+    MetricsServiceDep,
     OnDemandReconcilerDep,
     RewardToolsServiceDep,
 )
@@ -30,6 +31,7 @@ from autotunex.models.common import DataScope, Page, ProblemDetail
 from autotunex.models.estimation import EstimateUsagesRequest, EstimateUsagesResponse
 from autotunex.models.job import JobCreate, JobRead, JobSummary
 from autotunex.models.log import LogPage
+from autotunex.models.metric import MetricPage
 from autotunex.models.reward import GenerateTestSolutionsRequest, GenerateTestSolutionsResponse
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -246,6 +248,26 @@ async def get_job_logs(
 
 
 @router.get(
+    "/{job_id}/metrics",
+    summary="Get a job's per-step training metrics",
+    responses={
+        HTTPStatus.FORBIDDEN: _PROBLEM_RESPONSE,
+        HTTPStatus.NOT_FOUND: _PROBLEM_RESPONSE,
+        **_AUTH_RESPONSES,
+    },
+)
+async def get_job_metrics(
+    job_id: UUID,
+    service: MetricsServiceDep,
+    after_id: int = Query(default=0, ge=0),
+    limit: int = Query(default=500, ge=1, le=2000),
+    scope: DataScope = Query(default=DataScope.OWN),
+) -> MetricPage:
+    """Return an ascending keyset page of the job's per-step metrics (all trials)."""
+    return await service.get_job_metrics(job_id, after_id=after_id, limit=limit, scope=scope)
+
+
+@router.get(
     "/{job_id}/result-report",
     summary="List a job's downloadable output assets",
     responses={
@@ -336,6 +358,29 @@ async def get_trial_logs(
     """Return one keyset page of the trial's log lines, newest first."""
     return await service.get_trial_logs(
         job_id, trial_id, before_id=before_id, limit=limit, scope=scope
+    )
+
+
+@router.get(
+    "/{job_id}/trials/{trial_id}/metrics",
+    summary="Get a trial's per-step training metrics",
+    responses={
+        HTTPStatus.FORBIDDEN: _PROBLEM_RESPONSE,
+        HTTPStatus.NOT_FOUND: _PROBLEM_RESPONSE,
+        **_AUTH_RESPONSES,
+    },
+)
+async def get_trial_metrics(
+    job_id: UUID,
+    trial_id: str,
+    service: MetricsServiceDep,
+    after_id: int = Query(default=0, ge=0),
+    limit: int = Query(default=500, ge=1, le=2000),
+    scope: DataScope = Query(default=DataScope.OWN),
+) -> MetricPage:
+    """Return an ascending keyset page of one trial's per-step metrics."""
+    return await service.get_trial_metrics(
+        job_id, trial_id, after_id=after_id, limit=limit, scope=scope
     )
 
 
