@@ -12,12 +12,14 @@ import styles from './DetailsPanel.module.scss'
 
 interface DetailFieldProps {
   label: string
+  column: 1 | 2
+  row: number
   children: React.ReactNode
 }
 
-function DetailField({ label, children }: DetailFieldProps) {
+function DetailField({ label, column, row, children }: DetailFieldProps) {
   return (
-    <div>
+    <div className={column === 1 ? styles.col1 : styles.col2} style={{ gridRow: row }}>
       <div className={styles.fieldLabel}>{label}</div>
       <div className={styles.fieldValue}>{children}</div>
     </div>
@@ -70,27 +72,24 @@ export function AutoTuneXPanel({ buildId }: AutoTuneXPanelProps) {
   // No tuning job linked to this build — render nothing so DetailsPanel fills the row.
   if (!job) return null
   return (
-    <div style={{ padding: '0.5rem 1rem' }}>
-      {/* <h5 style={{ marginBottom: '1rem' }}>AutoTuneX</h5> */}
-      <dl className={styles.detailsList}>
-        <DetailField label="Experiment name">
-          <span className={styles.wordBreakAll}>{job.experiment_name}</span>
-        </DetailField>
-        <DetailField label="Model">
-          <span className={styles.wordBreakAll}>{job.model}</span>
-        </DetailField>
-        <DetailField label="Tuning type">{job.tuning_type}</DetailField>
-        <DetailField label="Configuration">
-          <CarbonLink href="#" onClick={(e) => { e.preventDefault(); setConfigOpen(true) }}>
-            {job.config_name}
-          </CarbonLink>
-        </DetailField>
-        <DetailField label="Data set">
-          <CarbonLink href="#" onClick={(e) => { e.preventDefault(); setDatasetOpen(true) }}>
-            {job.dataset}
-          </CarbonLink>
-        </DetailField>
-      </dl>
+    <>
+      <DetailField label="Experiment name" column={2} row={1}>
+        <span className={styles.wordBreakAll} style={{lineHeight:'2rem'}}>{job.experiment_name}</span>
+      </DetailField>
+      <DetailField label="Model" column={2} row={2}>
+        <span className={styles.wordBreakAll}>{job.model}</span>
+      </DetailField>
+      <DetailField label="Tuning type" column={2} row={3}>{job.tuning_type}</DetailField>
+      <DetailField label="Configuration" column={2} row={4}>
+        <CarbonLink href="#" onClick={(e) => { e.preventDefault(); setConfigOpen(true) }}>
+          {job.config_name}
+        </CarbonLink>
+      </DetailField>
+      <DetailField label="Data set" column={2} row={5}>
+        <CarbonLink href="#" onClick={(e) => { e.preventDefault(); setDatasetOpen(true) }}>
+          {job.dataset}
+        </CarbonLink>
+      </DetailField>
 
       <Modal
         open={configOpen}
@@ -111,6 +110,6 @@ export function AutoTuneXPanel({ buildId }: AutoTuneXPanelProps) {
         datasetId={job.dataset_id}
         onClose={() => setDatasetOpen(false)}
       />
-    </div>
+    </>
   )
 }

@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react'
 import styles from './BuildDetails.module.scss'
+import detailStyles from './DetailsPanel.module.scss'
 import {
   Tab,
   TabListVertical,
@@ -106,17 +107,11 @@ export function BuildDetails({
           </TabListVertical>
           <TabPanels>
             <TabPanel style={{ overflowY: 'auto', height: '100%' }}>
-              <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                <div style={{ flex: '1 1 320px' }}>
-                  <DetailsPanel build={build} status={status} loading={loadingBuild} />
-                </div>
-                {isAutotunex && (
-                  <div style={{ flex: '1 1 320px' }}>
-                    <AutoTuneXPanel buildId={buildId} />
-                  </div>
-                )}
+              <div className={detailStyles.fieldsGrid}>
+                <DetailsPanel build={build} status={status} loading={loadingBuild} />
+                {isAutotunex && <AutoTuneXPanel buildId={buildId} />}
               </div>
-              <div style={{ borderTop: '1px solid var(--cds-border-subtle-01)', margin: '2rem 1rem' }} />
+              <div style={{ borderTop: '1px solid var(--cds-border-subtle-01)', margin: '1rem 1rem' }} />
               <TargetsPanel targets={mergedTargets} />
             </TabPanel>
             <TabPanel style={{ display: logsHide, overflow: 'hidden', height: '100%', padding: 0 }}>
