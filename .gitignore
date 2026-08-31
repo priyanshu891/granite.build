@@ -38,6 +38,11 @@ var/
 wheels/
 share/python-wheels/
 *.egg-info/
+
+# frontend/lib/ is application source, not Python build output. The `lib/` rule
+# in the packaging block above matches it at any depth, which silently drops new
+# files added there (frontend/lib/sse.ts only survives because it predates it).
+!frontend/lib/
 .installed.cfg
 *.egg
 MANIFEST
@@ -212,11 +217,15 @@ frontend/node_modules/
 frontend/.next/
 frontend/out/
 frontend/.env
+frontend/.env.local
 frontend/certificates/
 frontend/*.tsbuildinfo
 
 # Compiled frontend served by gbserver — built by `make build-frontend`, not committed
 src/gbserver/static/ui/
+
+# Superpowers SDD scratch (ledger, briefs, review packages) — local only
+.superpowers/
 
 
 # autotunex SvelteKit source lives under autotunex/src/ux/src/lib; re-include it.
