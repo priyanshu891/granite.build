@@ -28,6 +28,14 @@ function useLinkedTuningJob(buildId: string) {
   return useQuery({
     queryKey: ['autotunex-job-by-build', buildId, isAdmin],
     queryFn: () => getJobByBuildId(buildId, isAdmin ? 'all' : 'own'),
+    // TrialsTable polls trials based on job.status, so a frozen status here
+    // means that poll never stops. Refetch every 15s while the job is running
+    // or pending so the UI stays current.
+    refetchInterval: (query) => {
+      const s = (query.state.data as { status?: string } | undefined)?.status
+      return s && new Set(['running', 'pending']).has(s) ? 15_000 : false
+    },
+    enabled: Boolean(buildId),
   })
 }
 
