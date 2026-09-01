@@ -44,7 +44,7 @@ export function toListResult<T>(data: { items?: unknown[]; total?: number }, ada
  *
  * Termination, in order of what each condition is for:
  *
- *  1. A short page (`batch.length < limit`) is the correctness guarantee. Every
+ *  1. A short page (`items.length < limit`) is the correctness guarantee. Every
  *     terminating case reduces to it, an empty page included (`0 < limit`), so a
  *     server reporting a `total` larger than the rows it actually serves stops
  *     here rather than looping.
@@ -65,7 +65,7 @@ export async function collectPages<T>(
     const items = page.items ?? []
     for (const raw of items) out.push(adapt(raw))
     if (items.length < limit) break
-    if (out.length >= (page.total ?? 0)) break
+    if (out.length >= (page.total ?? Infinity)) break
   }
   return out
 }

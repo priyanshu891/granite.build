@@ -264,4 +264,19 @@ describe('collectPages', () => {
     const out = await collectPages(async () => ({ total: 0 }), identity, 100)
     assert.deepEqual(out, [])
   })
+
+  it('keeps paging when a full page omits total', async () => {
+    // `total` is optional on the envelope. A missing one must disable the
+    // optimization, not trigger it — otherwise the drain stops after page 1 and
+    // silently returns partial data.
+    const rows = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
+    const calls = []
+    const fetchPage = async (limit, offset) => {
+      calls.push({ limit, offset })
+      return { items: rows.slice(offset, offset + limit) }
+    }
+    const out = await collectPages(fetchPage, identity, 2)
+    assert.deepEqual(out.map((r) => r.id), ['a', 'b', 'c'])
+    assert.equal(calls.length, 2)
+  })
 })
