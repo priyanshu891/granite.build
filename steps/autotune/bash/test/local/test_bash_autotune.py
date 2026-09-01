@@ -67,6 +67,18 @@ FM_TUNE_ROOT = REPO_ROOT / "autotunex/src/fm-tune"
 class TestBashAutotune(AbstractYamlBuildRunnerTest):
     """autotune trains once and registers its output via the artifact marker."""
 
+    def _out_dir(self) -> Path:
+        """Absolute, durable output dir for this run.
+
+        The build's `outputs.custom.uri` MUST be absolute: gbserver resolves a
+        relative file: URI against its own CWD, which for the harness is an
+        ephemeral workspace that is torn down after the run -- so the pushed
+        artifact would disappear and the recorded URI would point at nothing.
+        Kept after the run so the tuned model can be inspected.
+        """
+        d = Path(tempfile.mkdtemp(prefix="autotune-out-"))
+        return d
+
     def _get_yaml_spec_dir(self) -> Path:
         """Render the committed fixture into a temp spec dir with absolute paths.
 
@@ -97,6 +109,7 @@ class TestBashAutotune(AbstractYamlBuildRunnerTest):
         build = (fixture / "build.yaml").read_text()
         build = build.replace("@FM_TUNE_ROOT@", str(FM_TUNE_ROOT))
         build = build.replace("@DATASET_DIR@", str(fixture / "dataset"))
+        build = build.replace("@OUTPUT_DIR@", str(self._out_dir()))
         assert "@" not in build.split("granite.build:", 1)[1], "unsubstituted token"
         (spec / "build.yaml").write_text(build)
 

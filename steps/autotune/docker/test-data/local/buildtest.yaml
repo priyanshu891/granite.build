@@ -1,0 +1,16 @@
+# Spec for test_docker_autotune.py. Proves the docker-specific plumbing: the
+# /gb-workspace bind mount, the container->host artifact path translation, and
+# that run.py's marker is scraped by the (unanchored) docker monitor.
+targets:
+- autotune-run
+target_expectations:
+- target_name: autotune-run
+  step_count: 1
+  input_artifact_count: 2
+  output_artifact_count: 1
+  jobstats_count: 1
+space_uri: ../../space
+tests:
+- runner
+simulate_step_failure: false
+timeout_minutes: 45
