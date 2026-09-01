@@ -74,7 +74,10 @@ class JobTable(Base):
     ray_address: Mapped[str | None] = mapped_column(String(50), default=None)
     cleanup: Mapped[bool | None] = mapped_column(Boolean, default=True)
     autotune: Mapped[bool | None] = mapped_column(Boolean, default=True)
-    output_artifacts: Mapped[dict[str, Any] | None] = mapped_column(JSON, default=None)
+    # Written by the tuning pipeline, not by this service: an object for some
+    # writers, a bare list of file descriptors for the publish step. The union
+    # is the column's real shape — see JobRead.output_artifacts.
+    output_artifacts: Mapped[dict[str, Any] | list[Any] | None] = mapped_column(JSON, default=None)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow, onupdate=utcnow)
 

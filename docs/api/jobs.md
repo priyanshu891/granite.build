@@ -201,7 +201,7 @@ Exactly one of `config_id` / `config_data` must be supplied. Unknown fields are 
 | --- | --- | --- | --- | --- |
 | `model_name` | string | yes | — | Model to size the run for; its parameter count is parsed from the name |
 | `gpu_memory` | int | no | `80` | Per-GPU memory in GB; must be ≥ 1 |
-| `config_id` | UUID \| null | no | `null` | A saved, caller-owned configuration; mutually exclusive with `config_data` |
+| `config_id` | UUID \| null | no | `null` | A saved configuration — the caller's own or one from the shared system tier; mutually exclusive with `config_data` |
 | `config_data` | object \| null | no | `null` | An inline configuration; mutually exclusive with `config_id` |
 | `tuner_type` | string \| null | no | `null` | Tuner variant; used only with `config_data` — ignored when `config_id` is given (the saved configuration's value wins) |
 | `rl_tuner_type` | string \| null | no | `null` | RL tuner variant; used only with `config_data` — ignored when `config_id` is given (the saved configuration's value wins) |
@@ -233,7 +233,7 @@ curl -X POST https://example.com/api/v1/jobs/estimate-usages \
 
 | Status | When |
 | --- | --- |
-| `404` | The referenced `config_id` does not exist or is not the caller's |
+| `404` | The referenced `config_id` does not exist, or is neither the caller's own nor shared system content |
 | `422` | Body fails validation (neither or both of `config_id`/`config_data`, `gpu_memory` < 1), or `model_name` has no parseable parameter count |
 
 ---
@@ -304,7 +304,7 @@ Return one job with its current status and full detail. Returns `JobRead`.
 | `num_trials` | int | Trial count for this job (≥ 0) |
 | `tasks` | `GbTaskRead[]` | Build/deploy steps attached to the job (may be empty) |
 | `config_snapshot` | object \| null | The configuration captured at submit time |
-| `output_artifacts` | object \| null | Free-form artifact descriptor written by the pipeline |
+| `output_artifacts` | object \| array \| null | Free-form artifact descriptor written by the pipeline. Both shapes occur in the wild: an object of named locators, or a bare array of file descriptors (`path`/`size`/`published`) as the publish step records. Report it, do not police it |
 | `trials` | `TrialRead[]` | The job's trials (may be empty) |
 | `is_stale` | bool | `true` when the live configuration's behavioural settings no longer match what the job snapshotted at submit; detail-only, never on `JobSummary` |
 
@@ -437,7 +437,7 @@ See [the `JobRead` shape](#the-jobread-shape) above.
 Delete a job. Returns `204` with an empty body. A live job (`pending`/`running`/`paused`)
 is auto-cancelled first — its backend work is stopped via the runner — before the row is
 removed; a job with no live work deletes directly. The delete cascades to the job's trials,
-results, log entries, and build tasks.
+results, log entries, per-step training metrics, and build tasks.
 
 ### Path & query parameters
 

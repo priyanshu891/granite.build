@@ -300,7 +300,7 @@ the baked gbserver URL is plain HTTP, and a runtime smoke test.
 
 ### `llmb`-ready image (`Dockerfile.gb`)
 
-`Dockerfile.gb` is a third tracked image with the same single-container shape as
+`Dockerfile.gb` is a third top-level image with the same single-container shape as
 the root `Dockerfile` — API plus the built SPA, non-root, port 8000, a `/data`
 volume, a `/health` `HEALTHCHECK` — but built for the **`llmb`** backend instead
 of `local`. It installs AutoTuneX as `".[granite-build, mysql, mcp]"`, so the

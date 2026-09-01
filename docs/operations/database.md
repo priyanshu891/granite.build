@@ -90,7 +90,9 @@ environment.
 This is a **development convenience** — it lets a fresh checkout run against SQLite with no
 setup. It is idempotent against an existing schema, so it does not corrupt anything, but it
 also creates tables without recording any Alembic version, which hides the fact that
-migrations were never applied.
+migrations were never applied. It creates *only* tables — `create_schema()` runs
+`Base.metadata.create_all` and nothing else — so the seed `users` row the baseline
+revision inserts (id `00000000-0000-0000-0000-000000000000`, `role='system'`) is absent.
 
 **Production sets `AUTOTUNEX_AUTO_CREATE_SCHEMA=false` and uses Alembic migrations** so the
 schema version is tracked explicitly.
@@ -116,7 +118,7 @@ The revisions form a single linear chain from the baseline to the current head:
 
 | Revision | Summary |
 | --- | --- |
-| `1fb645a87b48` | **Baseline** — creates the full schema, including `jobs.precision`. |
+| `1fb645a87b48` | **Baseline** — creates the full schema, including `jobs.precision`, and seeds one `users` row (id `00000000-0000-0000-0000-000000000000`, `role='system'`) so that owned rows can be inserted at all. |
 | `78f6bb7de0df` | Backfills `jobs.precision` into `config_snapshot`, then drops the column (**modifies data**; reversible). |
 | `7f175ebf55ad` | Adds dataset `status` and `status_detail`. |
 | `b27a008ed0cf` | Makes `datasets.description` nullable. |
@@ -162,7 +164,9 @@ Two things to know about these steps:
 
 - **`alembic stamp 1fb645a87b48`** records the baseline as the current version without
   executing its `upgrade()`. This is the whole point: the tables it would create already
-  exist, so it must be marked applied, never run.
+  exist, so it must be marked applied, never run. Because that body never runs, neither
+  does its seed `users` row (id `00000000-0000-0000-0000-000000000000`, `role='system'`) —
+  an adopted database keeps only the users it already has.
 - **`alembic upgrade head` then applies the later revisions** — beginning with
   `78f6bb7de0df` and continuing through the current head (`f09bd54b61b7`). The first of
   these, `78f6bb7de0df`, **modifies data**: it copies every existing `jobs.precision`

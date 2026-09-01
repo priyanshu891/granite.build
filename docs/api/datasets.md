@@ -17,9 +17,10 @@ read and launch a job from. An admin widens to all owners per request with `scop
 (`own` | `all`, default `own`); a non-admin passing `scope=all` gets a **403**. `POST` and
 `upload` are always own-scoped.
 
-Mutations never widen to the shared tier, so `PUT`, `DELETE` and `upload` against a
-system-owned dataset return **404** — only the system user itself, or an admin via
-`scope=all`, may modify one.
+Mutations never widen to the shared tier, so `PUT` and `DELETE` against a system-owned
+dataset return **404** — only the system user itself, or an admin via `scope=all`, may
+modify one. `upload` takes no `scope` parameter at all: it is strictly own-only, so not
+even an admin can upload into a shared dataset, or into another owner's.
 
 ## Endpoints
 
@@ -137,8 +138,12 @@ pipeline, which never flips `status` to `ready`). A backend failure while previe
 
 **`DatasetJobRef`:** `{ id: UUID, experiment_name: string|null, status: string }`.
 
-**`preview`** (a `DatasetPreview`): `{ "train": [ {row}, ... ], "validation": [ {row}, ... ] }`
-— each a list of raw JSON rows bounded by `preview_rows`.
+**`preview`** (a `DatasetPreview`):
+`{ "train": [ {row}, ... ], "validation": [ {row}, ... ], "viewer_ready": bool }` — `train`
+and `validation` are each a list of raw JSON rows bounded by `preview_rows`. `viewer_ready`
+(default `true`) is `false` only when the HuggingFace dataset viewer was unavailable or
+still precomputing, so empty `train`/`validation` there mean "not ready yet" rather than
+"genuinely empty".
 
 ```json
 {
@@ -160,7 +165,11 @@ pipeline, which never flips `status` to `ready`). A backend failure while previe
   "associated_jobs": [],
   "created_at": "2026-08-10T12:00:00Z",
   "updated_at": "2026-08-10T12:05:00Z",
-  "preview": { "train": [{ "input": "...", "output": "..." }], "validation": [] }
+  "preview": {
+    "train": [{ "input": "...", "output": "..." }],
+    "validation": [],
+    "viewer_ready": true
+  }
 }
 ```
 
@@ -242,10 +251,17 @@ Supports gzip-compressed bodies via the `Content-Encoding: gzip` request header.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `train_file` | file | yes | Training file; its extension sets the format |
+| `train_file` | file | yes | Training file; its extension sets the format (accepted set below) |
 | `validation_file` | file | no | Optional validation file; its format must match the train file's |
 | `validation_percentage` | int | no | Split a validation set from train; mutually exclusive with `validation_file` |
 | `column_mapping` | string | no | JSON string, a flat `{target: source}` object |
+
+Accepted extensions — anything else is a **415**. A trailing `.gz` on the *filename* is
+stripped before this lookup, so `train.jsonl.gz` is accepted:
+
+- `.jsonl`, `.json` → `jsonl`
+- `.csv` → `csv`
+- `.parquet`, `.pq` → `parquet`
 
 ```bash
 curl -X POST https://example.com/api/v1/datasets/9f30.../upload \

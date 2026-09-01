@@ -472,6 +472,6 @@ per-step training-metrics read path, and is created with two `id`-trailing index
 `(job_id, id)` and `(job_id, trial_id, id)` — so that path's keyset page is served by the
 index alone rather than falling back to a sort. Dual declaration is not what makes it special
 — `src/api-bridge` mirrors all nine shared tables in its own metadata
-(`src/api-bridge/src/api_bridge/tables.py:133-261`) and writes most of them. What is unique is
+(`src/api-bridge/src/api_bridge/tables.py:133-276`) and writes most of them. What is unique is
 that `training_metrics` is the only one of those nine with no definition in the schema file to
 anchor the two, so its two metadata declarations must stay in step by convention alone.

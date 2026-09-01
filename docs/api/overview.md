@@ -201,9 +201,11 @@ distinguishable only by that `user_id`, and a job may reference one at submit
 time. **Jobs themselves have no shared tier.**
 
 The tier is read-only. Mutations never widen to it, so `PUT` or `DELETE` on a
-system-owned row — and `POST /datasets/{id}/upload` into one — returns `404`,
-exactly as another owner's row would. Only the system user itself, or an admin
-passing `?scope=all`, may modify them.
+system-owned row returns `404`, exactly as another owner's row would; only the
+system user itself, or an admin passing `?scope=all`, may modify them.
+`POST /datasets/{id}/upload` takes no `scope` parameter at all: it is strictly
+own-only, so not even an admin can upload into a shared dataset, or into
+another owner's.
 
 > User-management endpoints are gated differently. They are admin-only in whole
 > (there is no per-row "own" view of an identity) and take no `scope` parameter.

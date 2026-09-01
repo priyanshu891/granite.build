@@ -145,9 +145,11 @@ tasks relate, plus the job lifecycle — see [concepts](docs/concepts.md).
 Resource endpoints are mounted under `/api/v1`; `/auth/*`, `/health` and `/mcp` are
 unprefixed. Reads and owner-scoped writes are own-data by default; an admin widens reads,
 updates and deletes to every owner's rows per request with `?scope=all` (a non-admin who asks
-gets a `403`). Every endpoint is runnable from the browser at
-[Swagger UI](http://127.0.0.1:8000/docs), and the full reference lives in
-[`docs/api/`](docs/api/).
+gets a `403`). Configuration and dataset reads additionally return the **shared system tier** —
+curated starter content owned by a reserved system user — which every caller sees even under the
+default `scope=own`; mutations never widen to it, and jobs have no shared tier. Every endpoint
+is runnable from the browser at [Swagger UI](http://127.0.0.1:8000/docs), and the full reference
+lives in [`docs/api/`](docs/api/).
 
 | Resource | Endpoints | Reference |
 | --- | --- | --- |
@@ -232,10 +234,10 @@ to exercise each provider against a running server.
 make install     # install the package with dev dependencies
 make dev         # run the API with autoreload
 make test        # pytest
-make lint        # ruff check + format check
-make format      # apply ruff formatting and autofixes
+make lint        # ruff check + format check (+ src/api-bridge, src/fm-tune)
+make format      # apply ruff formatting and autofixes (+ src/api-bridge, src/fm-tune)
 make typecheck   # mypy (strict)
-make check       # lint + typecheck + test — the three CI jobs you can run locally
+make check       # lint + typecheck + test + test-subprojects — the CI jobs you can run locally
                  # (CI also runs the migrations matrix, DCO, OSS-compliance and gitleaks)
 make migrate     # alembic upgrade head — see the warning below before using this on a real database
 ```

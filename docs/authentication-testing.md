@@ -338,5 +338,5 @@ suite drives these endpoints over `https://testserver`.
   `POST /auth/assume/{user_id}` and `POST /auth/unassume`; `POST /auth/logout`;
   and `POST /chat` / `POST /chat/stream`, whose tool registry can create a
   configuration and launch a job. Double-submit tokens across all mutating
-  endpoints remain a tracked repo-wide change — see `CLAUDE.md`'s open decision 6.
+  endpoints remain a tracked repo-wide change — see `CLAUDE.md`'s open decision 5.
 - **API keys do not rotate**, as above.

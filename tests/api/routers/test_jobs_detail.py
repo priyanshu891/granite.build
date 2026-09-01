@@ -263,3 +263,23 @@ async def test_detail_nests_all_tasks_with_the_view_aliases(
     assert rits["github_pr_url"] == "https://github.example/pr/1"
     assert rits["rits_url"] == "https://rits.example/x"
     assert rits["task_started_at"] == "2026-07-29 10:12:00"
+
+
+async def test_detail_tolerates_a_list_shaped_output_artifacts(
+    client: AsyncClient, session: AsyncSession, job: JobTable
+) -> None:
+    """A pipeline-written row may hold a bare list of file descriptors, not a dict.
+
+    ``jobs.output_artifacts`` is free-form JSON written outside this service; the
+    publish step records a list. The detail response must report it rather than
+    500 on validation — see ``AssetService._map``, which already tolerates both.
+    """
+    artifacts = [{"path": "s3a://lake-gb/run/adapter.safetensors", "size": 800, "published": True}]
+    job.output_artifacts = artifacts
+    session.add(job)
+    await session.commit()
+
+    response = await client.get(f"{API}/jobs/{job.id}?scope=all")
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.json()["output_artifacts"] == artifacts

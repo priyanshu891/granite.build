@@ -335,7 +335,8 @@ class Settings(BaseSettings):
 
     hf_viewer_base_url: str = "https://datasets-server.huggingface.co"
     """Base URL of the HuggingFace dataset-viewer service; the client appends
-    ``/rows``. Override to point at a mirror or an enterprise viewer."""
+    ``/splits`` (to discover the repo's config name and readiness) and ``/rows``.
+    Override to point at a mirror or an enterprise viewer."""
 
     hf_hub_base_url: str = "https://huggingface.co"
     """Base URL of the HuggingFace Hub API, used to list a job's output-model
@@ -343,9 +344,10 @@ class Settings(BaseSettings):
     mirror or a test double."""
 
     hf_viewer_timeout_seconds: float = Field(default=2.5, gt=0)
-    """Per-call HTTP timeout for one viewer ``/rows`` fetch. Preview fetches the
-    two splits concurrently, so this also bounds the latency preview adds to a
-    ``GET /datasets/{id}?preview=true`` read."""
+    """Per-call HTTP timeout for one viewer request. A preview makes a ``/splits``
+    call to discover the config, then fetches the two splits' ``/rows``
+    concurrently, so the worst-case latency preview adds to a
+    ``GET /datasets/{id}?preview=true`` read is roughly two of these timeouts."""
 
     # --- LLM intelligence (Phase 2; optional) ----------------------------
     llm_base_url: str | None = None

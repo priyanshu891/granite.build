@@ -52,6 +52,18 @@ exact clause :meth:`SqlAlchemyJobRepository.list` uses, rather than restating
 it and asserting on the restatement.
 """
 
+_DELETE_BATCH_SIZE = 5_000
+"""Rows removed per statement when clearing a job's unbounded child tables.
+
+Bounds the lock window of
+:meth:`SqlAlchemyJobRepository._delete_children_in_batches`. At stage's observed
+~264 bytes/row average this is well under a couple of MB per statement — small
+enough to finish far inside MySQL's 50s ``innodb_lock_wait_timeout``, large
+enough that clearing millions of rows does not cost millions of round trips.
+Module-level so a test can shrink it rather than inserting 5,000 rows to prove
+the loop iterates.
+"""
+
 
 def _search_pattern(q: str) -> str:
     r"""Return a LIKE pattern matching ``q`` as a literal substring.
@@ -344,6 +356,54 @@ class SqlAlchemyJobRepository:
         job.status = status
         await self._session.commit()
 
+    async def _delete_children_in_batches(
+        self,
+        table: type[LogEntryTable] | type[TrainingMetricTable],
+        job_id: UUID,
+    ) -> None:
+        """Delete one high-volume child table's rows for ``job_id`` in bounded batches.
+
+        ``log_entries`` and ``training_metrics`` are the two tables a long tuning
+        run grows without bound — stage carried 16.4M ``log_entries`` rows over
+        4.1GB on 2026-08-31 — so a single ``DELETE ... WHERE job_id = :id`` takes
+        millions of row locks and unlinks gigabytes of off-page ``MEDIUMTEXT`` in
+        one statement. That ran past MySQL's 50s ``innodb_lock_wait_timeout``
+        against ``src/api-bridge``'s concurrent ``insert_logs`` batches and
+        surfaced as ``(1205, 'Lock wait timeout exceeded')``. Batching keeps each
+        statement's lock set proportional to :data:`_DELETE_BATCH_SIZE` rather than
+        to the job's lifetime row count.
+
+        Selects a page of primary keys and deletes by ``id IN (...)`` rather than
+        using ``DELETE ... LIMIT``: that clause is MySQL-only (PostgreSQL rejects
+        it outright, and SQLite needs a non-default compile flag), and this
+        repository must run on all three. Both tables have an autoincrement
+        integer ``id``, so ordering by it makes the paging deterministic.
+
+        Commits per batch, which is what bounds the lock window — see
+        :meth:`delete` for why losing single-transaction atomicity is safe here.
+        """
+        while True:
+            ids = (
+                (
+                    await self._session.execute(
+                        select(table.id)
+                        .where(table.job_id == job_id)
+                        .order_by(table.id)
+                        .limit(_DELETE_BATCH_SIZE)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if not ids:
+                return
+            await self._session.execute(
+                delete(table).where(table.id.in_(ids)).execution_options(synchronize_session=False)
+            )
+            await self._session.commit()
+            if len(ids) < _DELETE_BATCH_SIZE:
+                return
+
     async def delete(self, job_id: UUID, *, owner_id: UUID | None = None) -> bool:
         """Delete a job scoped to ``owner_id``, cascading its trials, results, tasks and logs.
 
@@ -360,9 +420,25 @@ class SqlAlchemyJobRepository:
         ``ON DELETE CASCADE``; ``synchronize_session=False`` keeps each one a pure
         emit with no pre-``SELECT`` to reconcile the (unused) identity map.
 
+        Set-based was not sufficient on its own: ``log_entries`` and
+        ``training_metrics`` grow without bound per job, so those two go through
+        :meth:`_delete_children_in_batches` and commit incrementally. The other
+        children are bounded by trial count and stay single statements.
+
+        **This is deliberately no longer one atomic transaction.** A single
+        transaction is what produced the ``log_entries`` lock-wait timeout, and
+        atomicity buys nothing for a delete-everything operation. The order makes
+        an interrupted delete safe rather than corrupting: children are removed
+        before ``jobs``, so a crash mid-way leaves the job row present and still
+        visible, and the caller (or the user) can simply issue the delete again —
+        it is idempotent, and each retry starts from a smaller remainder. The
+        inverse order would leave unreachable orphans.
+
         ``results`` is deleted before ``trials`` because ``results.trial_id``
-        references it, and every child before ``jobs`` — so the order stays legal
-        where FKs are enforced and is harmless where they are not.
+        references it, ``training_metrics`` is included because nothing else
+        removes it on a dialect that does not enforce ``ON DELETE CASCADE``, and
+        every child precedes ``jobs`` — so the order stays legal where FKs are
+        enforced and is harmless where they are not.
         """
         if not await self.is_visible(job_id, owner_id=owner_id):
             return False
@@ -371,11 +447,8 @@ class SqlAlchemyJobRepository:
             .where(ResultTable.job_id == job_id)
             .execution_options(synchronize_session=False)
         )
-        await self._session.execute(
-            delete(LogEntryTable)
-            .where(LogEntryTable.job_id == job_id)
-            .execution_options(synchronize_session=False)
-        )
+        await self._delete_children_in_batches(LogEntryTable, job_id)
+        await self._delete_children_in_batches(TrainingMetricTable, job_id)
         await self._session.execute(
             delete(TrialTable)
             .where(TrialTable.job_id == job_id)

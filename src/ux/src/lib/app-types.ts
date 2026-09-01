@@ -65,7 +65,7 @@ export type Tuning = {
 	// (config_data / tuner types differ). Detail response only; merged onto the
 	// snapshot object by `getJobConfigSnapshot` for the drift banner.
 	is_stale?: boolean;
-	output_artifacts?: Record<string, any> | null;
+	output_artifacts?: Record<string, any> | any[] | null;
 	assets?: Assets[];
 	build_status?: BuildStatus;
 	logs?: Log[];
@@ -105,6 +105,10 @@ export type Dataset = {
 	associated_jobs: Job[];
 	validation_data?: Pair[];
 	train_data?: Pair[];
+	// From the API's preview.viewer_ready: false means the HuggingFace dataset viewer
+	// is still precomputing, so empty preview rows mean "not ready yet", not "empty".
+	// Undefined when no preview was requested or returned.
+	viewer_ready?: boolean;
 };
 
 export interface Configuration {

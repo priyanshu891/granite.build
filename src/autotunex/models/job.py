@@ -160,7 +160,17 @@ class JobRead(JobSummary):
         ),
     )
     config_snapshot: dict[str, Any] | None = None
-    output_artifacts: dict[str, Any] | None = None
+    output_artifacts: dict[str, Any] | list[Any] | None = Field(
+        default=None,
+        description=(
+            "Free-form artifact descriptor written by the tuning pipeline, outside "
+            "this service. Both an object and a bare list of file descriptors occur "
+            "in the wild — the publish step records a list — so the union is the real "
+            "shape of the column, not laxity. Typing this dict-only made the whole "
+            "detail response 500 on any published job. See AssetService._map, which "
+            "tolerates the same two shapes when serving the result report."
+        ),
+    )
     trials: list[TrialRead] = Field(default_factory=list)
     is_stale: bool = Field(
         default=False,

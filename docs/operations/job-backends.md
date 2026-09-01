@@ -29,7 +29,7 @@ else in the codebase changes.
 | Backend (`AUTOTUNEX_JOB_BACKEND`) | What it does | Requirements | Models | When to use |
 | --- | --- | --- | --- | --- |
 | **`none`** (default) | No-op runner: accepts the job and does nothing — it stays `pending` forever. | None. | Any (nothing runs). | Exploring the API, or when an external system executes jobs and writes results back to the database. |
-| **`local`** | Runs the `autotune` HPO pipeline **in-process via Ray Tune**, with no external build system. Persists trials, results, and logs live and drives the job to `completed`/`error` itself. | The optional `autotune` trainer package installed; the dataset's files present on local disk. | `huggingface`, `custom_path`. | Self-contained HPO on one host (or against an existing Ray cluster). |
+| **`local`** | Runs the `autotune` HPO pipeline **in-process via Ray Tune**, with no external build system. Persists trials, results, logs, and per-step training metrics live and drives the job to `completed`/`error` itself. | The optional `autotune` trainer package installed; the dataset's files present on local disk. | `huggingface`, `custom_path`. | Self-contained HPO on one host (or against an existing Ray cluster). |
 | **`llmb`** | Submits a [granite.build](https://github.com/ibm-granite/granite.build) build (a `build.yaml` spec) via the `llmb` CLI; a reconcile loop then polls a granite.build server and advances the job. | The `llmb` CLI; a reachable granite.build server; an auth token in the environment. | `huggingface`, `custom_path` (the local-bash variant is `huggingface`-only). | Offloading builds to a granite.build server — a remote cluster, or a local standalone machine. |
 
 The sections below describe each backend in detail.
@@ -57,7 +57,9 @@ submission. On submit it:
 1. flips the job `pending → running`;
 2. runs the `autotune` search under Ray Tune on a worker thread (so the event
    loop stays free to service the database writes the run drives);
-3. persists trials, results, and log entries **live** as the run progresses;
+3. persists trials, results, log entries, and per-step training metrics
+   **live** as the run progresses (those metric rows are what back
+   `GET /jobs/{id}/metrics` and `GET /jobs/{id}/trials/{trial_id}/metrics`);
 4. drives the job to `completed` on success, or to `error` on any failure —
    sweeping any still-`running` trials to `error` so none is left dangling.
 
@@ -248,6 +250,15 @@ The remaining `AUTOTUNEX_LSF_*` knobs (accelerators, queue, memory, CPUs and mem
 per node, venv path, CUDA home, poll interval) are optional and documented in
 [configuration.md](configuration.md#execution-job-launch). Like the bash spec, the
 LSF build references its dataset by URI, so it **requires an HF-hosted dataset**.
+
+Unlike the bash variant, settings validation **permits**
+`AUTOTUNEX_DATASET_STORAGE_BACKEND=huggingface` here — this variant runs on a cluster
+a local `file://` locator cannot reach, so `huggingface` is the intended storage. But
+AutoTuneX still cannot **push** the dataset itself in standalone: the HuggingFace
+backend's upload path runs `llmb artifact push`, which granite.build disables under
+`GB_ENVIRONMENT=standalone`, exactly as it does for the bash variant. The dataset must
+therefore already be HF-hosted by other means; hosting one from AutoTuneX in this
+variant remains an open item.
 
 ```
 AUTOTUNEX_JOB_BACKEND=llmb

@@ -120,11 +120,14 @@ export const mapConfiguration = (c: any): Configuration =>
 // when `?preview=true` and status='ready'); the old frontend expects them flattened
 // onto `train_data`/`validation_data`. Translate at the seam so DatasetDisplay's
 // render gate works unchanged. Missing `preview` leaves the old fields untouched.
+// `preview.viewer_ready` (false while the HuggingFace viewer is still precomputing)
+// is lifted out too, otherwise the `as Dataset` cast would drop it.
 export const mapDataset = (d: any): Dataset =>
 	({
 		...d,
 		train_data: d?.preview?.train ?? d?.train_data,
-		validation_data: d?.preview?.validation ?? d?.validation_data
+		validation_data: d?.preview?.validation ?? d?.validation_data,
+		viewer_ready: d?.preview?.viewer_ready
 	}) as Dataset;
 
 // suggest-mapping returns a FLAT `column_mapping: {target: source}` with a separate

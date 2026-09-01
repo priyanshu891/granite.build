@@ -106,7 +106,7 @@ curl -X POST https://example.com/api/v1/reward-functions/validate \
 | `executed` | bool | — | `false` when the sandbox never ran the code (a security, function-found, or signature check failed, timeout, or abnormal exit). Blank, oversized, or unparseable `code` gives `test_result: null` instead of an `executed: false` object |
 | `results` | `RewardCaseResult[]` | `[]` | One entry per executed case |
 | `stdout` | string | `""` | Captured `print` output, truncated to 2 000 characters |
-| `error` | string \| null | `null` | A whole-run failure (import/compile error, timeout, sandbox crash) |
+| `error` | string \| null | `null` | A whole-run failure (import/compile error, timeout, sandbox crash, or `function_name` missing from the module namespace after `exec` — see the Signature step below) |
 | `execution_time_ms` | float \| null | `null` | Wall-clock time of the whole run, as measured in the sandbox |
 
 **`RewardCaseResult`**:
@@ -198,6 +198,10 @@ Three pure, in-process phases run over the AST before the sandbox is even consid
    (`*`) parameters are not counted, so `def compute_score(data_source, solution_str, /)`
    reports `function_signature_valid: false` despite taking two positional parameters. Only
    a plain `def` is matched, so an `async def` of that name reports `function_found: false`.
+   The name is matched anywhere in the tree, nesting included, so a `def` inside another
+   function reports `function_found: true` — static analysis passes, but the sandbox then
+   finds no such name in the module namespace and returns `executed: true` with
+   `error: "Function '<name>' not found after execution"`.
 
 The blocklists are the security boundary and are carried forward deliberately rather than
 tuned; they live in `services/reward/constants.py`.

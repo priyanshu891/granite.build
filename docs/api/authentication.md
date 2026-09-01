@@ -129,7 +129,8 @@ AUTOTUNEX_API_KEYS={"<sha256-digest>": "service-owner@example.com"}
 ```
 
 Each digest must be 64 lowercase hex characters, or startup fails with a clear
-error (and the offending key is withheld from the message).
+error (and the offending key is withheld from the message). Enabling
+`"api_key"` with `AUTOTUNEX_API_KEYS` unset or empty also fails startup.
 
 > The mapped email must belong to a real `users` row — or enable just-in-time
 > provisioning with `AUTOTUNEX_AUTO_PROVISION_USERS=true` — for the key to see
