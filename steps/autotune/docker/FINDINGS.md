@@ -56,40 +56,26 @@ GB_ENVIRONMENT=STANDALONE make -C steps/autotune/docker test
   verification Dockerfile therefore lives under `test-data/local/`, which does not
   trip that glob.
 
-## OPEN: a successful build produces an EMPTY model artifact
+## RETRACTED: the "empty artifact" issue was a test-harness artifact
 
-This is why docker is deferred. Verified in a single run:
+An earlier revision of this file claimed that a successful build registers an EMPTY
+model artifact, and that the marker's path is not used as the push source. **That was
+wrong.** Every observation came from the in-process build-test harness, where the push
+reads `<ephemeral workspace>/builds/<b>/targetruns/<t>/output` -- a path the harness
+tears down with the run -- so pushed files are not observable from the test.
 
-```
-step emitted (marker):  /gb-workspace/output
-push rsync source:      .../workspace/tmp…/builds/<b>/targetruns/<t>/output
-push rsync dest:        /var/folders/…/autotune-out-…/<b>-out/     → created, 0B
-```
+A real gbserver build (`c989904e-fdc9-4c23-9d2e-060377eab670`, bash environment)
+delivers correctly: the marker points at
+`~/.granite.build/workdir/llm-build-<id>/.../launch-<id>/outputs`, and the push copied
+~85MB to the declared absolute `file:` URI -- `models/`,
+`mlx_adapters/*/adapters.safetensors`, `final_checkpoints/`, `ray_results/`.
 
-The marker's **path is not used as the push source**. The step writes the tuned model
-to `/gb-workspace/output`, but the push reads the target-run's own `output/` dir, which
-the step never writes to. rsync copies an empty source, returns 0, and the artifact
-registers `success` at a directory that is empty. The build reports SUCCESS.
+So docker is **not** blocked by an artifact bug. What remains genuinely unverified for
+docker specifically is the container -> host translation on push
+(`Docker._resolve_host_path`, docker.py:781-792), which the harness runs did not
+exercise end to end. Check that with a real gbserver build against a container image
+before shipping the docker variant.
 
-Same failure class as the column-0 marker bug fixed on the bash branch — build looks
-green, deliverable is missing — but one layer deeper.
-
-**Not yet attributed.** Two readings with opposite fixes:
-
-1. *Step*: `step-template.yaml` hardcodes `LLMB_BASH_OUTPUT_DIR: /gb-workspace/output`.
-   If gbserver expects a step to write into a dir it provides, hardcoding is wrong.
-2. *gbserver*: the marker path should drive the push source, and
-   `Docker.pushasset_filestore`'s `/gb-workspace` translation (docker.py:781-792)
-   exists for exactly this but is not reached — `source_path` is already a host path
-   when it arrives.
-
-A bash run showed an empty artifact too, and there `LLMB_BASH_OUTPUT_DIR` is set *by*
-gbserver, which weakly favours (2). Not confident enough to assert it; needs whoever
-owns the artifact-push contract.
-
-### The test currently passes anyway — do not trust it yet
-
-`buildtest.yaml`'s `output_artifact_count: 1` is satisfied by **registration alone**,
-so `make test` is green while the artifact is empty. Before this ships, the fixture
-needs an assertion that the pushed directory is non-empty; both the bash and docker
-tests should then go red, correctly, until the above is resolved.
+Note on the build test: `output_artifact_count` is satisfied by registration, and under
+the harness delivery is not observable -- so do NOT add a non-empty assertion to it. It
+would be permanently red for a non-issue. Use gbserver to verify delivery.
