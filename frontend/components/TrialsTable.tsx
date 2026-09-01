@@ -22,10 +22,14 @@ import {
   CodeSnippet,
   Button,
   InlineNotification,
+  InlineLoading,
 } from '@carbon/react'
 import { ArrowLeft } from '@carbon/icons-react'
 import { RadarChart } from '@carbon/charts-react'
+import { useQuery } from '@tanstack/react-query'
 import { useChartsTheme } from '@/hooks/useTheme'
+import { getJobTrials } from '@/api/autotunex'
+import { listSpaces } from '@/api/gbserver'
 import { TrialLogViewer } from '@/components/TrialLogViewer'
 import { TrialCompare } from '@/components/TrialCompare'
 import { TrialProgressSummary } from '@/components/TrialProgressSummary'
@@ -38,6 +42,11 @@ const HEADERS = [
   { key: 'loss', header: 'Loss' },
   { key: 'total_time', header: 'Total time' },
 ]
+
+// Poll while the run can still produce trials, at the same 15s cadence
+// TuningDetailPageClient polls the job itself, so the table and the page header
+// advance together.
+const ACTIVE_STATUSES = new Set(['running', 'pending'])
 
 function formatTime(seconds: number): string {
   if (seconds <= 0) return '0 s'
@@ -98,17 +107,52 @@ interface Props {
 }
 
 export function TrialsTable({ job }: Props) {
-  const { id: jobId, trials } = job
+  const jobId = job.id
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [showCompare, setShowCompare] = useState(false)
   const theme = useChartsTheme()
+
+  // Same cached `['spaces']` query the rest of the detail view uses to pick a
+  // scope — admins read `scope=all` so they can see trials for jobs they don't
+  // own. No extra fetch: React Query dedupes on the shared key.
+  const { data: spaces = [] } = useQuery({ queryKey: ['spaces'], queryFn: listSpaces })
+  const scope = spaces.some((s) => s.is_admin) ? 'all' : 'own'
+
+  // Trials come from GET /jobs/{id}/trials — the job detail no longer nests them.
+  // No `enabled` gate: a non-HPO job just returns an empty page, and Carbon
+  // mounts every tab panel regardless of which tab is active.
+  const {
+    data: trials = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: ['autotunex-job-trials', jobId, scope],
+    queryFn: () => getJobTrials(jobId, scope),
+    refetchInterval: ACTIVE_STATUSES.has(job.status) ? 15_000 : false,
+  })
+
+  if (isLoading) {
+    return <InlineLoading description="Loading trials…" />
+  }
+
+  if (isError) {
+    return (
+      <InlineNotification
+        kind="error"
+        title="Failed to load trials"
+        subtitle={String(error)}
+        hideCloseButton
+      />
+    )
+  }
 
   if (trials.length === 0) {
     // Still show progress here when the job declared a planned total: "12 queued"
     // before any trial row exists is exactly what users were missing.
     return (
       <div>
-        <TrialProgressSummary job={job} />
+        <TrialProgressSummary job={job} trials={trials} />
         <InlineNotification kind="info" title="No trial data available" hideCloseButton />
       </div>
     )
@@ -169,7 +213,7 @@ export function TrialsTable({ job }: Props) {
 
   return (
     <div>
-      <TrialProgressSummary job={job} />
+      <TrialProgressSummary job={job} trials={trials} />
       {canOpenCompare && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
           <Button size="sm" onClick={() => setShowCompare(true)}>

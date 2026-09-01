@@ -2,7 +2,7 @@
 
 import { ProgressBar } from '@carbon/react'
 import { computeTrialProgress } from '@/components/trialProgress'
-import type { JobDetail } from '@/types'
+import type { JobDetail, Trial } from '@/types'
 
 function formatDuration(seconds: number): string {
   if (seconds <= 0) return '0s'
@@ -17,13 +17,15 @@ function formatDuration(seconds: number): string {
 
 interface Props {
   job: JobDetail
+  /** The job's trials, fetched separately — GET /jobs/{id} no longer nests them. */
+  trials: Trial[]
 }
 
-export function TrialProgressSummary({ job }: Props) {
+export function TrialProgressSummary({ job, trials }: Props) {
   // Recomputed on each render; the detail page polls every 15s while the run is
   // active, so elapsed and the estimate advance at that cadence.
   const progress = computeTrialProgress({
-    trials: job.trials,
+    trials,
     numTrials: job.num_trials,
     jobStatus: job.status,
     jobCreatedAt: job.created_at,
@@ -33,7 +35,7 @@ export function TrialProgressSummary({ job }: Props) {
 
   // With no planned total and no trials yet there is nothing to report; the
   // caller's "no trial data" notice says it better.
-  if (progress.planned === null && job.trials.length === 0) return null
+  if (progress.planned === null && trials.length === 0) return null
 
   const parts: string[] = []
   if (progress.running > 0) parts.push(`${progress.running} running`)

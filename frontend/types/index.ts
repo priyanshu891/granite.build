@@ -612,8 +612,16 @@ export interface JobSummary {
 
 export type TuningJob = JobSummary;
 
-// Single-job fetch shape (GET /jobs/{id} / GET /jobs/by-build-id/{id}) — adds
-// the fields the detail page needs that the list envelope omits.
+// Single-job shapes, mirroring the server's model chain in `models/job.py`:
+// JobSummary -> JobDetail -> JobRead. Kept split with the same names so the two
+// files stay legible against each other.
+//
+// `JobDetail` is what GET /jobs/by-build-id/{build_id} returns: everything on the
+// job's own row, and none of its child collections. It carries no `tasks` array
+// (a caller that arrived *by build id* already holds the identifier that array
+// exists to expose) and no `config_snapshot` (the heaviest blob on the response).
+// Trials are not here either — they are paged by GET /jobs/{id}/trials, via
+// `getJobTrials`.
 export interface JobDetail extends JobSummary {
   model_source: ModelSource;
   precision?: string;
@@ -621,10 +629,16 @@ export interface JobDetail extends JobSummary {
   rl_tuner_type?: string;
   autotune?: boolean;
   num_trials?: number;
-  config_snapshot?: Record<string, unknown>;
-  tasks: GbTask[];
   output_artifacts: Record<string, unknown> | null;
-  trials: Trial[];
+}
+
+// What GET /jobs/{id} returns: `JobDetail` plus the two fields it withholds. Both
+// are wanted when rendering a job's own page — `tasks[0].build_id` drives the
+// Details panel — and neither is wanted by the build-id lookup, which is why the
+// split exists.
+export interface JobRead extends JobDetail {
+  tasks: GbTask[];
+  config_snapshot?: Record<string, unknown>;
 }
 
 export interface Trial {

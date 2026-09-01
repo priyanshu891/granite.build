@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getConfiguration } from '@/api/autotunex'
 import { listSpaces } from '@/api/gbserver'
-import type { JobDetail } from '@/types'
+import type { JobRead } from '@/types'
 import { TuningLogViewer } from '@/components/TuningLogViewer'
 import { TrialsTable } from '@/components/TrialsTable'
 import { TuningResultsPanel } from '@/components/TuningResultsPanel'
@@ -25,7 +25,7 @@ function formatTime(seconds: number): string {
   return `${secs}s`
 }
 
-function DetailsPanel({ job }: { job: JobDetail }) {
+function DetailsPanel({ job }: { job: JobRead }) {
   const [configOpen, setConfigOpen] = useState(false)
   const [datasetOpen, setDatasetOpen] = useState(false)
 
@@ -102,7 +102,7 @@ function DetailsPanel({ job }: { job: JobDetail }) {
 }
 
 interface Props {
-  job: JobDetail
+  job: JobRead
 }
 
 export function TuningDetailTabs({ job }: Props) {

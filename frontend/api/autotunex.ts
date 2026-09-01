@@ -25,6 +25,7 @@ import type {
   GbTask,
   HuggingFaceModel,
   JobDetail,
+  JobRead,
   ListParams,
   ListResult,
   LogEntry,
@@ -33,6 +34,7 @@ import type {
   PendingConfigUpdate,
   Resources,
   RewardFunctionValidationResult,
+  Trial,
   TuningAsset,
   TuningForm,
   TuningJob,
@@ -46,6 +48,7 @@ import {
   adaptJob,
   adaptSuggestion,
   adaptTrial,
+  collectPages,
   pageQuery,
   toListResult,
 } from '@/api/autotunexAdapters'
@@ -54,7 +57,7 @@ import {
 // keeps working for tests/consumers — the implementations live in
 // `@/api/autotunexAdapters` purely so that leaf module stays free of
 // non-type-only imports (see its header comment for why that matters).
-export { adaptAsset, adaptConfiguration, adaptJob, adaptSuggestion, adaptTrial, pageQuery, toListResult }
+export { adaptAsset, adaptConfiguration, adaptJob, adaptSuggestion, adaptTrial, collectPages, pageQuery, toListResult }
 
 const client = axios.create({ baseURL: autotunexApiBase('') })
 
@@ -309,10 +312,18 @@ function adaptJobDetail(raw: Record<string, unknown>): JobDetail {
     rl_tuner_type: raw.rl_tuner_type as string | undefined,
     autotune: raw.autotune != null ? Boolean(raw.autotune) : undefined,
     num_trials: raw.num_trials as number | undefined,
+    output_artifacts: (raw.output_artifacts as Record<string, unknown> | null) ?? null,
+  }
+}
+
+// GET /jobs/{id} adds the two fields by-build-id withholds. No `trials` on either
+// shape — they moved to their own paged endpoint (`getJobTrials`), so reading
+// `raw.trials` here would silently produce `[]` for every job.
+function adaptJobRead(raw: Record<string, unknown>): JobRead {
+  return {
+    ...adaptJobDetail(raw),
     config_snapshot: raw.config_snapshot as Record<string, unknown> | undefined,
     tasks: (raw.tasks as GbTask[]) ?? [],
-    output_artifacts: (raw.output_artifacts as Record<string, unknown> | null) ?? null,
-    trials: ((raw.trials as Record<string, unknown>[]) ?? []).map(adaptTrial),
   }
 }
 
@@ -326,15 +337,18 @@ export async function startJob(tuning: TuningForm): Promise<{ id: string }> {
   return { id: data.id as string }
 }
 
-export async function getJob(id: string, scope: Scope = 'own'): Promise<JobDetail> {
+export async function getJob(id: string, scope: Scope = 'own'): Promise<JobRead> {
   const { data } = await client.get<Record<string, unknown>>(`/jobs/${id}`, { params: { scope } })
-  return adaptJobDetail(data)
+  return adaptJobRead(data)
 }
 
 /**
  * Fetches the tuning job linked to a gbserver build. Returns null when no job
  * is associated with the build (404), so callers can render nothing for builds
  * that merely carry the "autotunex" tag without a real linked job.
+ *
+ * This endpoint returns the leaner `JobDetail` — no `tasks`, no
+ * `config_snapshot`. Use `getJob` if you need either.
  */
 export async function getJobByBuildId(buildId: string, scope: Scope = 'own'): Promise<JobDetail | null> {
   try {
@@ -344,6 +358,32 @@ export async function getJobByBuildId(buildId: string, scope: Scope = 'own'): Pr
     if (axios.isAxiosError(err) && err.response?.status === 404) return null
     throw err
   }
+}
+
+// ── Trials ────────────────────────────────────────────────────────────────────
+// Trials used to arrive nested on the job detail response. They now have their
+// own paged endpoint, so the detail read no longer serializes every trial's
+// `config` and `metrics` blob on every poll tick.
+
+/**
+ * Every trial of a job, oldest first (the endpoint orders by `created_at ASC`
+ * with an `id` tiebreaker, so the offsets are stable while a run appends rows).
+ *
+ * Drains all pages: the endpoint caps `limit` at 100, but `TrialsTable` sorts by
+ * loss and paginates client-side over the whole array. A visible job with no
+ * trials yet is an empty page, not a 404.
+ */
+export async function getJobTrials(jobId: string, scope: Scope = 'own'): Promise<Trial[]> {
+  return collectPages(
+    async (limit, offset) => {
+      const { data } = await client.get<{ items?: unknown[]; total?: number }>(`/jobs/${jobId}/trials`, {
+        params: { limit, offset, scope },
+      })
+      return data
+    },
+    (raw) => adaptTrial(raw as Record<string, unknown>),
+    100
+  )
 }
 
 export async function deleteJob(id: string, scope: Scope = 'own'): Promise<void> {
