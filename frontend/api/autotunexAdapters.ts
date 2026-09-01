@@ -35,6 +35,41 @@ export function toListResult<T>(data: { items?: unknown[]; total?: number }, ada
   return { items: (data.items ?? []).map(adapt), total: data.total ?? 0 }
 }
 
+/**
+ * Drains an offset-paginated `{items,total}` endpoint into one array.
+ *
+ * `fetchPage` is injected rather than imported so this module stays free of
+ * runtime imports (see the header comment — the test `require()`s this file
+ * directly under `node --test`).
+ *
+ * Termination, in order of what each condition is for:
+ *
+ *  1. A short page (`batch.length < limit`) is the correctness guarantee. Every
+ *     terminating case reduces to it, an empty page included (`0 < limit`), so a
+ *     server reporting a `total` larger than the rows it actually serves stops
+ *     here rather than looping.
+ *  2. `out.length >= total` is only an optimization: when `total` is accurate and
+ *     the last page happens to be exactly full, it saves the one extra request
+ *     that would otherwise be spent discovering an empty page. It is never
+ *     load-bearing — `total` is server-reported, and trials are appended while a
+ *     job runs, so it can be stale in either direction mid-drain.
+ */
+export async function collectPages<T>(
+  fetchPage: (limit: number, offset: number) => Promise<{ items?: unknown[]; total?: number }>,
+  adapt: (raw: any) => T,
+  limit = 100
+): Promise<T[]> {
+  const out: T[] = []
+  for (let offset = 0; ; offset += limit) {
+    const page = await fetchPage(limit, offset)
+    const items = page.items ?? []
+    for (const raw of items) out.push(adapt(raw))
+    if (items.length < limit) break
+    if (out.length >= (page.total ?? 0)) break
+  }
+  return out
+}
+
 // ── Trials ───────────────────────────────────────────────────────────────────────
 
 export function adaptTrial(raw: Record<string, unknown>): Trial {

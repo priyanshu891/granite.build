@@ -10,7 +10,7 @@
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
 
-const { pageQuery, toListResult, adaptTrial, adaptJob, adaptConfiguration, adaptSuggestion, adaptAsset } = require(
+const { pageQuery, toListResult, collectPages, adaptTrial, adaptJob, adaptConfiguration, adaptSuggestion, adaptAsset } = require(
   '../api/autotunexAdapters.ts'
 )
 
@@ -197,5 +197,71 @@ describe('adaptAsset', () => {
 
   it('preserves published:false (only null/undefined fall through to null)', () => {
     assert.equal(adaptAsset({ filename: 'x', published: false }).published, false)
+  })
+})
+
+describe('collectPages', () => {
+  // Builds a fake page-fetcher over a fixed row array, recording every call so a
+  // test can assert how many requests the loop actually spent. `reportedTotal`
+  // lets a test lie about the total the way a live server can — trials are being
+  // appended while a job runs, so the envelope's count goes stale mid-drain.
+  function fakeFetcher(rows, reportedTotal = rows.length) {
+    const calls = []
+    const fetchPage = async (limit, offset) => {
+      calls.push({ limit, offset })
+      return { items: rows.slice(offset, offset + limit), total: reportedTotal }
+    }
+    return { fetchPage, calls }
+  }
+
+  const identity = (r) => r
+
+  it('returns a single short page and stops after one call', async () => {
+    const { fetchPage, calls } = fakeFetcher([{ id: 'a' }, { id: 'b' }])
+    const out = await collectPages(fetchPage, identity, 100)
+    assert.deepEqual(out, [{ id: 'a' }, { id: 'b' }])
+    assert.equal(calls.length, 1)
+    assert.deepEqual(calls[0], { limit: 100, offset: 0 })
+  })
+
+  it('stops on the total check after one call when the page is exactly full', async () => {
+    // 3 rows, limit 3, total 3: the short-page condition would not fire, so
+    // without the total check this would spend a second request to learn the
+    // collection is exhausted.
+    const { fetchPage, calls } = fakeFetcher([{ id: 'a' }, { id: 'b' }, { id: 'c' }])
+    const out = await collectPages(fetchPage, identity, 3)
+    assert.equal(out.length, 3)
+    assert.equal(calls.length, 1)
+  })
+
+  it('fetches the next page when a full page has a larger total', async () => {
+    const rows = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }, { id: 'e' }]
+    const { fetchPage, calls } = fakeFetcher(rows)
+    const out = await collectPages(fetchPage, identity, 2)
+    assert.deepEqual(out.map((r) => r.id), ['a', 'b', 'c', 'd', 'e'])
+    // 2 + 2 + 1: the third page is short, which ends the loop.
+    assert.equal(calls.length, 3)
+    assert.deepEqual(calls.map((c) => c.offset), [0, 2, 4])
+  })
+
+  it('terminates on an empty page even when total is overstated', async () => {
+    // A server claiming 500 rows but serving 2 must not spin forever. The
+    // short-page condition (0 < limit) is what makes the loop total here —
+    // the total check never fires.
+    const { fetchPage, calls } = fakeFetcher([{ id: 'a' }, { id: 'b' }], 500)
+    const out = await collectPages(fetchPage, identity, 2)
+    assert.equal(out.length, 2)
+    assert.equal(calls.length, 2)
+  })
+
+  it('maps every row through adapt', async () => {
+    const { fetchPage } = fakeFetcher([{ id: 'a' }, { id: 'b' }])
+    const out = await collectPages(fetchPage, (r) => r.id.toUpperCase(), 100)
+    assert.deepEqual(out, ['A', 'B'])
+  })
+
+  it('treats a missing items array as an empty page', async () => {
+    const out = await collectPages(async () => ({ total: 0 }), identity, 100)
+    assert.deepEqual(out, [])
   })
 })
