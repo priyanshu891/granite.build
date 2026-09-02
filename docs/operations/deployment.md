@@ -310,9 +310,17 @@ training). Its baked defaults differ from the table above in three places:
 `AUTOTUNEX_JOB_BACKEND=llmb`, `AUTOTUNEX_AUTO_CREATE_SCHEMA=false`, and
 `AUTOTUNEX_JOB_TRAINER_REF=oss-main`. It bundles neither gbserver nor the
 api-bridge, so unlike the AIO image it needs an **external** granite.build
-server — supply `AUTOTUNEX_GB_SERVER_URL` and the `GB_TOKEN` environment variable
-at run time, or the `llmb` backend refuses to start. It has no `compose.yaml`
-service and no `make` target; build and run it directly.
+server — and it does not bake `GB_ENVIRONMENT`, so the `llmb` backend starts in
+its **custom_code** shape, whose startup check requires four settings the image
+leaves unset: `AUTOTUNEX_JOB_RUNTIME_IMAGE`, `AUTOTUNEX_JOB_TRAINER_REPO`,
+`AUTOTUNEX_JOB_OUTPUT_URI_ROOT` and `AUTOTUNEX_GB_SERVER_URL`. Supply all four at
+run time, plus the token environment variable `AUTOTUNEX_GB_TOKEN_ENV` names
+(`GB_TOKEN` by default), or the `llmb` backend refuses to start. Setting
+`GB_ENVIRONMENT=standalone` (unprefixed — granite.build's own variable) instead
+selects the local-`bash` spec, which drops the three custom_code-only inputs and
+leaves `AUTOTUNEX_GB_SERVER_URL` plus the token variable as the only run-time
+requirements. It has no `compose.yaml` service and no `make` target; build and run
+it directly.
 
 ## Security
 

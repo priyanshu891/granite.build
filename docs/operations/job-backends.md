@@ -167,7 +167,9 @@ single machine (for example a laptop or Mac, on MPS/CPU via `mlx`).
 
 > **`GB_ENVIRONMENT` is granite.build's own variable and is read *without* the
 > `AUTOTUNEX_` prefix.** The prefixed `AUTOTUNEX_GB_ENVIRONMENT` is deliberately
-> ignored — set the bare `GB_ENVIRONMENT` that granite.build already uses.
+> ignored — set the bare `GB_ENVIRONMENT` that granite.build already uses. Its
+> value is matched case-insensitively and whitespace-trimmed, so granite.build's
+> own `GB_ENVIRONMENT=STANDALONE` selects it too.
 
 This variant drops the remote-only inputs (`AUTOTUNEX_JOB_RUNTIME_IMAGE`,
 `AUTOTUNEX_JOB_TRAINER_REPO`, `AUTOTUNEX_JOB_OUTPUT_URI_ROOT`) — the bash spec
@@ -289,6 +291,13 @@ merely write it into `.env`:
 ```bash
 export GB_TOKEN=<your granite.build token>
 ```
+
+**Live build logs.** `GET /jobs/{id}/gb-logs` reads a running build's container
+logs through the same integration, so it needs all three of the signals above:
+`AUTOTUNEX_JOB_BACKEND=llmb`, the environment variable named by
+`AUTOTUNEX_GB_TOKEN_ENV` actually present, and the `gbcli` package installed.
+Any other backend — or a missing token variable or package — makes the endpoint
+return `503`.
 
 **Reconcile cadence.** The loop sweeps non-terminal jobs on an interval and
 bounds how many status reads it issues per sweep:

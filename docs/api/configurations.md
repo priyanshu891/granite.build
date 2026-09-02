@@ -17,9 +17,18 @@ can read and launch a job from. An admin widens to all owners per request with `
 (`own` | `all`, default `own`); a non-admin passing `scope=all` gets a **403**. `POST` is
 always own-scoped; a caller with no resolvable owner gets a **403** on create.
 
-Mutations never widen to the shared tier, so `PUT` and `DELETE` against a system-owned
-configuration return **404** — only the system user itself, or an admin via `scope=all`,
-may modify one.
+Mutations never widen to the shared tier, so `PUT` against a system-owned configuration
+returns **404** — only an admin via `scope=all` may edit one.
+
+`DELETE` against a system-owned configuration is refused outright, for **every** caller:
+a normal user, an admin passing `scope=all`, and a caller whose own identity resolves to
+the system user all get a **403** (`title`: `System Resource Protected`). Starter content
+is shared by the whole deployment, so a delete is not a per-tenant loss. The single
+exemption is an admin with an active impersonation overlay onto the system user
+(`POST /auth/assume/{id}`) — the sanctioned way to curate shared content. To keep an
+editable copy of a shared configuration instead, `GET` it and `POST` its `name`,
+`tuner_type`, `rl_tuner_type` and `config_data` back as a new configuration, which is
+created under your own ownership.
 
 `config_data` shape is **not** validated. The tuning pipeline writes a rich, evolving
 structure, so the API requires only that `config_data` be a non-empty JSON object.
@@ -201,6 +210,9 @@ Fully replace a configuration's mutable fields. Same body as create
 
 Delete a configuration. Returns `204` with an empty body.
 
+A configuration owned by the reserved system user cannot be deleted by anyone — see
+*Ownership and scope* above. `scope=all` does not override it.
+
 ### Path & query parameters
 
 | Name | In | Type | Default | Notes |
@@ -213,6 +225,7 @@ Delete a configuration. Returns `204` with an empty body.
 | Status | When |
 | --- | --- |
 | `403` | Non-admin requesting `scope=all` |
+| `403` | The configuration belongs to the shared system tier (`title`: `System Resource Protected`); refused for every caller except an admin impersonating the system user |
 | `404` | No such configuration, or not the caller's |
 | `409` | A job still references this configuration (delete is restricted) |
 

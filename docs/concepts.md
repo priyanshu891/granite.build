@@ -53,7 +53,7 @@ A configuration also carries two optional labels:
 
 Configurations support full create/read/update/delete through the API — they are the resource you author and revise most directly.
 
-Alongside the ones you create, your configuration list also includes the shared system tier: curated starter configurations owned by a reserved system user. You can read them and reference them from your jobs exactly like your own, but they are not yours to change — an attempt to update or delete one behaves as though it did not exist.
+Alongside the ones you create, your configuration list also includes the shared system tier: curated starter configurations owned by a reserved system user. You can read them and reference them from your jobs exactly like your own, but they are not yours to change — an attempt to update one behaves as though it did not exist, and a delete is refused for *every* caller with a `403` (`System Resource Protected`): starter content is shared by the whole deployment, so a delete is not a per-tenant loss. The one exemption is an admin with an active impersonation overlay onto the system user (`POST /auth/assume/{id}`).
 
 ### Dataset
 
@@ -85,7 +85,7 @@ The lifecycle is not one-way: a `ready` or `error` dataset can be uploaded again
 
 A job may only be submitted against a dataset that is `ready`. This is why the dataset lifecycle exists as a first-class thing: it is the signal that the training data is actually available.
 
-Datasets carry the same shared system tier as configurations: alongside your own, your list includes curated starter datasets owned by the reserved system user. You can read them and submit jobs against them, but not change them — an update, a delete, or an upload aimed at one behaves as though the dataset were not there.
+Datasets carry the same shared system tier as configurations: alongside your own, your list includes curated starter datasets owned by the reserved system user. You can read them and submit jobs against them, but not change them — an update or an upload aimed at one behaves as though the dataset were not there, while a delete is refused with the same `403` a shared configuration's is, for every caller and with the same single impersonation exemption.
 
 ### Job
 
@@ -130,7 +130,7 @@ Results are what the job compares to decide which configuration performed best.
 
 ### Task
 
-A **task** is a build or deployment step attached to a job — for example, running the actual tuning, or downloading a produced artifact. A single job may have several tasks, and the API nests them as a `tasks` array on the job rather than flattening them into the job's own row.
+A **task** is a build or deployment step attached to a job — for example, running the actual tuning, or downloading a produced artifact. A single job may have several tasks, and the API nests them as a `tasks` array on the job **detail** response (`GET /jobs/{id}`) rather than flattening them into the job's own row.
 
 Tasks are how a job's out-of-band build and deployment work is tracked. Treat them as the operational steps that surround a run; the specific kinds available depend on how your deployment is configured.
 

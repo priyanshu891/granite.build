@@ -24,6 +24,7 @@ from autotunex.core.exceptions import (
     CallerNotProvisionedError,
     ConfigurationNotFoundError,
     InvalidConfigDataError,
+    SystemResourceProtectedError,
 )
 from autotunex.db.repositories.protocols import ConfigurationRepository
 from autotunex.db.tables import JobTable
@@ -33,10 +34,15 @@ from autotunex.models.configuration import (
     ConfigurationCreate,
     ConfigurationJobRef,
     ConfigurationRead,
+    ConfigurationSummary,
 )
 from autotunex.services.autotune import AutotuneCore
-from autotunex.services.mappers import configuration_to_read
-from autotunex.services.scoping import resolve_owner_filter, sees_nothing
+from autotunex.services.mappers import configuration_to_read, configuration_to_summary
+from autotunex.services.scoping import (
+    is_delete_protected,
+    resolve_owner_filter,
+    sees_nothing,
+)
 
 
 class ConfigurationService:
@@ -104,8 +110,10 @@ class ConfigurationService:
         Reads opt into the shared system tier (``include_shared=True``): a
         configuration owned by the reserved system user
         (:data:`~autotunex.core.constants.SYSTEM_USER_ID`) is visible to every
-        caller alongside their own, even though ``update``/``delete`` stay
-        strict — so a non-owner cannot modify or remove it.
+        caller alongside their own. ``update`` stays strict, so a non-owner cannot
+        modify one, and :meth:`delete` refuses a system-owned row outright — for
+        every caller, admins included (see
+        :func:`~autotunex.services.scoping.is_delete_protected`).
 
         Raises:
             ScopeNotPermittedError: a non-admin requested ``scope=all``.
@@ -130,7 +138,7 @@ class ConfigurationService:
         offset: int = 0,
         scope: DataScope = DataScope.OWN,
         q: str | None = None,
-    ) -> Page[ConfigurationRead]:
+    ) -> Page[ConfigurationSummary]:
         """Return one page of the caller's configurations, newest first.
 
         ``q`` is an optional case-insensitive substring filter on ``name``.
@@ -138,21 +146,26 @@ class ConfigurationService:
         (``include_shared=True``), so configurations owned by the reserved
         system user appear in every caller's list alongside their own.
 
+        Returns the lean :class:`ConfigurationSummary`, not
+        :class:`ConfigurationRead`: the repository does not load ``config_data`` for
+        a list, so there is nothing here to put in that field even if the shape had
+        one. A caller needing the search space reads :meth:`get`.
+
         Raises:
             ScopeNotPermittedError: a non-admin requested ``scope=all``.
         """
         owner_id = resolve_owner_filter(self._principal, scope)
         if sees_nothing(self._principal, scope):
-            return Page[ConfigurationRead](items=[], total=0, limit=limit, offset=offset)
+            return Page[ConfigurationSummary](items=[], total=0, limit=limit, offset=offset)
         configurations, total = await self._repository.list(
             limit=limit, offset=offset, owner_id=owner_id, q=q, include_shared=True
         )
         grouped = await self._repository.jobs_for_config(
             [configuration.id for configuration in configurations], owner_id=owner_id
         )
-        return Page[ConfigurationRead](
+        return Page[ConfigurationSummary](
             items=[
-                configuration_to_read(
+                configuration_to_summary(
                     configuration, self._job_refs(grouped.get(configuration.id, []))
                 )
                 for configuration in configurations
@@ -226,14 +239,32 @@ class ConfigurationService:
     async def delete(self, configuration_id: UUID, *, scope: DataScope = DataScope.OWN) -> None:
         """Delete a configuration, scoped to the caller.
 
+        A shared, system-owned configuration is refused outright — see
+        :func:`~autotunex.services.scoping.is_delete_protected` for who the one
+        exemption is and why the guard cannot be left to the ownership filter.
+        The row is resolved as a *read* (``include_shared=True``) purely to learn
+        its owner: without that, a caller who can see the row but not delete it
+        would get the ownership filter's 404 and no way to tell "gone" from
+        "protected". It costs one indexed ``SELECT`` on a path that then issues a
+        ``DELETE`` anyway, and only on delete — never on a read.
+
         Raises:
             ScopeNotPermittedError: a non-admin requested ``scope=all``.
+            SystemResourceProtectedError: the configuration belongs to the shared
+                system tier.
             ConfigurationNotFoundError: no such configuration, or not the caller's.
             ConfigurationInUseError: a job still references the configuration.
         """
         owner_id = resolve_owner_filter(self._principal, scope)
         if sees_nothing(self._principal, scope):
             raise ConfigurationNotFoundError(configuration_id)
+        existing = await self._repository.get(
+            configuration_id, owner_id=owner_id, include_shared=True
+        )
+        if existing is None:
+            raise ConfigurationNotFoundError(configuration_id)
+        if is_delete_protected(self._principal, existing.user_id):
+            raise SystemResourceProtectedError("Configuration", configuration_id)
         deleted = await self._repository.delete(configuration_id, owner_id=owner_id)
         if not deleted:
             raise ConfigurationNotFoundError(configuration_id)

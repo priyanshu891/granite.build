@@ -438,8 +438,12 @@ class Settings(BaseSettings):
     """Root URI for run artifacts; the run's output is a subpath. Required when ``llmb``."""
 
     job_callback_url: str | None = None
-    """Base URL a cluster worker reports back to. Inert until the ingest spec ships;
-    emitted into the build's start command only when set."""
+    """The api-bridge / callback base URL the build reports to.
+
+    The ``custom_code`` and LSF start commands emit it as
+    ``--autotunex_server_url`` only when it is set; the standalone local-bash
+    variant ALWAYS emits it as ``AUTOTUNEX_SERVER_URL``, defaulting to
+    ``http://localhost:8001`` (the api-bridge) when this is unset."""
 
     gb_token_env: str = "GB_TOKEN"
     """Name of the env var holding the llmb/gb auth token.
@@ -624,6 +628,26 @@ class Settings(BaseSettings):
     this makes even a ``GET`` write to the database on a caller's first request —
     the deliberate cost of JIT, which is why it is opt-in. See CLAUDE.md open
     decision 4.
+    """
+
+    login_activity_throttle_minutes: int = Field(default=15, ge=0)
+    """How stale ``users.last_login_at`` must be before a request refreshes it.
+
+    Backs the Users table's "Last login on" column. A completed browser login
+    (``/auth/callback``) always records itself; this governs the *other* half —
+    the refresh on any authenticated request in ``api/deps.get_principal``, which
+    is what gives API-key and OIDC-bearer callers a value at all, since neither
+    ever passes through the login flow.
+
+    A window rather than a write per request: unthrottled, every ``GET`` from
+    every caller would carry an ``UPDATE`` and a commit, and the value is only
+    ever read at minute granularity by a human looking at a table. 15 minutes
+    bounds the cost to at most one write per caller per quarter hour while
+    keeping the column accurate enough to answer "was this person here today".
+    Raise it to trade precision for fewer writes.
+
+    ``0`` disables throttling and records on every request — meant for tests and
+    for diagnosing whether the touch fires at all, not for production.
     """
 
     allow_insecure_no_auth: bool = False

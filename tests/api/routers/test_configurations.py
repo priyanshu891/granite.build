@@ -471,7 +471,17 @@ async def test_update_of_a_system_config_by_a_normal_user_is_404(
     assert response.status_code == HTTPStatus.NOT_FOUND
 
 
-async def test_delete_of_a_system_config_by_a_normal_user_is_404(
+# Delete-protection of the shared tier. A system-owned configuration is starter
+# content every caller can see and launch from, so losing one is not recoverable
+# per-tenant — it is gone for everybody. The guard is therefore an invariant on
+# the row's owner, not a consequence of the ownership filter: these four tests
+# pin every principal that previously reached the delete (a normal user, an admin
+# widening with ?scope=all, and a caller whose own identity resolves to the system
+# row) plus the one sanctioned escape, an admin actively impersonating the system
+# user.
+
+
+async def test_delete_of_a_system_config_by_a_normal_user_is_403(
     client: AsyncClient,
     as_principal: Callable[[Principal], None],
     user: UserTable,
@@ -482,7 +492,68 @@ async def test_delete_of_a_system_config_by_a_normal_user_is_404(
 
     response = await client.delete(f"{API}/configurations/{system_config.id}")
 
-    assert response.status_code == HTTPStatus.NOT_FOUND
+    assert response.status_code == HTTPStatus.FORBIDDEN
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+    assert response.json()["title"] == "System Resource Protected"
+
+
+async def test_delete_of_a_system_config_by_an_admin_with_scope_all_is_403(
+    client: AsyncClient,
+    as_principal: Callable[[Principal], None],
+    session: AsyncSession,
+) -> None:
+    admin = UserTable(id=uuid4(), email="admin@example.com", role="admin")
+    session.add(admin)
+    await session.commit()
+    as_principal(Principal(email=admin.email, provider="session", user_id=admin.id, is_admin=True))
+    system_config = await _seed_system_config(session)
+
+    response = await client.delete(
+        f"{API}/configurations/{system_config.id}", params={"scope": "all"}
+    )
+
+    assert response.status_code == HTTPStatus.FORBIDDEN
+
+
+async def test_delete_of_a_system_config_by_a_caller_resolving_to_the_system_user_is_403(
+    client: AsyncClient,
+    as_principal: Callable[[Principal], None],
+    session: AsyncSession,
+) -> None:
+    system_config = await _seed_system_config(session)
+    as_principal(
+        Principal(
+            email="system@autotunex.local",
+            provider="standalone",
+            user_id=SYSTEM_USER_ID,
+            is_admin=True,
+        )
+    )
+
+    response = await client.delete(f"{API}/configurations/{system_config.id}")
+
+    assert response.status_code == HTTPStatus.FORBIDDEN
+
+
+async def test_delete_of_a_system_config_while_impersonating_the_system_user_succeeds(
+    client: AsyncClient,
+    as_principal: Callable[[Principal], None],
+    session: AsyncSession,
+) -> None:
+    system_config = await _seed_system_config(session)
+    as_principal(
+        Principal(
+            email="system@autotunex.local",
+            provider="session",
+            user_id=SYSTEM_USER_ID,
+            is_admin=True,
+            impersonator="admin@example.com",
+        )
+    )
+
+    response = await client.delete(f"{API}/configurations/{system_config.id}")
+
+    assert response.status_code == HTTPStatus.NO_CONTENT
 
 
 # Update (PUT — full replace).
@@ -827,3 +898,60 @@ async def test_the_default_standalone_admin_sees_a_foreign_configuration_with_sc
 
     assert response.status_code == HTTPStatus.OK
     assert response.json()["id"] == str(configuration.id)
+
+
+async def test_list_omits_config_data(
+    client: AsyncClient,
+    as_principal: Callable[[Principal], None],
+    user: UserTable,
+    configuration: ConfigurationTable,
+) -> None:
+    """The list is the lean shape: the blob is the detail endpoint's job.
+
+    Absent, not null. A ``null`` would be indistinguishable from a row that
+    genuinely has no ``config_data`` stored, and would keep advertising the field
+    in the OpenAPI schema as though a client could rely on it.
+    """
+    _act_as(as_principal, user)
+
+    response = await client.get(f"{API}/configurations")
+
+    assert "config_data" not in response.json()["items"][0]
+
+
+async def test_list_still_reports_the_scalar_columns_and_tunings(
+    client: AsyncClient,
+    as_principal: Callable[[Principal], None],
+    user: UserTable,
+    configuration: ConfigurationTable,
+) -> None:
+    """Only ``config_data`` goes; everything the Configurations table renders stays."""
+    _act_as(as_principal, user)
+
+    response = await client.get(f"{API}/configurations")
+
+    item = response.json()["items"][0]
+    assert set(item) == {
+        "id",
+        "user_id",
+        "name",
+        "tuner_type",
+        "rl_tuner_type",
+        "associated_jobs",
+        "created_at",
+        "updated_at",
+    }
+
+
+async def test_get_still_returns_config_data(
+    client: AsyncClient,
+    as_principal: Callable[[Principal], None],
+    user: UserTable,
+    configuration: ConfigurationTable,
+) -> None:
+    """The detail endpoint is where the blob lives, and the frontend refetches from it."""
+    _act_as(as_principal, user)
+
+    response = await client.get(f"{API}/configurations/{configuration.id}")
+
+    assert response.json()["config_data"] == configuration.config_data

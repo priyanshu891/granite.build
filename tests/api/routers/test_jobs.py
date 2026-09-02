@@ -737,6 +737,87 @@ async def test_get_job_by_build_id_returns_the_job(
     assert response.json()["id"] == str(job.id)
 
 
+async def test_get_job_by_build_id_omits_tasks_and_the_config_snapshot(
+    client: AsyncClient,
+    session: AsyncSession,
+    as_principal: Callable[[Principal], None],
+    user: UserTable,
+    job: JobTable,
+) -> None:
+    """The lookup returns ``JobDetail``, not ``JobRead``.
+
+    A caller that arrived by build id already holds the identifier the tasks array
+    exists to expose, and ``config_snapshot`` embeds the whole configuration as it
+    ran — the heaviest field on the response. Both stay on ``GET /jobs/{id}``.
+    """
+    from autotunex.db.tables import GbTaskTable
+    from autotunex.models.status import GbTaskType
+
+    _act_as(as_principal, user)
+    job.config_snapshot = {
+        "name": "as-it-ran",
+        "config_data": {"lr": 3e-5, "tune_config": {"num_samples": {"default": 12}}},
+    }
+    session.add(job)
+    build_id = uuid4()
+    session.add(GbTaskTable(job_id=job.id, type=GbTaskType.TUNING, build_id=build_id))
+    await session.commit()
+
+    response = await client.get(f"{API}/jobs/by-build-id/{build_id}")
+
+    body = response.json()
+    assert "tasks" not in body
+    assert "config_snapshot" not in body
+    assert "trials" not in body
+    # Everything else the detail shape carries is still here, config_name included —
+    # that is read *from* the snapshot, so dropping the blob must not drop the label.
+    assert body["config_name"] == "as-it-ran"
+    assert body["num_trials"] == 12
+    assert body["model_source"] == "huggingface"
+    assert body["is_stale"] is True
+
+
+async def test_get_job_by_build_id_still_reports_finished_at(
+    client: AsyncClient,
+    session: AsyncSession,
+    as_principal: Callable[[Principal], None],
+    user: UserTable,
+    job: JobTable,
+) -> None:
+    """``finished_at`` survives dropping ``tasks`` — it comes back as a computed column.
+
+    It is the one field the mapper previously derived from the loaded tasks, so it
+    is the one that would silently go ``null`` if the subquery were dropped.
+    """
+    from autotunex.db.tables import GbTaskTable
+    from autotunex.models.status import GbTaskType
+
+    _act_as(as_principal, user)
+    build_id = uuid4()
+    session.add_all(
+        [
+            GbTaskTable(
+                job_id=job.id,
+                type=GbTaskType.TUNING,
+                build_id=build_id,
+                updated_at="2026-08-07 00:05:00",
+            ),
+            GbTaskTable(
+                job_id=job.id,
+                type=GbTaskType.RITS,
+                build_id=uuid4(),
+                updated_at="2026-08-07 00:09:00",
+            ),
+        ]
+    )
+    await session.commit()
+
+    response = await client.get(f"{API}/jobs/by-build-id/{build_id}")
+
+    # The latest across *all* the job's tasks, not just the one matched by build_id.
+    assert response.json()["finished_at"] == "2026-08-07 00:09:00"
+
+
 async def test_get_job_by_build_id_unknown_build_is_404(
     client: AsyncClient, as_principal: Callable[[Principal], None], user: UserTable
 ) -> None:

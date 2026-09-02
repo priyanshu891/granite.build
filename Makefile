@@ -71,7 +71,7 @@ migration:  ## Autogenerate a migration: make migration m="add trials table"
 migrate:  ## Apply migrations up to head
 	alembic upgrade head
 
-migrations-check:  ## Fail if db/tables.py has drifted from the migrations
+migrations-check:  ## Fail if db/tables/ has drifted from the migrations
 	alembic check
 
 downgrade:  ## Roll back one migration

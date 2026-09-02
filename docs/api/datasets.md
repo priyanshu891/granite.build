@@ -17,10 +17,17 @@ read and launch a job from. An admin widens to all owners per request with `scop
 (`own` | `all`, default `own`); a non-admin passing `scope=all` gets a **403**. `POST` and
 `upload` are always own-scoped.
 
-Mutations never widen to the shared tier, so `PUT` and `DELETE` against a system-owned
-dataset return **404** — only the system user itself, or an admin via `scope=all`, may
-modify one. `upload` takes no `scope` parameter at all: it is strictly own-only, so not
-even an admin can upload into a shared dataset, or into another owner's.
+Mutations never widen to the shared tier, so `PUT` against a system-owned dataset returns
+**404** — only an admin via `scope=all` may edit one. `upload` takes no `scope` parameter
+at all: it is strictly own-only, so not even an admin can upload into a shared dataset, or
+into another owner's.
+
+`DELETE` against a system-owned dataset is refused outright, for **every** caller: a normal
+user, an admin passing `scope=all`, and a caller whose own identity resolves to the system
+user all get a **403** (`title`: `System Resource Protected`), because starter content is
+shared by the whole deployment. The single exemption is an admin with an active
+impersonation overlay onto the system user (`POST /auth/assume/{id}`). Mirrors
+`configurations.md` exactly.
 
 ## Endpoints
 
@@ -215,6 +222,9 @@ create (`DatasetCreate`). Returns `DatasetRead`.
 
 Delete a dataset (and best-effort clean its stored files). Returns `204`.
 
+A dataset owned by the reserved system user cannot be deleted by anyone — see *Ownership
+and scope* above. `scope=all` does not override it.
+
 ### Path & query parameters
 
 | Name | In | Type | Default | Notes |
@@ -227,6 +237,7 @@ Delete a dataset (and best-effort clean its stored files). Returns `204`.
 | Status | When |
 | --- | --- |
 | `403` | Non-admin requesting `scope=all` |
+| `403` | The dataset belongs to the shared system tier (`title`: `System Resource Protected`); refused for every caller except an admin impersonating the system user |
 | `404` | No such dataset, or not the caller's |
 | `409` | A job still references this dataset |
 

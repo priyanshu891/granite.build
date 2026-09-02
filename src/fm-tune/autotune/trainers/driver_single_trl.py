@@ -123,12 +123,13 @@ def train_driver_single_gpu(config: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         A dict summarizing the progress of the training loop (per ray.tune).
     """
-    from autotune.logging_setup import setup_logging
+    from autotune.logging_setup import bind_trial_id, setup_logging
 
     setup_logging()
 
     # Output the current config
     trial_id = tune.get_context().get_trial_id()
+    bind_trial_id(trial_id)
     logger.info(f"[AutoTune] Entering the main TRL training loop with config: {config}")
     logger.info(f"[AutoTune] Trial ID: {trial_id}")
     run_name = f"autotune-single-trl-{trial_id}"

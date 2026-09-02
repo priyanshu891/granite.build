@@ -115,9 +115,17 @@ curl -X POST https://example.com/api/v1/reward-functions/validate \
 | --- | --- | --- | --- |
 | `case` | int | — | 1-based index of the case |
 | `inputs` | object | — | The exact kwargs the function was called with |
-| `return_value` | any \| null | `null` | The returned value; coerced with `str()` if not JSON-serializable |
+| `return_value` | any \| null | `null` | The returned value; coerced with `str()` unless it is an `int`, `float`, `str`, `bool`, `list`, `dict`, or `null` |
 | `return_type` | string \| null | `null` | The Python type name of the return value (e.g. `float`) |
 | `error` | string \| null | `null` | `TypeName: message` if **this case** raised |
+
+That whitelist is not the same thing as JSON-serializability, and it is applied to the
+top-level value only: a `tuple` such as `(1.0, 2.0)` comes back as the string `"(1.0, 2.0)"`
+with `return_type: "tuple"` even though `json.dumps` handles it, while a `list` holding a
+non-serializable object passes the check uncoerced and then fails the sandbox child's own JSON
+encode — yielding `executed: false` with
+`error: "Sandbox process exited abnormally (possible resource limit or crash)"` rather than a
+`str()`-coerced value.
 
 A per-case error is data, not a failed request — the other cases still run, and the response
 is still `200`. It does set `success` to `false`.

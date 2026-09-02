@@ -145,6 +145,11 @@ The response is a `Page` object:
   to compute how many pages exist, not `len(items)`.
 - `limit` and `offset` echo back the effective window.
 
+`GET /jobs/{id}/trials` returns the same `Page` object with two differences worth
+reading for: its `limit` defaults to **50** (range 1–100), and its `items` are
+**oldest first** — chronological, the order the search evaluated them in — rather
+than newest first like the resource collections above.
+
 Three kinds of endpoint deliberately do not follow that shape:
 
 - **Log endpoints** (`GET /jobs/{id}/logs` and
@@ -200,12 +205,22 @@ inline in `GET /configurations` and `GET /datasets` alongside your own,
 distinguishable only by that `user_id`, and a job may reference one at submit
 time. **Jobs themselves have no shared tier.**
 
-The tier is read-only. Mutations never widen to it, so `PUT` or `DELETE` on a
-system-owned row returns `404`, exactly as another owner's row would; only the
-system user itself, or an admin passing `?scope=all`, may modify them.
-`POST /datasets/{id}/upload` takes no `scope` parameter at all: it is strictly
-own-only, so not even an admin can upload into a shared dataset, or into
-another owner's.
+The tier is read-only. Mutations never widen to it, so `PUT` on a system-owned row
+returns `404`, exactly as another owner's row would; only an admin passing
+`?scope=all` may edit one. `POST /datasets/{id}/upload` takes no `scope` parameter
+at all: it is strictly own-only, so not even an admin can upload into a shared
+dataset, or into another owner's.
+
+`DELETE` is stricter still, and is the one place a `404` is *not* what you get.
+Deleting a system-owned row would remove starter content from every account at
+once, so it is refused for **every** caller — a normal user, an admin passing
+`?scope=all`, and a caller whose own identity happens to resolve to the system
+user alike — with a `403` whose `title` is `System Resource Protected`. A `403`
+rather than a `404` because the row is already readable by the caller, so naming
+it leaks nothing, and a client needs to tell "protected" apart from "gone" to
+explain itself. The single exemption is an admin with an active impersonation
+overlay onto the system user (`POST /auth/assume/{id}`; see `authentication.md`),
+which is the sanctioned, audited way to curate shared content.
 
 > User-management endpoints are gated differently. They are admin-only in whole
 > (there is no per-row "own" view of an identity) and take no `scope` parameter.

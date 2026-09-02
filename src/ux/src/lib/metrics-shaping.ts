@@ -19,7 +19,10 @@ export type LinePoint = { group: string; key: number; value: number };
 
 // Series labels — also the group key @carbon/charts colors by.
 export const TRAIN_LOSS = 'Training loss';
-export const TRAIN_LOSS_SMOOTH = 'Train loss (smoothed)';
+// Short on purpose: '(smoothed)' overflowed the legend to 'Train loss (sm…'. The
+// bold line is simply the train loss; '(raw)' names the faint ghost as a variant of
+// it rather than a third measurement, which is also why both share one hue.
+export const TRAIN_LOSS_SMOOTH = 'Train loss';
 export const TRAIN_LOSS_RAW = 'Train loss (raw)';
 export const VAL_LOSS = 'Validation loss';
 export const GRAD_NORM = 'Grad norm';
@@ -84,16 +87,20 @@ export function median(values: number[]): number | null {
 }
 
 /**
- * Loss panel: smoothed (and optionally raw) train loss plus the eval-loss overlay.
+ * Loss panel: smoothed train loss, its unsmoothed ghost, and the eval-loss overlay.
+ *
  * The EMA is computed in ascending-global_step order so smoothing is stable regardless of
  * the chosen x-axis. The summary row is excluded (isTrainPoint); eval loss is extra.eval_loss.
+ *
+ * The raw series is emitted only when `weight > 0`, and that guard is the point rather
+ * than an optimisation: `ema(values, 0)` returns its input unchanged, so at zero the
+ * smoothed and raw series are identical and plotting both drew the same line twice in
+ * two colours. It replaces a user-facing "Raw train loss" toggle — raw is not an
+ * independent measurement, it is the same series unfiltered, so whether to draw it
+ * follows from whether smoothing is doing anything. Same convention as TensorBoard
+ * and W&B: a faint original behind the bold smoothed line.
  */
-export function buildLossPanel(
-	points: MetricPoint[],
-	xField: XField,
-	weight: number,
-	showRaw: boolean
-): LinePoint[] {
+export function buildLossPanel(points: MetricPoint[], xField: XField, weight: number): LinePoint[] {
 	const train = points
 		.filter(isTrainPoint)
 		.slice()
@@ -105,7 +112,7 @@ export function buildLossPanel(
 		const x = xOf(p, xField);
 		if (x == null) return;
 		out.push({ group: TRAIN_LOSS_SMOOTH, key: x, value: smoothed[i] });
-		if (showRaw) out.push({ group: TRAIN_LOSS_RAW, key: x, value: losses[i] });
+		if (weight > 0) out.push({ group: TRAIN_LOSS_RAW, key: x, value: losses[i] });
 	});
 	for (const p of points) {
 		if (!isEvalPoint(p)) continue;

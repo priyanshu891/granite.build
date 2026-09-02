@@ -174,7 +174,7 @@ QLoRA, RL (offline and online), multi-GPU, and DeepSpeed/FSDP are **not**
 supported on MPS.
 
 ```bash
-uv pip install -e ".[full]"   # deepspeed and verl are excluded on macOS automatically
+uv pip install -e ".[core]"   # deepspeed is skipped on macOS via its platform marker; verl/flash-attn live only in the [full] extra
 
 python main.py \
   --config_file autotune/configs/autotune_mac.yaml \

@@ -112,6 +112,13 @@ The grouping exists only to compute `num_trials`. A scalar subquery removes it e
 (SELECT COUNT(*) FROM trials t WHERE t.job_id = j.id) AS num_trials
 ```
 
+That recommendation is for **direct-MySQL consumers of the view only**. The API no longer
+counts trial rows at all: its `num_trials` is the configured trial budget
+(`config_data.tune_config.num_samples`), not a row count — read from the job's own
+`config_snapshot` by `resolve_planned_trials` (`src/autotunex/services/mappers.py:300`), with
+the actual row count served as the `GET /jobs/{id}/trials` page's `total`. So the view's
+`COUNT(DISTINCT t.id)` and the API's `num_trials` now intentionally differ.
+
 ### B4. `ORDER BY` in a view blocks predicate pushdown — medium
 
 `:150` forces MySQL to materialize the view (temptable algorithm) instead of merging it, so
@@ -298,6 +305,11 @@ with no dialect branch. Dropping these columns (D5) removes the problem entirely
 **The view.** Postgres rejects it for the grouping reason in B3, and
 `JSON_UNQUOTE(JSON_EXTRACT(...))` is MySQL-only (`->>` on Postgres, `json_extract` on
 SQLite). The API composes the equivalent query in SQLAlchemy instead, so this costs nothing.
+Equivalent in *shape*, not column for column: `num_trials` needs no `trials` query there at
+all, because the API reports the configured trial budget
+(`config_data.tune_config.num_samples`), not a row count
+(`src/autotunex/db/repositories/sqlalchemy.py:202`). The corrected view below keeps the
+row-count semantics, for the direct-MySQL consumers it is written for.
 
 Three behavioural differences remain that no abstraction removes:
 
@@ -358,6 +370,10 @@ Changes: columns enumerated instead of `j.*` (B2); `num_trials` via scalar subqu
 `GROUP BY` (B3); no `ORDER BY` (B4); latest task only, so exactly one row per job (B1);
 `config_snapshot` and `output_artifacts` omitted as unsuitable for list queries; `user_email`
 instead of `user` (C11).
+
+The `num_trials` subquery here deliberately preserves the view's own row-count meaning — it is
+not what the API computes. The API's `num_trials` is the configured trial budget
+(`config_data.tune_config.num_samples`), not a row count.
 
 The latest-task subquery orders by `started_at`, which is a `VARCHAR` (B5) — it sorts
 lexicographically and is correct only for zero-padded ISO strings. Fixing B5 makes it
@@ -475,3 +491,20 @@ index alone rather than falling back to a sort. Dual declaration is not what mak
 (`src/api-bridge/src/api_bridge/tables.py:133-276`) and writes most of them. What is unique is
 that `training_metrics` is the only one of those nine with no definition in the schema file to
 anchor the two, so its two metadata declarations must stay in step by convention alone.
+
+### The one non-baseline revision that is not a deviation — `0a2caef2a185`
+
+`0a2caef2a185` widens `trials.id` and its foreign key `results.trial_id` from `VARCHAR(10)` to
+`VARCHAR(16)` (`alembic/versions/0a2caef2a185_widen_trial_id_to_16.py:31-45`). It is recorded
+here for completeness rather than as a sixth deviation: it moves the ORM *toward* the file, not
+away from it. The baseline creates both columns at `sa.String(length=10)`
+(`alembic/versions/1fb645a87b48_baseline_real_schema.py:195`, `:220`) — narrower than Ray's
+trial ids, which would truncate — while the file already declares the wider type at
+`resources/autotunex_schema.sql:73` and `:99`. A1 cites that `:73` correctly for the file, but
+the migrations do not start there.
+
+That asymmetry has a consequence for the live-MySQL procedure. A database built from
+`resources/autotunex_schema.sql` directly starts *past* the baseline for those two columns, so
+`alembic stamp 1fb645a87b48` followed by `upgrade head` would re-apply a widen already in
+place — a straight stamp-then-upgrade does not describe such a database. The divergence needs
+reconciling; `CLAUDE.md`'s migrations section records the same gap.

@@ -13,7 +13,7 @@ from uuid import UUID
 from sqlalchemy import ColumnElement, Select, String, cast, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import InstrumentedAttribute, joinedload, selectinload
+from sqlalchemy.orm import InstrumentedAttribute, defer, joinedload, selectinload
 
 from autotunex.core.config import ADMIN_ROLE
 from autotunex.core.constants import SYSTEM_USER_ID
@@ -38,6 +38,7 @@ from autotunex.db.tables import (
     TrialTable,
     UserTable,
 )
+from autotunex.db.tables._helpers import utcnow
 from autotunex.models.status import TERMINAL_RUN_STATUSES, DatasetStatus, GbTaskType, RunStatus
 
 logger = get_logger(__name__)
@@ -51,6 +52,43 @@ requests. Pulled out to a module-level constant so a test can assert on the
 exact clause :meth:`SqlAlchemyJobRepository.list` uses, rather than restating
 it and asserting on the restatement.
 """
+
+_TRIAL_PAGE_ORDER = (TrialTable.created_at.asc(), TrialTable.id.asc())
+"""The trials page's ordering, oldest first with an ``id`` tiebreaker.
+
+Ascending, unlike :data:`_PAGE_ORDER`: trials read as the chronological record of
+what the search evaluated, and the UX renders them that way. ``created_at`` alone
+is not unique, so the ``id`` tiebreaker is what keeps offset pagination stable —
+two trials sharing a timestamp could otherwise repeat or vanish between requests.
+``trials.created_at`` is ``NOT NULL``, so there is no dialect divergence over
+where NULLs sort (a zero date written by a lax MySQL ``sql_mode`` reads back as
+``None`` through ``UtcDateTime``, but it is a real value in the ``ORDER BY``).
+Pulled out so a test can assert on the exact clause rather than a restatement of
+it.
+"""
+
+
+def _finished_at_column() -> ColumnElement[str | None]:
+    """The job's run end as a correlated scalar subquery: ``MAX(gb_tasks.updated_at)``.
+
+    Used by every read that does not load ``tasks`` — the lean list and the
+    build-id lookup — so those shapes can still report ``finished_at`` in a single
+    round trip. ``gb_tasks.updated_at`` is a ``VARCHAR``; ``MAX`` over the
+    zero-padded ISO-8601 gbserver emits is the chronological latest. ``NULL`` when
+    the job has no task with an update time.
+
+    A function rather than a module constant because a correlated subquery is
+    bound to the statement it is compiled into, and reusing one object across two
+    statements risks carrying correlation state between them.
+    """
+    return (
+        select(func.max(GbTaskTable.updated_at))
+        .where(GbTaskTable.job_id == JobTable.id)
+        .correlate(JobTable)
+        .scalar_subquery()
+        .label("finished_at")
+    )
+
 
 _DELETE_BATCH_SIZE = 5_000
 """Rows removed per statement when clearing a job's unbounded child tables.
@@ -151,19 +189,23 @@ class SqlAlchemyJobRepository:
     async def get(self, job_id: UUID, *, owner_id: UUID | None = None) -> JobTable | None:
         """Return the job with ``job_id`` owned by ``owner_id``, or ``None``.
 
-        Loads tasks, trials and their results too — the detail response needs
-        them, and a lazy load would raise ``MissingGreenlet`` under async
-        SQLAlchemy. ``tasks`` is loaded here rather than in ``_view_shaped``: the
-        lean list (``JobSummary``) never nests tasks, only the detail response
-        (``JobRead``) does.
+        Loads ``tasks`` too — the detail response nests them, and a lazy load
+        would raise ``MissingGreenlet`` under async SQLAlchemy. Loaded here rather
+        than in ``_view_shaped`` because the lean list (``JobSummary``) never
+        nests tasks, only the detail response (``JobRead``) does.
+
+        Trials are deliberately **not** loaded. They are an unbounded child
+        collection, and eager-loading them with their one-to-one ``results`` rows
+        cost two further round trips and put every trial's ``config`` and
+        ``metrics`` blob into a response that is also polled while a job runs.
+        ``JobRead`` no longer carries them; they are paged by
+        :meth:`SqlAlchemyTrialRepository.page` behind ``GET /jobs/{id}/trials``.
+        ``num_trials`` needs no query at all: it is the trial budget declared by the
+        job's own ``config_snapshot``, resolved by
+        :func:`~autotunex.services.mappers.resolve_planned_trials`.
         """
         statement = (
-            self._view_shaped()
-            .options(
-                selectinload(JobTable.tasks),
-                selectinload(JobTable.trials).selectinload(TrialTable.result),
-            )
-            .where(JobTable.id == job_id)
+            self._view_shaped().options(selectinload(JobTable.tasks)).where(JobTable.id == job_id)
         )
         if owner_id is not None:
             # Deliberate asymmetry with get_by_email below, which folds case on
@@ -182,21 +224,34 @@ class SqlAlchemyJobRepository:
 
     async def get_by_build_id(
         self, build_id: UUID, *, owner_id: UUID | None = None
-    ) -> JobTable | None:
-        """Return the job whose ``gb_task`` carries ``build_id``; see the Protocol docstring.
+    ) -> tuple[JobTable, str | None] | None:
+        """Return ``(job, finished_at)`` for the job whose task carries ``build_id``.
 
-        Resolves the build to its job id from ``gb_tasks`` and delegates to
-        :meth:`get`, so the detail response's eager-loading and the ``owner_id``
-        filter are reused verbatim rather than restated. ``LIMIT 1`` guards the
-        pathological duplicate-``build_id`` case without raising, and the scope
-        check stays entirely in :meth:`get`.
+        One round trip, not three. This used to resolve the build to a job id and
+        then delegate to :meth:`get`, which cost a second query plus a third for
+        the ``tasks`` this shape no longer returns. Instead the build filter is a
+        join, and ``finished_at`` — the only thing the mapper needed ``tasks`` for —
+        arrives as a correlated subquery, exactly as it does for the lean list.
+
+        The join cannot multiply job rows: it is filtered to the single task
+        carrying this ``build_id``. ``LIMIT 1`` still guards the pathological
+        duplicate-``build_id`` case without raising.
         """
-        job_id = await self._session.scalar(
-            select(GbTaskTable.job_id).where(GbTaskTable.build_id == build_id).limit(1)
+        statement = (
+            self._view_shaped()
+            .add_columns(_finished_at_column())
+            .join(GbTaskTable, GbTaskTable.job_id == JobTable.id)
+            .where(GbTaskTable.build_id == build_id)
+            .limit(1)
         )
-        if job_id is None:
+        if owner_id is not None:
+            # Raw, unfolded string comparison, for the reasons in :meth:`get`.
+            statement = statement.where(JobTable.user_id == str(owner_id))
+        result = await self._session.execute(statement)
+        row = result.unique().first()
+        if row is None:
             return None
-        return await self.get(job_id, owner_id=owner_id)
+        return row[0], row[1]
 
     async def is_visible(self, job_id: UUID, *, owner_id: UUID | None = None) -> bool:
         """Cheap ``SELECT`` existence-and-scope probe; see the Protocol docstring."""
@@ -266,18 +321,9 @@ class SqlAlchemyJobRepository:
         ``ILIKE`` against it directly). Applied to both statements so ``total``
         can never disagree with the number of items returned.
         """
-        # finished_at = the job's run end for the Total-time column: the latest
-        # gb_tasks.updated_at. A correlated scalar subquery keeps this a single
-        # round trip — the lean list never loads tasks (see _view_shaped). It is a
-        # VARCHAR string; MAX over the zero-padded ISO-8601 gbserver emits is the
-        # chronological latest. NULL when the job has no task with an update time.
-        finished_at = (
-            select(func.max(GbTaskTable.updated_at))
-            .where(GbTaskTable.job_id == JobTable.id)
-            .correlate(JobTable)
-            .scalar_subquery()
-            .label("finished_at")
-        )
+        # finished_at keeps this a single round trip — the lean list never loads
+        # tasks (see _view_shaped). See _finished_at_column for the semantics.
+        finished_at = _finished_at_column()
         total_statement = self._total_statement()
         page_statement = (
             self._view_shaped()
@@ -545,10 +591,12 @@ class SqlAlchemyTrialRepository:
     """Trial persistence backed by an :class:`AsyncSession`.
 
     Satisfies :class:`autotunex.db.repositories.protocols.TrialRepository`.
-    Write-only: a job's trials are read back through
-    :meth:`SqlAlchemyJobRepository.get`, which eager-loads them for the detail
-    response. Owns its transactions (``commit`` lives here, per the layering
-    rule).
+    Owns its transactions (``commit`` lives here, per the layering rule).
+
+    Reads live here too, in :meth:`page`. They used to go through
+    :meth:`SqlAlchemyJobRepository.get`, which eager-loaded a job's whole trial
+    list for the detail response; that response no longer carries trials, so
+    trial reads belong with trial persistence.
     """
 
     def __init__(self, session: AsyncSession) -> None:
@@ -613,6 +661,32 @@ class SqlAlchemyTrialRepository:
             .values(status=RunStatus.TERMINATED)
         )
         await self._session.commit()
+
+    async def page(
+        self, job_id: UUID, *, limit: int, offset: int
+    ) -> tuple[Sequence[TrialTable], int]:
+        """Return one page of the job's trials plus the unpaginated total.
+
+        ``joinedload`` for the trial's ``results`` row, not ``selectinload``:
+        the relationship is a scalar one-to-one, so the join cannot multiply
+        rows, and folding it into this statement costs one round trip instead of
+        two. The caller must have verified the job is visible to the principal
+        first (``JobRepository.is_visible``) — this method applies no ownership
+        filter of its own, exactly like ``logs_page`` and ``metrics_page``.
+        """
+        total = await self._session.scalar(
+            select(func.count()).select_from(TrialTable).where(TrialTable.job_id == job_id)
+        )
+        statement = (
+            select(TrialTable)
+            .options(joinedload(TrialTable.result))
+            .where(TrialTable.job_id == job_id)
+            .order_by(*_TRIAL_PAGE_ORDER)
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self._session.execute(statement)
+        return result.unique().scalars().all(), total or 0
 
 
 class SqlAlchemyResultRepository:
@@ -773,10 +847,26 @@ class SqlAlchemyConfigurationRepository:
         number of items returned. ``include_shared`` widens the ``owner_id``
         filter to also admit the reserved system user's rows (the shared
         starter-content tier); ignored when ``owner_id`` is ``None``.
+
+        Per the Protocol, ``config_data`` is not loaded on these rows and touching
+        it raises rather than fetching it — see the ``defer`` call below.
         """
         total_statement = select(func.count()).select_from(ConfigurationTable)
         page_statement = (
-            select(ConfigurationTable).order_by(*_CONFIG_PAGE_ORDER).limit(limit).offset(offset)
+            select(ConfigurationTable)
+            # `config_data` is the whole search space, and no caller of this list
+            # wants it — the API's list shape drops it and the frontend refetches
+            # the detail when it needs one. Deferring stops it being selected at
+            # all, so a page of 20 no longer reads, transfers and parses 20 JSON
+            # blobs; trimming only the response shape would still pay for every
+            # one of those. `raiseload` makes an accidental access raise instead
+            # of quietly issuing a fresh SELECT per row — an N+1 that tests would
+            # not notice and production would feel. `get`/`create`/`update` are
+            # untouched; they legitimately need the column.
+            .options(defer(ConfigurationTable.config_data, raiseload=True))
+            .order_by(*_CONFIG_PAGE_ORDER)
+            .limit(limit)
+            .offset(offset)
         )
         if owner_id is not None:
             predicate = _owner_or_shared(
@@ -1081,6 +1171,11 @@ class SqlAlchemyUserRepository:
     async def provision(self, email: str) -> UserTable:
         """Get-or-create the ``users`` row for an already-verified ``email``.
 
+        ``last_login_at`` is stamped here because reaching provisioning *is* a
+        successful authentication — a first-time caller has just logged in, and
+        leaving it ``None`` until the throttle window lapsed would show a brand-new
+        user a blank "last login" while they were demonstrably using the app.
+
         ``role`` is set explicitly to ``"user"`` rather than relying on the
         column default: a provisioned account must never be an admin, and pinning
         it here keeps that true even if the schema default ever changes. On the
@@ -1089,7 +1184,7 @@ class SqlAlchemyUserRepository:
         (case-insensitively, so a different-cased duplicate is never created)
         rather than surfacing the error.
         """
-        user = UserTable(email=email, role="user")
+        user = UserTable(email=email, role="user", last_login_at=utcnow())
         self._session.add(user)
         try:
             await self._session.flush()
@@ -1101,6 +1196,33 @@ class SqlAlchemyUserRepository:
             raise
         await self._session.commit()
         return user
+
+    async def touch_login(self, email: str) -> None:
+        """Stamp ``users.last_login_at`` for ``email`` with the current time.
+
+        A single ``UPDATE`` keyed on ``func.lower(email)`` — the same predicate
+        :meth:`get_by_email` uses, so the two agree across dialects — rather than
+        loading the row and mutating it. That keeps this to one round trip on a
+        path that runs per request, and confines the write to the one column: an
+        ORM flush would emit whatever else happened to be dirty in the shared
+        request session.
+
+        Silently affects no rows when the email is unknown, which is the intended
+        no-op for an authenticated-but-unprovisioned caller.
+
+        ``updated_at`` is expected to move as a side effect — the ORM's
+        ``onupdate`` fires here, and the live MySQL schema's ``ON UPDATE
+        CURRENT_TIMESTAMP`` would regardless. That is correct and harmless: the
+        row really did change. The invariant that matters runs the other way, and
+        holds by construction — nothing but this method and :meth:`provision`
+        writes ``last_login_at``, so a role change can never masquerade as a login.
+        """
+        await self._session.execute(
+            update(UserTable)
+            .where(func.lower(UserTable.email) == email.lower())
+            .values(last_login_at=utcnow())
+        )
+        await self._session.commit()
 
     async def get_by_email(self, email: str) -> UserTable | None:
         """Return the user with ``email``, comparing case-insensitively.

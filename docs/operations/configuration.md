@@ -45,6 +45,8 @@ Misconfiguration is caught at startup, not at request time. The service refuses 
 - **`"session"` enabled** without the full backend-for-frontend set (issuer, JWKS URI,
   audience, client id, client secret, authorization endpoint, token endpoint, public base
   URL, and session secret).
+- **A session secret shorter than 32 characters.** `AUTOTUNEX_SESSION_SECRET` is refused
+  below the HS256 key floor, even when the rest of the session set is present.
 - **A wildcard CORS origin.** `AUTOTUNEX_CORS_ALLOW_ORIGINS` must never contain `"*"`, in
   any configuration.
 - **`same_site=none` without an allowlist.** `AUTOTUNEX_SESSION_COOKIE_SAME_SITE=none`
@@ -86,7 +88,7 @@ separately.
 | Variable | Meaning | Default |
 | --- | --- | --- |
 | `AUTOTUNEX_FRONTEND_DIR` | Directory of the built SPA to serve. When set to an existing directory, the app mounts it with SPA-fallback routing. A local checkout builds to `src/ux/build`. | *(unset — API only)* |
-| `AUTOTUNEX_FRONTEND_BASE_PATH` | URL prefix the SPA is mounted under. Must match the value baked into the UI's asset URLs at build time; changing it here alone is not enough — rebuild the UI with a matching base. | `/autotune` |
+| `AUTOTUNEX_FRONTEND_BASE_PATH` | URL prefix the SPA is mounted under. Must match the value baked into the UI's asset URLs at build time; changing it here alone is not enough — rebuild the UI with a matching base. Note also that the `/` root redirect targets a hard-coded `/autotune`, so a changed base path leaves `/` redirecting to a 404. | `/autotune` |
 
 ## Persistence
 
@@ -100,10 +102,10 @@ migrations.
 | `AUTOTUNEX_AUTO_CREATE_SCHEMA` | Create missing tables on startup. A development convenience — set `false` in production and run Alembic migrations instead. | `true` |
 | `AUTOTUNEX_DATABASE_SSL_CA` | Path to a CA-certificate PEM enabling verified TLS to the database; required for managed MySQL such as IBM Cloud Databases. MySQL URLs only. | *(unset)* |
 | `AUTOTUNEX_DATABASE_SSL_MODE` | How to negotiate TLS: `disable`, `require`, or `verify`. When unset it derives from `AUTOTUNEX_DATABASE_SSL_CA` (`verify` when a CA is set, else `disable`). MySQL URLs only. | *(unset — derived from SSL_CA)* |
-| `AUTOTUNEX_DATABASE_POOL_SIZE` | Warm connections kept open per worker and reused; size to cover request handlers plus the reconcile loop. Ignored for SQLite. | `10` |
-| `AUTOTUNEX_DATABASE_MAX_OVERFLOW` | Extra connections opened on demand beyond the pool size; the hard ceiling is size + overflow. Ignored for SQLite. | `5` |
-| `AUTOTUNEX_DATABASE_POOL_TIMEOUT_SECONDS` | Seconds a request waits for a free connection before failing. Ignored for SQLite. | `30.0` |
-| `AUTOTUNEX_DATABASE_POOL_RECYCLE_SECONDS` | Recycle a pooled connection older than this many seconds (`-1` disables); keep it under the database's `wait_timeout`. Server databases only. | `1800` |
+| `AUTOTUNEX_DATABASE_POOL_SIZE` | Warm connections kept open per worker and reused; size to cover request handlers plus the reconcile loop. Ignored for SQLite. Must be ≥ 1. | `10` |
+| `AUTOTUNEX_DATABASE_MAX_OVERFLOW` | Extra connections opened on demand beyond the pool size; the hard ceiling is size + overflow. Ignored for SQLite. Must be ≥ 0. | `5` |
+| `AUTOTUNEX_DATABASE_POOL_TIMEOUT_SECONDS` | Seconds a request waits for a free connection before failing. Ignored for SQLite. Must be > 0. | `30.0` |
+| `AUTOTUNEX_DATABASE_POOL_RECYCLE_SECONDS` | Recycle a pooled connection older than this many seconds (`-1` disables); keep it under the database's `wait_timeout`. Server databases only. Must be ≥ -1. | `1800` |
 | `AUTOTUNEX_DATABASE_POOL_PRE_PING` | Liveness-check a pooled connection on checkout, reconnecting if it is dead. Applies to every pool, SQLite included. | `true` |
 | `AUTOTUNEX_DATABASE_POOL_USE_LIFO` | Hand out the most-recently-used connection first, keeping a small subset hot under bursty traffic. Ignored for SQLite. | `true` |
 
@@ -119,12 +121,12 @@ migrations.
 | --- | --- | --- |
 | `AUTOTUNEX_DATASET_STORAGE_DIR` | Root directory for locally-stored dataset files. In-flight uploads stage under a `.staging` subdirectory of this path. | `artifacts/datasets` |
 | `AUTOTUNEX_DATASET_UPLOAD_MAX_BYTES` | Hard cap on a single uploaded file, enforced while streaming (returns 413 when exceeded). Must be ≥ 1. | `5368709120` (5 GiB) |
-| `AUTOTUNEX_DATASET_UPLOAD_MAX_CONCURRENT` | Max dataset uploads processed concurrently in-process; over-limit uploads queue. | `2` |
-| `AUTOTUNEX_DATASET_PROCESSING_TIMEOUT_SECONDS` | Backstop timeout for a dataset's off-request processing; on expiry the dataset is marked `error`. | `3600` |
-| `AUTOTUNEX_DATASET_PUSH_TIMEOUT_SECONDS` | Timeout for each `llmb` auth/push subprocess in the HuggingFace backend. | `1800` |
+| `AUTOTUNEX_DATASET_UPLOAD_MAX_CONCURRENT` | Max dataset uploads processed concurrently in-process; over-limit uploads queue. Must be ≥ 1. | `2` |
+| `AUTOTUNEX_DATASET_PROCESSING_TIMEOUT_SECONDS` | Backstop timeout for a dataset's off-request processing; on expiry the dataset is marked `error`. Must be > 0. | `3600` |
+| `AUTOTUNEX_DATASET_PUSH_TIMEOUT_SECONDS` | Timeout for each `llmb` auth/push subprocess in the HuggingFace backend. Must be > 0. | `1800` |
 | `AUTOTUNEX_DATASET_CLIENT_GZIP_ENABLED` | Whether the frontend gzip-compresses compressible (jsonl/json/csv) dataset uploads. Surfaced via `GET /api/v1/app-config`. | `true` |
-| `AUTOTUNEX_DATASET_CLIENT_GZIP_MIN_BYTES` | Skip client-side gzip below this file size. Surfaced via `GET /api/v1/app-config`. | `1048576` (1 MiB) |
-| `AUTOTUNEX_DATASET_CLIENT_PARQUET_PREVIEW_MAX_BYTES` | Byte threshold above which the frontend skips a local Parquet preview. Surfaced via `GET /api/v1/app-config`. | `104857600` (100 MiB) |
+| `AUTOTUNEX_DATASET_CLIENT_GZIP_MIN_BYTES` | Skip client-side gzip below this file size. Surfaced via `GET /api/v1/app-config`. Must be ≥ 0. | `1048576` (1 MiB) |
+| `AUTOTUNEX_DATASET_CLIENT_PARQUET_PREVIEW_MAX_BYTES` | Byte threshold above which the frontend skips a local Parquet preview. Surfaced via `GET /api/v1/app-config`. Must be ≥ 1. | `104857600` (100 MiB) |
 | `AUTOTUNEX_DATASET_STORAGE_BACKEND` | Where datasets are stored: `auto`, `local`, or `huggingface`. `auto` resolves to `local` whenever `GB_ENVIRONMENT` is `standalone` (where `llmb artifact push` is unavailable), regardless of tokens; otherwise it resolves to `huggingface` when the `llmb` tooling and **both** token env vars are present, and `local` if not. Forcing `huggingface` without both tokens is refused at startup. This setting governs **writes** only: whichever way it resolves, the *preview* path can read from the other side, so a dataset row carrying an `hf://` locator still previews under `local`, and one whose files are on disk still previews under `huggingface`. | `auto` |
 | `AUTOTUNEX_HF_TOKEN_ENV` | **Name** of the environment variable holding the HuggingFace token used for the HuggingFace storage backend. Only the variable's presence is checked; its value is never loaded into settings. | `HF_TOKEN` |
 | `AUTOTUNEX_HF_NAMESPACE` | Optional HuggingFace org/namespace prefix for the derived dataset-repo name. | *(unset)* |
@@ -224,7 +226,7 @@ spec anchors each run's output under `AUTOTUNEX_ARTIFACT_DIR`, resolved to an ab
 
 | Variable | Meaning | Default |
 | --- | --- | --- |
-| `GB_ENVIRONMENT` | **Read without the `AUTOTUNEX_` prefix** — it reuses the build tooling's own `GB_ENVIRONMENT` variable, and the prefixed `AUTOTUNEX_GB_ENVIRONMENT` is deliberately ignored. Set to `standalone` to select the local-`bash` build spec. | *(unset)* |
+| `GB_ENVIRONMENT` | **Read without the `AUTOTUNEX_` prefix** — it reuses the build tooling's own `GB_ENVIRONMENT` variable, and the prefixed `AUTOTUNEX_GB_ENVIRONMENT` is deliberately ignored. Set to `standalone` to select the local-`bash` build spec — matched case-insensitively and whitespace-trimmed, so granite.build's own `GB_ENVIRONMENT=STANDALONE` selects it too. | *(unset)* |
 | `AUTOTUNEX_BASH_FM_TUNE_ROOT` | Trainer checkout/repo injected into the bash spec's environment. | *(unset)* |
 | `AUTOTUNEX_BASH_FM_TUNE_REF` | Branch/tag/commit of the trainer to check out; unset uses the repo's default branch. | *(unset)* |
 | `AUTOTUNEX_BASH_FM_TUNE_EXTRA` | The extras to install in the bash spec. | `full,mlx` |

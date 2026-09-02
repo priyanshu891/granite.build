@@ -744,7 +744,13 @@ async def test_update_of_a_system_dataset_by_a_normal_user_is_404(
     assert response.status_code == HTTPStatus.NOT_FOUND
 
 
-async def test_delete_of_a_system_dataset_by_a_normal_user_is_404(
+# Delete-protection of the shared tier, mirroring
+# ``tests/api/routers/test_configurations.py`` case for case: a system-owned
+# dataset is starter content shared by every caller, so the guard is an invariant
+# on the row's owner rather than a by-product of the ownership filter.
+
+
+async def test_delete_of_a_system_dataset_by_a_normal_user_is_403(
     client: AsyncClient,
     as_principal: Callable[[Principal], None],
     user: UserTable,
@@ -755,4 +761,62 @@ async def test_delete_of_a_system_dataset_by_a_normal_user_is_404(
 
     response = await client.delete(f"{API}/datasets/{system_dataset.id}")
 
-    assert response.status_code == HTTPStatus.NOT_FOUND
+    assert response.status_code == HTTPStatus.FORBIDDEN
+    assert response.json()["title"] == "System Resource Protected"
+
+
+async def test_delete_of_a_system_dataset_by_an_admin_with_scope_all_is_403(
+    client: AsyncClient,
+    as_principal: Callable[[Principal], None],
+    session: AsyncSession,
+) -> None:
+    admin = UserTable(id=uuid4(), email="admin@example.com", role="admin")
+    session.add(admin)
+    await session.commit()
+    as_principal(Principal(email=admin.email, provider="session", user_id=admin.id, is_admin=True))
+    system_dataset = await _seed_system_dataset(session)
+
+    response = await client.delete(f"{API}/datasets/{system_dataset.id}", params={"scope": "all"})
+
+    assert response.status_code == HTTPStatus.FORBIDDEN
+
+
+async def test_delete_of_a_system_dataset_by_a_caller_resolving_to_the_system_user_is_403(
+    client: AsyncClient,
+    as_principal: Callable[[Principal], None],
+    session: AsyncSession,
+) -> None:
+    system_dataset = await _seed_system_dataset(session)
+    as_principal(
+        Principal(
+            email="system@autotunex.local",
+            provider="standalone",
+            user_id=SYSTEM_USER_ID,
+            is_admin=True,
+        )
+    )
+
+    response = await client.delete(f"{API}/datasets/{system_dataset.id}")
+
+    assert response.status_code == HTTPStatus.FORBIDDEN
+
+
+async def test_delete_of_a_system_dataset_while_impersonating_the_system_user_succeeds(
+    client: AsyncClient,
+    as_principal: Callable[[Principal], None],
+    session: AsyncSession,
+) -> None:
+    system_dataset = await _seed_system_dataset(session)
+    as_principal(
+        Principal(
+            email="system@autotunex.local",
+            provider="session",
+            user_id=SYSTEM_USER_ID,
+            is_admin=True,
+            impersonator="admin@example.com",
+        )
+    )
+
+    response = await client.delete(f"{API}/datasets/{system_dataset.id}")
+
+    assert response.status_code == HTTPStatus.NO_CONTENT

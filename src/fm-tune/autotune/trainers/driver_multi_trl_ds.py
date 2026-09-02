@@ -408,7 +408,7 @@ def _extract_metrics_from_log_history(log_history: list) -> Dict[str, Any]:
 
 def train_loop_per_worker(train_loop_config: Dict[str, Any]):
     """Training function executed by each Ray Train worker (one per GPU)."""
-    from autotune.logging_setup import setup_logging
+    from autotune.logging_setup import bind_trial_id, setup_logging
 
     setup_logging()
 
@@ -429,6 +429,7 @@ def train_loop_per_worker(train_loop_config: Dict[str, Any]):
     is_qlora = training_config.get("tuning_algorithm") == "qlora"
     steps_per_epoch = train_loop_config.get("steps_per_epoch")
     trial_id = train_loop_config.get("trial_id")
+    bind_trial_id(trial_id)
     rl_algorithm = train_loop_config.get("rl_algorithm", "dpo")
 
     output_dir = training_config.get("output_dir")
@@ -733,11 +734,12 @@ def train_driver_multi_gpu(config: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         A Dict summarizing the training results for Ray Tune.
     """
-    from autotune.logging_setup import setup_logging
+    from autotune.logging_setup import bind_trial_id, setup_logging
 
     setup_logging()
 
     trial_id = tune.get_context().get_trial_id()
+    bind_trial_id(trial_id)
 
     logger.info(f"[AutoTune] Training driver multi GPU TRL+DeepSpeed (trial {trial_id})")
 

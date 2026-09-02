@@ -16,7 +16,9 @@ to the real MySQL database directly:
 ```
 POST /api/v1/jobs        →  submit a tuning run (references an existing config + dataset)
 GET  /api/v1/jobs        →  a lean page of jobs — identity, status, owner/config/dataset labels
-GET  /api/v1/jobs/{id}   →  one job, full detail: tasks, trials, per-trial metrics, JSON blobs
+GET  /api/v1/jobs/{id}   →  one job, full detail: tasks, trial budget, config snapshot
+GET  /api/v1/jobs/{id}/trials         →  that job's trials, paged (not on the detail above)
+GET  /api/v1/jobs/by-build-id/{bid}   →  the same job by its build id, minus tasks + snapshot
 ```
 
 > ### Project status: submission + read path implemented; execution is backend-gated
@@ -147,13 +149,15 @@ unprefixed. Reads and owner-scoped writes are own-data by default; an admin wide
 updates and deletes to every owner's rows per request with `?scope=all` (a non-admin who asks
 gets a `403`). Configuration and dataset reads additionally return the **shared system tier** —
 curated starter content owned by a reserved system user — which every caller sees even under the
-default `scope=own`; mutations never widen to it, and jobs have no shared tier. Every endpoint
+default `scope=own`; mutations never widen to it, and **deleting** one is refused for every
+caller with a `403` (only an admin impersonating the system user may curate it). Jobs have no
+shared tier. Every endpoint
 is runnable from the browser at [Swagger UI](http://127.0.0.1:8000/docs), and the full reference
 lives in [`docs/api/`](docs/api/).
 
 | Resource | Endpoints | Reference |
 | --- | --- | --- |
-| **Jobs** | `POST`/`GET` `/jobs`, `GET`/`DELETE` `/jobs/{id}`, `POST /jobs/{id}/cancel`, `POST /jobs/{id}/reconcile` (admin), `POST /jobs/estimate-usages`, `POST /jobs/generate-test-solutions`, `GET /jobs/by-build-id/{build_id}`, result-report (list/file/archive), job/trial/gb logs, per-step training metrics (`GET /jobs/{id}/metrics`, `GET /jobs/{id}/trials/{trial_id}/metrics`) | [jobs.md](docs/api/jobs.md) |
+| **Jobs** | `POST`/`GET` `/jobs`, `GET`/`DELETE` `/jobs/{id}`, `POST /jobs/{id}/cancel`, `POST /jobs/{id}/reconcile` (admin), `POST /jobs/estimate-usages`, `POST /jobs/generate-test-solutions`, `GET /jobs/by-build-id/{build_id}`, `GET /jobs/{id}/trials`, result-report (list/file/archive), job/trial/gb logs, per-step training metrics (`GET /jobs/{id}/metrics`, `GET /jobs/{id}/trials/{trial_id}/metrics`) | [jobs.md](docs/api/jobs.md) |
 | **Reward functions** | `POST /reward-functions/validate` (validate an online-RL reward function, sandboxed) | [reward-functions.md](docs/api/reward-functions.md) |
 | **Configurations** | full CRUD `/configurations` (+ `GET /configurations/template`) | [configurations.md](docs/api/configurations.md) |
 | **Datasets** | full CRUD `/datasets`, `POST /datasets/{id}/upload`, `?preview=true` | [datasets.md](docs/api/datasets.md) |

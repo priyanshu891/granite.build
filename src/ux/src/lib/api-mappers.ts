@@ -99,7 +99,11 @@ export const mapJob = (job: any): Tuning => {
 		task_started_at: t0.task_started_at,
 		task_updated_at: t0.task_updated_at,
 		tasks: tasks.map((t) => mapTask(t, job.id)),
-		trials: Array.isArray(job.trials) ? job.trials.map(mapTrial) : [],
+		// No `trials` key: GET /jobs/{id} no longer nests them (they are paged by
+		// GET /jobs/{id}/trials, via api.getTrialsByJobId). Deliberately left
+		// `undefined` rather than defaulted to `[]` — TuningDisplay's fetch gate is
+		// `!tuning?.trials`, which an empty array would satisfy, so defaulting here
+		// would silently stop a completed job's trials from ever being loaded.
 		config_snapshot: job.config_snapshot,
 		output_artifacts: job.output_artifacts
 	} as unknown as Tuning;

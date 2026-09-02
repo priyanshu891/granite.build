@@ -18,7 +18,11 @@ from fastapi import APIRouter, Query, Response
 
 from autotunex.api.deps import ConfigurationServiceDep
 from autotunex.models.common import DataScope, Page, ProblemDetail
-from autotunex.models.configuration import ConfigurationCreate, ConfigurationRead
+from autotunex.models.configuration import (
+    ConfigurationCreate,
+    ConfigurationRead,
+    ConfigurationSummary,
+)
 
 router = APIRouter(prefix="/configurations", tags=["configurations"])
 
@@ -61,8 +65,13 @@ async def list_configurations(
     offset: int = Query(default=0, ge=0),
     scope: DataScope = Query(default=DataScope.OWN),
     q: str | None = Query(default=None, description="Case-insensitive substring filter"),
-) -> Page[ConfigurationRead]:
-    """Return one page of the caller's configurations, newest first."""
+) -> Page[ConfigurationSummary]:
+    """Return one page of the caller's configurations, newest first.
+
+    The lean shape: no ``config_data``. A client that needs a configuration's
+    search space reads ``GET /configurations/{id}``, which the frontend already
+    does when a configuration is opened.
+    """
     return await service.list(limit=limit, offset=offset, scope=scope, q=q)
 
 

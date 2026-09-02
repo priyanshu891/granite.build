@@ -119,6 +119,20 @@ export interface Configuration {
 	rl_tuner_type?: string | null;
 	artifact_id: string;
 	artifact_url: string;
+	// ABSENT on list items. GET /configurations returns the lean shape and omits it
+	// (the server does not even load the column); it is present on
+	// GET /configurations/{id} and on the POST/PUT responses. Read the detail when
+	// you need the search space — ConfigDisplay.fetchConfig and
+	// Step2Configure.selectConfig both already fetch it on a miss and memoize it
+	// back into the `configurations` store.
+	//
+	// Typed as required rather than optional despite that, deliberately. Marking it
+	// optional adds 33 `possibly undefined` errors, every one of them in
+	// ConfigDisplay, which only ever renders a *fetched detail* and so cannot
+	// actually hit them. The real fix is to mirror the backend and split this into
+	// list and detail types, which means retyping the `configurations` store and the
+	// prop chain through Tunings -> CreateTuningForm -> ConfigDisplay — a refactor
+	// worth doing on its own, not as a side effect of leaning one endpoint.
 	config_data: ConfigData;
 	associated_jobs: Job[];
 	created_at: Date;
@@ -354,7 +368,14 @@ export type User = {
 	email: string;
 	role: string;
 	created_at: Date;
+	// When the row last changed. Not a login time — an admin changing someone's
+	// role moves this. The Users table read it as "Last login on" until
+	// last_login_at existed, which is why a role edit looked like a login.
 	updated_at: Date;
+	// When the user last authenticated. Null only where the backend has no record
+	// of a login at all — e.g. a user the tuning pipeline created and never
+	// signed in as. Render it, never assume a date.
+	last_login_at: Date | null;
 };
 
 export type DatasetForm = {

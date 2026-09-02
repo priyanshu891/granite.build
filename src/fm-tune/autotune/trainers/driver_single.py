@@ -41,6 +41,7 @@ from autotune.device import (
 )
 
 # Local
+from autotune.tools._chat_utils import template_supports_kwarg
 from autotune.trainers._alora_gc import (
     AloraGradCheckpointDrainCallback,
     install_alora_gc_safety_wrapper,
@@ -84,7 +85,21 @@ def _load_dataset_from_file(file_path: str):
     raise ValueError(f"Unsupported dataset extension: {ext} ({file_path})")
 
 
-def _make_chat_template_mapper(tokenizer, input_col: str):
+def _thinking_kwargs(tokenizer, thinking: bool = False) -> Dict[str, Any]:
+    """``{"enable_thinking": thinking}`` when the chat template supports it, else ``{}``.
+
+    Granite 4.2 defaults to ``enable_thinking=True``, which ends the rendered
+    prompt inside an *open* ``<think>`` block — so an SFT target would be trained
+    as reasoning content rather than as the answer. Older templates ignore the
+    kwarg, and a non-Granite template might reject an unknown one, so the flag is
+    only forwarded when the template actually mentions it.
+    """
+    if template_supports_kwarg(getattr(tokenizer, "chat_template", None), "enable_thinking"):
+        return {"enable_thinking": thinking}
+    return {}
+
+
+def _make_chat_template_mapper(tokenizer, input_col: str, thinking: bool = False):
     """Return a row-level map function that applies the tokenizer's chat
     template to ``row[input_col]`` when it holds a list of messages.
 
@@ -92,14 +107,17 @@ def _make_chat_template_mapper(tokenizer, input_col: str):
     ``apply_chat_template`` only when present and non-empty). Returns the
     row unchanged when ``row[input_col]`` is not a message list, so a file
     mixing plain strings and message lists is handled correctly per-row.
+
+    ``thinking`` is off by default; see :func:`_thinking_kwargs`.
     """
+    thinking_kwargs = _thinking_kwargs(tokenizer, thinking)
 
     def _fn(example):
         value = example.get(input_col)
         if not isinstance(value, list):
             return example
 
-        kwargs = {"tokenize": False, "add_generation_prompt": True}
+        kwargs = {"tokenize": False, "add_generation_prompt": True, **thinking_kwargs}
         documents = example.get("documents")
         if isinstance(documents, list) and documents:
             kwargs["documents"] = documents
@@ -127,12 +145,13 @@ def train_driver_single_gpu(config: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         A dict summarizing the progress of the training loop (per ray.tune).
     """
-    from autotune.logging_setup import setup_logging
+    from autotune.logging_setup import bind_trial_id, setup_logging
 
     setup_logging()
 
     # Output the current config
     trial_id = tune.get_context().get_trial_id()
+    bind_trial_id(trial_id)
     logger.info(f"[AutoTune] Entering the main training loop with config: {config}")
     logger.info(f"[AutoTune] Trial ID: {trial_id}")
     run_name = f"autotune-single-{trial_id}"
@@ -280,7 +299,10 @@ def train_driver_single_gpu(config: Dict[str, Any]) -> Dict[str, Any]:
     # messages list. The mapper is a no-op for plain-string rows, so files
     # that mix shapes are handled correctly per-row. Optional `documents`
     # and `tools` columns are auto-detected inside the mapper.
-    chat_mapper = _make_chat_template_mapper(tokenizer, input_col)
+    # Granite 4.2 defaults thinking on, which would train the target inside an
+    # open <think> block; disabled unless the config asks otherwise.
+    disable_thinking = training_config.get("disable_thinking", True)
+    chat_mapper = _make_chat_template_mapper(tokenizer, input_col, thinking=not disable_thinking)
     raw_datasets["train"] = raw_datasets["train"].map(chat_mapper, load_from_cache_file=False)
     raw_datasets["eval"] = raw_datasets["eval"].map(chat_mapper, load_from_cache_file=False)
 

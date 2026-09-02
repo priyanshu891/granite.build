@@ -37,6 +37,7 @@ cannot submit against another *real* owner's — see [Validation rules](#validat
 | `GET` | `/api/v1/jobs/{job_id}/result-report/file` | Download one of a job's output files |
 | `GET` | `/api/v1/jobs/{job_id}/result-report/archive` | Download all of a job's output files as a ZIP |
 | `GET` | `/api/v1/jobs/{job_id}/logs` | Get a job's log lines (keyset paginated) |
+| `GET` | `/api/v1/jobs/{job_id}/trials` | List a job's trials (paginated) |
 | `GET` | `/api/v1/jobs/{job_id}/trials/{trial_id}/logs` | Get one trial's log lines |
 | `GET` | `/api/v1/jobs/{job_id}/metrics` | Get a job's per-step training metrics (keyset paginated) |
 | `GET` | `/api/v1/jobs/{job_id}/trials/{trial_id}/metrics` | Get one trial's per-step training metrics |
@@ -69,8 +70,9 @@ The page wrapper carries the requested window plus the total count:
 | `offset` | int | Echoes the requested offset |
 
 `JobSummary` is deliberately lean — it carries identity, status, the owner/config/dataset
-labels, the model, and timestamps. Heavier detail (nested tasks, trials, JSON blobs) is
-only on the detail endpoint.
+labels, the model, and timestamps. Heavier detail (nested tasks, JSON blobs) is only on the
+detail endpoint. Trials are on neither shape: they are paged by
+`GET /api/v1/jobs/{job_id}/trials`.
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -87,7 +89,7 @@ only on the detail endpoint.
 | `user` | string | Owner's email |
 | `created_at` | datetime | ISO 8601 |
 | `updated_at` | datetime | ISO 8601 |
-| `finished_at` | string \| null | The latest `gb_tasks.updated_at` for the job — a string rather than a datetime because the column is `VARCHAR(255)`; `null` when the job has no build tasks (e.g. the `local` backend, or a job still `pending`) |
+| `finished_at` | string \| null | The latest `gb_tasks.updated_at` for the job — a string rather than a datetime because the column is `VARCHAR(255)`; `null` when no build task carries an update time (e.g. the `local` backend, or a job still `pending`) |
 
 ```json
 {
@@ -291,7 +293,9 @@ Return one job with its current status and full detail. Returns `JobRead`.
 
 ### The `JobRead` shape
 
-`JobRead` includes every `JobSummary` field **plus** the following:
+`JobRead` includes every `JobSummary` field **plus** the following. The last two — `tasks` and
+`config_snapshot` — are unique to this endpoint (and to `POST /jobs`, cancel and reconcile);
+`GET /jobs/by-build-id/{build_id}` returns everything else as `JobDetail`.
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -301,12 +305,19 @@ Return one job with its current status and full detail. Returns `JobRead`.
 | `ray_address` | string \| null | Address of the compute cluster, if set |
 | `cleanup` | bool \| null | Whether artifacts are cleaned up after the run |
 | `autotune` | bool \| null | Whether the HPO search runs |
-| `num_trials` | int | Trial count for this job (≥ 0) |
-| `tasks` | `GbTaskRead[]` | Build/deploy steps attached to the job (may be empty) |
-| `config_snapshot` | object \| null | The configuration captured at submit time |
+| `num_trials` | int | Trials this job's configuration asked the search to evaluate — the planned budget from `config_snapshot.config_data.tune_config.num_samples`, **not** a count of trial rows. A `pending` job reports its full budget, not 0. The budget is reported even when `autotune` is `false`, in which case the pipeline runs a single default-configuration trial instead of searching. `0` means the job carries no snapshot, or its snapshot declares no budget. For how many trials actually exist, read `total` from [`GET /api/v1/jobs/{job_id}/trials`](#get-apiv1jobsjob_idtrials) |
 | `output_artifacts` | object \| array \| null | Free-form artifact descriptor written by the pipeline. Both shapes occur in the wild: an object of named locators, or a bare array of file descriptors (`path`/`size`/`published`) as the publish step records. Report it, do not police it |
-| `trials` | `TrialRead[]` | The job's trials (may be empty) |
 | `is_stale` | bool | `true` when the live configuration's behavioural settings no longer match what the job snapshotted at submit; detail-only, never on `JobSummary` |
+| `tasks` | `GbTaskRead[]` | Build/deploy steps attached to the job (may be empty). **Not on `JobDetail`** |
+| `config_snapshot` | object \| null | The configuration captured at submit time. **Not on `JobDetail`** |
+
+There is deliberately **no** `trials` field. Trials are a job's unbounded child collection,
+each row carrying its own `config` and `metrics` JSON blob, so nesting them made every read
+of a job — including every poll tick of a running one — pay for the whole search plus two
+extra database round trips. Fetch them from
+[`GET /api/v1/jobs/{job_id}/trials`](#get-apiv1jobsjob_idtrials) instead. `num_trials` above
+reports the *budget* the configuration asked for, not how many rows exist; that page's `total`
+is the count.
 
 ```json
 {
@@ -328,20 +339,21 @@ Return one job with its current status and full detail. Returns `JobRead`.
   "cleanup": true,
   "autotune": true,
   "num_trials": 8,
+  "output_artifacts": { "best_trial": "a1b2c3" },
+  "is_stale": false,
   "tasks": [],
   "config_snapshot": { "name": "granite-sft-sweep", "config_data": { "...": "..." } },
-  "output_artifacts": { "best_trial": "a1b2c3" },
-  "trials": [],
-  "is_stale": false,
   "created_at": "2026-08-11T09:00:00Z",
   "updated_at": "2026-08-11T10:30:00Z",
   "finished_at": "2026-08-11 10:28:14"
 }
 ```
 
-### Nested: `TrialRead`
+### `TrialRead`
 
-One training run inside a job, evaluating a single concrete parameter assignment.
+One training run inside a job, evaluating a single concrete parameter assignment. Returned by
+[`GET /api/v1/jobs/{job_id}/trials`](#get-apiv1jobsjob_idtrials); documented here because
+this is where readers look for the job's sub-shapes.
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -382,8 +394,8 @@ tuning build or an artifact download). Tasks are nested rather than flattened.
 ## GET /api/v1/jobs/by-build-id/{build_id}
 
 Return one job located by its granite.build **build id** instead of its job id. Same
-`JobRead` payload and owner-scoping as `GET /jobs/{job_id}` — it differs only in the lookup
-key. Returns `JobRead`.
+owner-scoping as `GET /jobs/{job_id}`. Returns `JobDetail` — a **leaner** payload than the
+detail endpoint's `JobRead`.
 
 ### Path & query parameters
 
@@ -392,9 +404,25 @@ key. Returns `JobRead`.
 | `build_id` | path | UUID | — | granite.build build id carried by one of the job's tasks |
 | `scope` | query | string | `own` | `own` \| `all` (admin only for `all`) |
 
-### Response `200` — `JobRead`
+### Response `200` — `JobDetail`
 
-See [the `JobRead` shape](#the-jobread-shape) above.
+Every field on [the `JobRead` shape](#the-jobread-shape) above **except** these two:
+
+| Omitted field | Where to get it instead |
+| --- | --- |
+| `tasks` | `GET /api/v1/jobs/{job_id}` — and a caller that arrived *by build id* already holds the identifier this array exists to expose |
+| `config_snapshot` | `GET /api/v1/jobs/{job_id}` — it embeds the whole configuration as it ran, by far the heaviest field on the response |
+
+Everything else survives, including the fields *derived* from the snapshot: `config_name`
+still reports the name the job ran with, and `is_stale` still tells you the live
+configuration has drifted — you just are not handed the snapshot to diff. `finished_at` also
+still reports the latest `gb_tasks.updated_at` across **all** the job's tasks, computed as a
+subquery rather than from the omitted array.
+
+The whole lookup is one database round trip.
+
+> Earlier versions of this endpoint returned the full `JobRead`. Clients reading `tasks` or
+> `config_snapshot` from it must switch to `GET /api/v1/jobs/{job_id}`.
 
 ### Notable statuses
 
@@ -674,6 +702,71 @@ pagination (`before_id`) rather than `offset`.
 
 ---
 
+## GET /api/v1/jobs/{job_id}/trials
+
+List the job's trials, oldest first. Returns a `Page<TrialRead>`.
+
+Trials live on their own endpoint rather than nested in `GET /jobs/{job_id}`: they are an
+unbounded child collection, each row carrying its own `config` and `metrics` JSON blob, so
+nesting them made every read of a job — including every poll tick of a running one — pay for
+the whole search plus two extra database round trips. `JobRead.num_trials` reports the trial
+*budget* from the job's snapshot, so a client can render "8 trials planned" without fetching
+them; this endpoint's `total` reports how many actually exist.
+
+Each trial arrives with the `metric` and `metrics` its one-to-one `results` row reported, so
+scoring a search takes no second request.
+
+### Path & query parameters
+
+| Name | In | Type | Default | Constraints |
+| --- | --- | --- | --- | --- |
+| `job_id` | path | UUID | — | Job id |
+| `limit` | query | int | `50` | 1–100 |
+| `offset` | query | int | `0` | ≥ 0 |
+| `scope` | query | string | `own` | `own` \| `all` (admin only for `all`) |
+
+### Response `200` — `Page<TrialRead>`
+
+Ordered by `created_at` ascending with an `id` tiebreaker — chronological, the order the
+search evaluated them in, and stable across pages. See [`TrialRead`](#trialread) for the item
+shape.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `items` | `TrialRead[]` | The page of trials |
+| `total` | int | Total trials for this job, ignoring pagination |
+| `limit` | int | Echoes the requested limit |
+| `offset` | int | Echoes the requested offset |
+
+```json
+{
+  "items": [
+    {
+      "id": "ray_0001",
+      "job_id": "6b1f...",
+      "status": "completed",
+      "config": { "learning_rate": 3e-5, "lora_rank": 16 },
+      "metric": "eval_loss",
+      "metrics": { "eval_loss": 0.42, "total_time": 812.4 },
+      "created_at": "2026-08-11T09:05:00Z",
+      "updated_at": "2026-08-11T09:18:00Z"
+    }
+  ],
+  "total": 8,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+### Notable statuses
+
+`403` (non-admin requesting `scope=all`), `404` (no such job, or not the caller's).
+
+A visible job that has not started a trial yet returns `200` with an empty page — **not** a
+`404`. "No trials" and "no job" are different answers.
+
+---
+
 ## GET /api/v1/jobs/{job_id}/trials/{trial_id}/logs
 
 Same `LogPage` shape and pagination as the job-logs endpoint, scoped to a single trial.
@@ -691,6 +784,9 @@ Same `LogPage` shape and pagination as the job-logs endpoint, scoped to a single
 ### Notable statuses
 
 `403`, `404`.
+
+An unknown or not-yet-started `trial_id` under a visible job returns `200` with an empty
+page — **not** a `404`. A `404` means the *job* is not visible to the caller.
 
 ---
 
@@ -774,6 +870,9 @@ single trial — the per-trial training curves the UI charts.
 ### Notable statuses
 
 `403`, `404`.
+
+An unknown or not-yet-started `trial_id` under a visible job returns `200` with an empty
+page — **not** a `404`. A `404` means the *job* is not visible to the caller.
 
 ---
 

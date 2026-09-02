@@ -1,7 +1,8 @@
 """``GET /jobs/{id}`` — the detail response.
 
-Carries the blobs and trials the list response omits, because the view shipped
-config_snapshot and output_artifacts on every row.
+Carries the blobs and nested tasks the list response omits, because the view
+shipped config_snapshot and output_artifacts on every row. It deliberately does
+**not** carry the trial list — see ``test_job_trials.py``.
 """
 
 from __future__ import annotations
@@ -16,7 +17,6 @@ from autotunex.db.tables import (
     ConfigurationTable,
     GbTaskTable,
     JobTable,
-    ResultTable,
     TrialTable,
 )
 from autotunex.models.status import GbTaskType, RunStatus
@@ -57,9 +57,18 @@ async def test_detail_includes_output_artifacts(
     assert response.json()["output_artifacts"] == {"adapter": "cos://bucket/adapter"}
 
 
-async def test_detail_lists_the_job_s_trials(
+async def test_detail_does_not_nest_the_trial_list(
     client: AsyncClient, session: AsyncSession, job: JobTable
 ) -> None:
+    """Trials are paged by ``GET /jobs/{id}/trials``; see test_job_trials.py.
+
+    They are an unbounded child collection, each carrying its own ``config`` and
+    ``metrics`` blob, so nesting them made every detail read — including every
+    poll tick of a running job — pay for the whole search. ``num_trials`` stays,
+    but reports the configured budget rather than a count of these rows.
+    """
+    job.config_snapshot = {"config_data": {"tune_config": {"num_samples": {"default": 8}}}}
+    session.add(job)
     session.add_all(
         [
             TrialTable(id="t1", job_id=job.id, status=RunStatus.COMPLETED),
@@ -70,61 +79,9 @@ async def test_detail_lists_the_job_s_trials(
 
     response = await client.get(f"{API}/jobs/{job.id}?scope=all")
 
-    assert {trial["id"] for trial in response.json()["trials"]} == {"t1", "t2"}
-
-
-async def test_trial_metrics_come_from_the_results_row(
-    client: AsyncClient, session: AsyncSession, job: JobTable
-) -> None:
-    """``metrics`` lives on ``results``, not on ``trials``."""
-    session.add(TrialTable(id="t1", job_id=job.id, status=RunStatus.COMPLETED))
-    await session.commit()
-    session.add(
-        ResultTable(
-            id=uuid4(),
-            job_id=job.id,
-            trial_id="t1",
-            metric="eval_loss",
-            metrics={"eval_loss": 0.42},
-        )
-    )
-    await session.commit()
-
-    response = await client.get(f"{API}/jobs/{job.id}?scope=all")
-
-    trial = response.json()["trials"][0]
-    assert trial["metrics"] == {"eval_loss": 0.42}
-    assert trial["metric"] == "eval_loss"
-
-
-async def test_a_trial_with_no_result_has_empty_metrics(
-    client: AsyncClient, session: AsyncSession, job: JobTable
-) -> None:
-    session.add(TrialTable(id="t1", job_id=job.id, status=RunStatus.RUNNING))
-    await session.commit()
-
-    response = await client.get(f"{API}/jobs/{job.id}?scope=all")
-
-    trial = response.json()["trials"][0]
-    assert trial["metrics"] == {}
-    assert trial["metric"] is None
-
-
-async def test_trial_config_replaces_the_scaffold_s_params(
-    client: AsyncClient, session: AsyncSession, job: JobTable
-) -> None:
-    session.add(
-        TrialTable(
-            id="t1", job_id=job.id, status=RunStatus.COMPLETED, config={"learning_rate": 3e-5}
-        )
-    )
-    await session.commit()
-
-    response = await client.get(f"{API}/jobs/{job.id}?scope=all")
-
-    trial = response.json()["trials"][0]
-    assert trial["config"] == {"learning_rate": 3e-5}
-    assert "params" not in trial
+    body = response.json()
+    assert "trials" not in body
+    assert body["num_trials"] == 8
 
 
 async def test_detail_still_carries_the_view_shaped_fields(
@@ -148,6 +105,8 @@ async def test_detail_of_an_unknown_job_is_a_404_problem_detail(client: AsyncCli
 async def test_detail_carries_model_source_and_num_trials(
     client: AsyncClient, session: AsyncSession, job: JobTable
 ) -> None:
+    job.config_snapshot = {"config_data": {"tune_config": {"num_samples": {"default": 32}}}}
+    session.add(job)
     session.add(TrialTable(id="t1", job_id=job.id, status=RunStatus.COMPLETED))
     await session.commit()
 
@@ -155,7 +114,49 @@ async def test_detail_carries_model_source_and_num_trials(
 
     body = response.json()
     assert body["model_source"] == "huggingface"
-    assert body["num_trials"] == 1
+    assert body["num_trials"] == 32
+
+
+async def test_detail_reports_the_budget_for_a_pending_job_with_no_trials(
+    client: AsyncClient, session: AsyncSession, job: JobTable
+) -> None:
+    """The bug: a pending job used to report 0 because no trial rows existed yet.
+
+    The ``job`` fixture is PENDING with no trials, which is exactly the state a
+    client polls right after submitting.
+    """
+    job.config_snapshot = {"config_data": {"tune_config": {"num_samples": {"default": 32}}}}
+    session.add(job)
+    await session.commit()
+
+    response = await client.get(f"{API}/jobs/{job.id}?scope=all")
+
+    assert response.json()["num_trials"] == 32
+
+
+async def test_detail_reports_the_budget_even_when_more_trials_ran_than_planned(
+    client: AsyncClient, session: AsyncSession, job: JobTable
+) -> None:
+    """The field cannot be a count, a max, or a min of the two.
+
+    Three trial rows against a declared budget of one. LDS/BLDS can also stop short
+    of the budget, so the two numbers diverge in both directions and neither
+    constrains the other.
+    """
+    job.config_snapshot = {"config_data": {"tune_config": {"num_samples": {"default": 1}}}}
+    session.add(job)
+    session.add_all(
+        [
+            TrialTable(id="x1", job_id=job.id, status=RunStatus.COMPLETED),
+            TrialTable(id="x2", job_id=job.id, status=RunStatus.COMPLETED),
+            TrialTable(id="x3", job_id=job.id, status=RunStatus.COMPLETED),
+        ]
+    )
+    await session.commit()
+
+    response = await client.get(f"{API}/jobs/{job.id}?scope=all")
+
+    assert response.json()["num_trials"] == 1
 
 
 async def test_detail_is_stale_is_false_when_the_snapshot_matches_the_live_config(

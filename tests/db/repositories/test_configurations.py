@@ -13,6 +13,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autotunex.core.constants import SYSTEM_USER_ID
@@ -391,3 +392,41 @@ async def test_list_with_no_owner_returns_all_rows_including_system(session: Asy
     _rows, total = await repository.list(limit=20, offset=0, owner_id=None)
 
     assert total == 2
+
+
+async def test_list_does_not_load_config_data(session: AsyncSession) -> None:
+    """The point of the lean list: the JSON blob is never read off the row.
+
+    Asserting on the *response shape* alone would pass just as happily with the
+    column still being selected, transferred and parsed — which is where nearly all
+    of the cost is. Only the ORM can tell us the column was genuinely left behind,
+    and ``raiseload=True`` is what turns that into an assertion rather than a silent
+    per-row lazy SELECT.
+    """
+    user = await _make_user(session)
+    await _seed_configuration(session, user_id=str(user.id))
+    repository = SqlAlchemyConfigurationRepository(session)
+    # Expunge, not expire. The seeded instance is still in the identity map with
+    # `config_data` populated, so `list` would hand back that same object and the
+    # deferral would be unobservable. Expiring instead would mark *every* attribute
+    # stale, and the first access would attempt lazy IO in an async context — a
+    # `MissingGreenlet`, which is not the behaviour under test.
+    session.expunge_all()
+
+    configurations, _ = await repository.list(limit=10, offset=0)
+
+    with pytest.raises(InvalidRequestError):
+        _ = configurations[0].config_data
+
+
+async def test_get_still_loads_config_data(session: AsyncSession) -> None:
+    """The deferral is scoped to ``list`` — the detail read must be unaffected."""
+    user = await _make_user(session)
+    configuration = await _seed_configuration(session, user_id=str(user.id))
+    repository = SqlAlchemyConfigurationRepository(session)
+    session.expunge_all()
+
+    found = await repository.get(configuration.id)
+
+    assert found is not None
+    assert found.config_data == SPACE

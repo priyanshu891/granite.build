@@ -22,6 +22,7 @@ from autotunex.db.tables import (
     JobTable,
     LogEntryTable,
     TrainingMetricTable,
+    TrialTable,
     UserTable,
 )
 from autotunex.models.status import DatasetStatus, GbTaskType, RunStatus
@@ -55,15 +56,22 @@ class JobRepository(Protocol):
 
     async def get_by_build_id(
         self, build_id: UUID, *, owner_id: UUID | None = None
-    ) -> JobTable | None:
-        """Return the job whose ``gb_task`` carries ``build_id``, or ``None``.
+    ) -> tuple[JobTable, str | None] | None:
+        """Return ``(job, finished_at)`` for the job carrying ``build_id``, or ``None``.
 
         Locates a job by its granite.build ``build_id`` (stored on
-        ``gb_tasks.build_id``) rather than by its own id, loading the same detail
-        as :meth:`get`. ``owner_id`` scopes the result exactly as :meth:`get`
-        does: ``None`` applies no filter (admin/standalone), and a non-``None``
-        value that does not match the job's owner yields ``None`` — identical to
-        an unknown build id, so a scoped caller cannot tell them apart.
+        ``gb_tasks.build_id``) rather than by its own id. Deliberately loads
+        **less** than :meth:`get`: no ``tasks`` collection, because the response
+        shape for this lookup (``JobDetail``) does not nest them — a caller that
+        arrived by build id already holds the field that array exists to expose.
+        ``finished_at`` therefore comes back as a computed value rather than being
+        derived from loaded tasks, in the same ``(job, finished_at)`` pair shape
+        :meth:`list` returns.
+
+        ``owner_id`` scopes the result exactly as :meth:`get` does: ``None``
+        applies no filter (admin/standalone), and a non-``None`` value that does
+        not match the job's owner yields ``None`` — identical to an unknown build
+        id, so a scoped caller cannot tell them apart.
         """
         ...
 
@@ -228,12 +236,13 @@ class JobRepository(Protocol):
 
 
 class TrialRepository(Protocol):
-    """Write operations for a job's trials.
+    """Persistence for a job's trials — the writes, and the paged read.
 
     The local runner's :class:`~autotunex.services.local.protocols.TrialSink`
-    persists each trial's lifecycle through these methods as Ray reports it.
-    Reads go through :class:`JobRepository` (which eager-loads a job's trials for
-    the detail response), so this Protocol is deliberately write-only.
+    persists each trial's lifecycle through the write methods as Ray reports it.
+    :meth:`page` is the only read: trials used to be eager-loaded by
+    :meth:`JobRepository.get` for the job detail response, which is why this
+    Protocol was once write-only, but that response no longer carries them.
     """
 
     async def upsert(
@@ -278,6 +287,24 @@ class TrialRepository(Protocol):
         The cancellation analogue of :meth:`fail_running`: a bulk write scoped to
         the job and the ``running`` status, leaving already-terminal trials
         untouched, so a cancelled run leaves no trial stuck ``running``.
+        """
+        ...
+
+    async def page(
+        self, job_id: UUID, *, limit: int, offset: int
+    ) -> tuple[Sequence[TrialTable], int]:
+        """Return one page of the job's trials, oldest first, plus the total.
+
+        Each trial arrives with its one-to-one ``results`` row loaded, so the
+        caller can report the trial's metrics without a second lookup. Ordered
+        ``created_at`` ascending with an ``id`` tiebreaker, which is what makes
+        the offsets stable across requests.
+
+        Applies **no** ownership filter — like :meth:`JobRepository.logs_page`,
+        the caller is responsible for having established that the job is visible
+        to the principal (``is_visible``) before paging its children. An unknown
+        ``job_id`` yields an empty page and a total of 0, not an error: a job with
+        no trials yet is not a missing job.
         """
         ...
 
@@ -377,6 +404,16 @@ class ConfigurationRepository(Protocol):
         The ``owner_id`` filter applies to both the page and the total count;
         ``include_shared`` widens it to the system tier. ``owner_id=None``
         applies no filter.
+
+        **The returned rows do not carry ``config_data``**, and this is part of the
+        contract rather than an implementation detail of one backend. Callers get
+        the scalar columns; anything needing the search space must read the row
+        through :meth:`get`. An implementation is expected to leave the column
+        unfetched — that omission is the whole point of the list path, since the
+        blob is by far the heaviest thing on the table — and to make an access of
+        it *fail* rather than silently fetch it per row. So a caller that touches
+        ``config_data`` on one of these rows should expect an exception, not a
+        value and not a hidden query.
         """
         ...
 
@@ -598,6 +635,21 @@ class UserRepository(Protocol):
         ``UNIQUE(email)`` insert, this re-reads and returns that row rather than
         raising. ``email`` must be non-empty and already verified by an
         ``Authenticator``, exactly as :meth:`get_by_email` requires.
+        """
+        ...
+
+    async def touch_login(self, email: str) -> None:
+        """Record that ``email`` just authenticated, in ``users.last_login_at``.
+
+        Called on a completed browser login and, throttled, on any authenticated
+        request (``api.deps.get_principal``) so callers who never pass through
+        the login flow — API keys, OIDC bearer tokens — still register activity.
+
+        Matches ``email`` case-insensitively, exactly as :meth:`get_by_email`
+        must. A no-op when no row matches: an authenticated caller without a
+        ``users`` row (provisioning off) has no login to record, and that is not
+        an error. Implementations must write ``last_login_at`` and nothing else —
+        ``role`` in particular — since this runs on the read path.
         """
         ...
 

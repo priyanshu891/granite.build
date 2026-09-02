@@ -35,11 +35,12 @@ from autotunex.models.job import (
     ONLINE_RL_TUNER_TYPES,
     TERMINAL_JOB_STATUSES,
     JobCreate,
+    JobDetail,
     JobRead,
     JobSummary,
 )
 from autotunex.models.status import DatasetStatus, GbTaskType, RunStatus
-from autotunex.services.mappers import job_to_read, job_to_summary
+from autotunex.services.mappers import job_to_detail, job_to_read, job_to_summary
 from autotunex.services.protocols import JobRunner
 from autotunex.services.scoping import resolve_owner_filter, sees_nothing
 
@@ -86,15 +87,25 @@ class JobService:
             raise JobNotFoundError(job_id)
         return job_to_read(job)
 
-    async def get_by_build_id(self, build_id: UUID, *, scope: DataScope = DataScope.OWN) -> JobRead:
+    async def get_by_build_id(
+        self, build_id: UUID, *, scope: DataScope = DataScope.OWN
+    ) -> JobDetail:
         """Return the job whose build task carries ``build_id``, scoped to the caller.
 
         Locates the job by its granite.build ``build_id`` (stored on ``gb_tasks``)
-        instead of its own id, then returns the same :class:`JobRead` payload and
-        applies the same scoping as :meth:`get`: own data by default, an admin may
-        pass ``scope=all``, and a non-admin passing it is refused (403) before any
-        row is read. A build whose job belongs to someone else (under
-        ``scope=own``) is a 404, indistinguishable from an unknown build.
+        instead of its own id, and applies the same scoping as :meth:`get`: own
+        data by default, an admin may pass ``scope=all``, and a non-admin passing
+        it is refused (403) before any row is read. A build whose job belongs to
+        someone else (under ``scope=own``) is a 404, indistinguishable from an
+        unknown build.
+
+        Returns the leaner :class:`JobDetail`, **not** :class:`JobRead`: this
+        lookup omits the nested build ``tasks`` array and the ``config_snapshot``
+        blob. A caller arriving by build id already holds the identifier the tasks
+        array exists to expose, and the snapshot embeds the whole configuration as
+        it ran — by far the heaviest field on the response. Both remain on
+        ``GET /jobs/{id}``. Dropping ``tasks`` also takes this lookup from three
+        round trips to one.
 
         Raises:
             ScopeNotPermittedError: a non-admin requested ``scope=all``.
@@ -103,10 +114,11 @@ class JobService:
         owner_id = resolve_owner_filter(self._principal, scope)
         if sees_nothing(self._principal, scope):
             raise BuildNotFoundError(build_id)
-        job = await self._repository.get_by_build_id(build_id, owner_id=owner_id)
-        if job is None:
+        found = await self._repository.get_by_build_id(build_id, owner_id=owner_id)
+        if found is None:
             raise BuildNotFoundError(build_id)
-        return job_to_read(job)
+        job, finished_at = found
+        return job_to_detail(job, finished_at)
 
     async def list(
         self,

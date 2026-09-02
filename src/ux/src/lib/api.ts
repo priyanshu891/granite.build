@@ -15,6 +15,7 @@ import type {
 	MetricPage,
 	MetricPoint,
 	Resources,
+	Trial,
 	Tuning,
 	TuningForm,
 	User
@@ -26,7 +27,8 @@ import {
 	mapConfiguration,
 	mapDataset,
 	mapJob,
-	mapMappingSuggestion
+	mapMappingSuggestion,
+	mapTrial
 } from './api-mappers';
 import type { Page } from './api-mappers';
 
@@ -251,12 +253,34 @@ export class API {
 		return mapJob(job);
 	};
 
-	// --- Derived from the nested job payload (no dedicated endpoint) --------------
+	// --- Trials (their own endpoint) ---------------------------------------------
 
-	getTrialsByJobId = async (jobId: string) => (await this.getJob(jobId)).trials ?? [];
+	// GET /jobs/{id}/trials is paginated (limit max 100); loop offsets so the Trials
+	// table — which paginates client-side over the whole array — still sees every
+	// trial. Mirrors getConfigurations/getDatasets/getUsers above.
+	//
+	// This used to read `(await this.getJob(jobId)).trials`, which cost a second
+	// fetch of the whole job detail (trials and their results included) on top of
+	// the one TuningDisplay had already made, on every load and every poll tick.
+	getTrialsByJobId = async (jobId: string): Promise<Trial[]> => {
+		const limit = 100;
+		const out: Trial[] = [];
+		for (let offset = 0; ; offset += limit) {
+			const page = await fetch(`${API_BASE}/jobs/${jobId}/trials?limit=${limit}&offset=${offset}`, {
+				credentials: 'include'
+			}).then(this.handleResponse);
+			const batch = unwrapPage(page).map(mapTrial);
+			out.push(...batch);
+			if (batch.length < limit || out.length >= pageTotal(page)) break;
+		}
+		return out;
+	};
 
+	// The UX nests metric/metrics under `score`; mapTrial already builds it.
 	getResultsByJobId = async (jobId: string) =>
-		((await this.getJob(jobId)).trials ?? []).map((t: any) => t.score).filter(Boolean);
+		(await this.getTrialsByJobId(jobId)).map((t: any) => t.score).filter(Boolean);
+
+	// --- Derived from the nested job payload (no dedicated endpoint) --------------
 
 	getAllTaskByJob = async (jobId: string) => (await this.getJob(jobId)).tasks ?? [];
 
