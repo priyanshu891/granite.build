@@ -99,6 +99,58 @@ class TestStorageFactories:
         self._assert_factory_creates_all_storages(factory)
 
 
+class TestSqlDriverPreflight:
+    """GBSERVER_METADATA_STORAGE=sql must fail fast when its driver is missing.
+
+    Without the preflight check, a missing driver is swallowed by the storage
+    layer's tenacity retry and the process appears to hang for minutes rather
+    than reporting a misconfiguration.
+    """
+
+    def _configured_dialect(self):
+        from sqlalchemy.engine.url import make_url
+
+        from gbserver.types.constants import GBSERVER_SQL_SCHEME
+
+        return make_url(f"{GBSERVER_SQL_SCHEME}://").get_dialect()
+
+    def test_passes_when_driver_installed(self):
+        from gbserver.commands.utils import _require_sql_driver
+
+        # psycopg2-binary is a declared dependency of the standalone/ibm extras.
+        _require_sql_driver()
+
+    def test_raises_with_install_hint_when_driver_missing(self, monkeypatch):
+        from gbserver.commands.utils import _require_sql_driver
+
+        def _missing(*_args, **_kwargs):
+            raise ModuleNotFoundError("No module named 'psycopg2'")
+
+        monkeypatch.setattr(self._configured_dialect(), "import_dbapi", _missing)
+
+        with pytest.raises(RuntimeError) as excinfo:
+            _require_sql_driver()
+
+        message = str(excinfo.value)
+        assert "GBSERVER_METADATA_STORAGE=sql" in message
+        assert "psycopg2-binary" in message
+
+    def test_sqlite_default_does_not_require_a_sql_driver(self, monkeypatch):
+        """The preflight must not run (or raise) on the default SQLite path."""
+        from gbserver.commands import utils
+
+        def _boom():
+            raise AssertionError("_require_sql_driver called for sqlite storage")
+
+        monkeypatch.setattr(utils, "_require_sql_driver", _boom)
+        monkeypatch.delenv("GBSERVER_METADATA_STORAGE", raising=False)
+        monkeypatch.setattr(utils, "_migrate_legacy_sqlite_db", lambda: None)
+        monkeypatch.setenv("GB_ENVIRONMENT", "STANDALONE")
+
+        # space_dir=None stops before space registration, so no DB access happens.
+        utils.check_and_init_for_standalone(None)
+
+
 # ---------------------------------------------------------------------------
 # c) CLI command discovery
 # ---------------------------------------------------------------------------
