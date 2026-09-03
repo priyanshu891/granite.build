@@ -338,7 +338,7 @@ export async function startJob(tuning: TuningForm): Promise<{ id: string }> {
 }
 
 export async function getJob(id: string, scope: Scope = 'own'): Promise<JobRead> {
-  const { data } = await client.get<Record<string, unknown>>(`/jobs/${id}`, { params: { scope } })
+  const { data } = await client.get<Record<string, unknown>>(`/jobs/${id}?shape=lean`, { params: { scope } })
   return adaptJobRead(data)
 }
 
