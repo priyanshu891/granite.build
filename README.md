@@ -259,8 +259,8 @@ Migrations are verified against SQLite, PostgreSQL 16 and MySQL 8.4 in CI.
 
 For an established deployment, *stamp* the baseline revision as already-applied and then upgrade
 only the later revisions, rather than building the schema from scratch. The full procedure — the
-exact `alembic stamp` / `alembic upgrade` commands, and the one post-baseline revision that
-migrates data — is in [database & migrations](docs/operations/database.md). For a fresh, empty
+exact `alembic stamp` / `alembic upgrade` commands, and the two post-baseline revisions that
+migrate data — is in [database & migrations](docs/operations/database.md). For a fresh, empty
 database (local development, tests, CI) none of this applies: `alembic upgrade head` builds the
 whole schema normally.
 

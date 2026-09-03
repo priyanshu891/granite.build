@@ -16,6 +16,12 @@ import-time crash. This keeps the module importable (and the rest of the test
 suite runnable) on a credential-free install that never selects ``job_backend=local``.
 The Ray-callback class is likewise defined inside :meth:`run`, because its base
 class (``ray.tune.Callback``) only exists after that lazy import.
+
+**Coverage stops inside :meth:`run`, deliberately.** Everything past the lazy
+import needs a live Ray cluster, and Ray is absent from the base ``.[dev]``
+install CI runs — pulling it in for one module's coverage is not a trade worth
+making on a standard runner. The lazy-import guard and the surrounding seams are
+covered; the pipeline body is not. See ibm-granite/granite.build#318.
 """
 
 from __future__ import annotations

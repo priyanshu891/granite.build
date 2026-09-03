@@ -11,6 +11,7 @@ and ``GET /jobs/{id}`` report what exists.
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -93,6 +94,30 @@ class JobCreate(BaseModel):
     reward_function_name: str | None = None
 
 
+class JobShape(StrEnum):
+    """Which response shape a caller wants from ``GET /jobs/{id}``.
+
+    ``FULL`` (the default) is :class:`JobRead`: the job's own record plus the
+    nested build ``tasks`` array and the ``config_snapshot`` blob. ``LEAN`` is
+    :class:`JobDetail` — the record alone, exactly what
+    ``GET /jobs/by-build-id/{build_id}`` returns, so the two lean job reads agree
+    rather than diverging by a key.
+
+    An enum rather than a boolean for two reasons. It names a *shape*, so
+    ``LEAN`` dropping ``config_snapshot`` as well as ``tasks`` is part of the
+    contract instead of a surprise hiding behind a field-named flag. And it leaves
+    room for a third value (``summary``, for :class:`JobSummary`) without a second
+    parameter that could contradict the first. ``lean`` means :class:`JobDetail`
+    exactly; the prose elsewhere calls both child-free shapes "lean", this does not.
+
+    Orthogonal to :class:`~autotunex.models.common.DataScope`: ``shape`` selects
+    what a caller sees *of a job it may already read*, never which jobs it may read.
+    """
+
+    FULL = "full"
+    LEAN = "lean"
+
+
 class JobSummary(BaseModel):
     """A job in the compact shape ``GET /jobs`` returns — one page row.
 
@@ -138,7 +163,8 @@ class JobSummary(BaseModel):
 class JobDetail(JobSummary):
     """A job's own record — everything on the row, none of its child collections.
 
-    Returned by ``GET /jobs/by-build-id/{build_id}``. Adds what
+    Returned by ``GET /jobs/by-build-id/{build_id}``, and by ``GET /jobs/{id}`` when
+    the caller asks for :attr:`JobShape.LEAN`. Adds what
     :class:`JobSummary` drops for leanness: the model source, the tuning/RL type
     and runtime flags, the planned trial budget, the artifact descriptor, and the
     configuration-drift flag.
@@ -199,6 +225,9 @@ class JobDetail(JobSummary):
 
 class JobRead(JobDetail):
     """A job as returned by ``GET /jobs/{id}`` and ``POST /jobs`` — the full record.
+
+    The default shape of ``GET /jobs/{id}``; a caller passing
+    :attr:`JobShape.LEAN` gets :class:`JobDetail` instead.
 
     Adds the two things :class:`JobDetail` withholds: the nested build ``tasks``
     array, and the ``config_snapshot`` the job captured at submit. Both are wanted

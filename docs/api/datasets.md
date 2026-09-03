@@ -353,7 +353,7 @@ straight into the `column_mapping` form field of an upload.
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `dataset_format` | string | Detected/assumed source format |
+| `dataset_format` | string | The training-format catalog key chosen; equals `target_format` when one was supplied |
 | `tuning_type` | string | Inferred tuning type |
 | `confidence` | float | 0.0–1.0 |
 | `column_mapping` | object (string → string) | Flat `{target: source}`; unmapped targets are dropped |

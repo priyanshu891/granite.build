@@ -9,7 +9,7 @@ translate them.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal, overload
 from uuid import UUID
 
 from autotunex.core.exceptions import (
@@ -37,10 +37,16 @@ from autotunex.models.job import (
     JobCreate,
     JobDetail,
     JobRead,
+    JobShape,
     JobSummary,
 )
 from autotunex.models.status import DatasetStatus, GbTaskType, RunStatus
-from autotunex.services.mappers import job_to_detail, job_to_read, job_to_summary
+from autotunex.services.mappers import (
+    job_to_detail,
+    job_to_read,
+    job_to_summary,
+    latest_task_update,
+)
 from autotunex.services.protocols import JobRunner
 from autotunex.services.scoping import resolve_owner_filter, sees_nothing
 
@@ -68,12 +74,58 @@ class JobService:
         self._principal = principal
         self._runner = runner
 
-    async def get(self, job_id: UUID, *, scope: DataScope = DataScope.OWN) -> JobRead:
+    # Overloaded so that ``shape`` selects the *static* return type, not just the
+    # runtime one. Without this every caller of the default shape — the chat
+    # assistant's get_job tool reads ``job.tasks`` — would see the union and need a
+    # narrowing assert to reach a JobRead-only field. The third signature is what
+    # the router matches: it passes a runtime ``JobShape``, not a literal.
+    @overload
+    async def get(
+        self,
+        job_id: UUID,
+        *,
+        scope: DataScope = ...,
+        shape: Literal[JobShape.FULL] = ...,
+    ) -> JobRead: ...
+
+    @overload
+    async def get(
+        self, job_id: UUID, *, scope: DataScope = ..., shape: Literal[JobShape.LEAN]
+    ) -> JobDetail: ...
+
+    @overload
+    async def get(
+        self, job_id: UUID, *, scope: DataScope = ..., shape: JobShape
+    ) -> JobRead | JobDetail: ...
+
+    async def get(
+        self,
+        job_id: UUID,
+        *,
+        scope: DataScope = DataScope.OWN,
+        shape: JobShape = JobShape.FULL,
+    ) -> JobRead | JobDetail:
         """Return the job with ``job_id``, scoped to the caller.
 
         With the default ``scope=own`` the caller sees only its own job; an
         admin passing ``scope=all`` may fetch any owner's. A non-admin passing
         ``scope=all`` is refused (403) before any row is read.
+
+        ``shape`` chooses how much of the job to report and is orthogonal to
+        ``scope``: :attr:`~autotunex.models.job.JobShape.FULL` (the default) returns
+        :class:`JobRead`, and ``LEAN`` returns :class:`JobDetail` — the job's own
+        record without the nested ``tasks`` array or the ``config_snapshot`` blob.
+
+        ``LEAN`` trims the *response*, not the query. The repository still eager-loads
+        ``tasks`` either way, so both shapes cost the same two round trips; do not read
+        this parameter as a performance switch. Skipping the load would mean returning
+        ``(job, finished_at)`` from ``JobRepository.get`` — ``finished_at`` cannot be
+        derived from an unloaded collection without a ``MissingGreenlet`` — which is a
+        Protocol change rippling through every caller of that method. Because tasks
+        *are* loaded, ``LEAN`` derives ``finished_at`` from them exactly as ``FULL``
+        does, so the field holds the same value in both shapes. That is the one way
+        this differs from :meth:`get_by_build_id`, which returns the same
+        :class:`JobDetail` shape but computes ``finished_at`` by subquery.
 
         Raises:
             ScopeNotPermittedError: a non-admin requested ``scope=all``.
@@ -85,6 +137,8 @@ class JobService:
         job = await self._repository.get(job_id, owner_id=owner_id)
         if job is None:
             raise JobNotFoundError(job_id)
+        if shape is JobShape.LEAN:
+            return job_to_detail(job, finished_at=latest_task_update(job.tasks))
         return job_to_read(job)
 
     async def get_by_build_id(

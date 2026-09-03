@@ -282,6 +282,7 @@ tokens, and browser sessions — see [../api/authentication.md](../api/authentic
 | `AUTOTUNEX_STANDALONE_ROLE` | Role the standalone principal carries: `admin` or `user`. Wins over any `users.role` column value. | `admin` |
 | `AUTOTUNEX_API_KEYS` | JSON map of a key's SHA-256 hex digest → the owner's email. Never store raw keys. Required and non-empty when `"api_key"` is enabled. | `{}` |
 | `AUTOTUNEX_AUTO_PROVISION_USERS` | Just-in-time provision a `users` row (always `role=user`) on a caller's first request when they have a resolvable, verified email but no row yet. Off by default; makes even a `GET` write on first request. | `false` |
+| `AUTOTUNEX_LOGIN_ACTIVITY_THROTTLE_MINUTES` | How stale `users.last_login_at` must be, in minutes, before an authenticated request refreshes it — what the Users table's "Last login on" column shows. A completed browser login always records itself; this governs the refresh on every other authenticated request, which is the only thing that gives API-key and OIDC-bearer callers a value at all (neither passes through `/auth/login`). Must be ≥ 0; `0` records on every request — meant for tests, not production. | `15` |
 | `AUTOTUNEX_ALLOW_INSECURE_NO_AUTH` | Permit `auth_providers=["disabled"]` while `environment=prod`. Off by default; setting it logs a loud startup warning. Only for a deliberate single-tenant, no-auth deployment. | `false` |
 
 ### OIDC bearer tokens

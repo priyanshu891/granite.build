@@ -28,7 +28,7 @@ cannot submit against another *real* owner's — see [Validation rules](#validat
 | `POST` | `/api/v1/jobs` | Submit a new tuning job |
 | `POST` | `/api/v1/jobs/estimate-usages` | Estimate resource usage for a tuning run |
 | `POST` | `/api/v1/jobs/generate-test-solutions` | Generate sample reward test solutions (online-RL) |
-| `GET` | `/api/v1/jobs/{job_id}` | Get one job with full detail |
+| `GET` | `/api/v1/jobs/{job_id}` | Get one job with full detail (`shape=lean` for the record alone) |
 | `GET` | `/api/v1/jobs/by-build-id/{build_id}` | Get one job by its granite.build build id |
 | `POST` | `/api/v1/jobs/{job_id}/cancel` | Cancel a live job |
 | `DELETE` | `/api/v1/jobs/{job_id}` | Delete a job |
@@ -282,7 +282,8 @@ curl -X POST https://example.com/api/v1/jobs/generate-test-solutions \
 
 ## GET /api/v1/jobs/{job_id}
 
-Return one job with its current status and full detail. Returns `JobRead`.
+Return one job with its current status. Returns `JobRead` by default, or the leaner
+`JobDetail` when `shape=lean` is requested.
 
 ### Path & query parameters
 
@@ -290,12 +291,44 @@ Return one job with its current status and full detail. Returns `JobRead`.
 | --- | --- | --- | --- | --- |
 | `job_id` | path | UUID | — | Job id |
 | `scope` | query | string | `own` | `own` \| `all` (admin only for `all`) |
+| `shape` | query | string | `full` | `full` \| `lean` — how much of the job to report |
+
+### Choosing a response shape with `shape`
+
+| Value | Response | Contains |
+| --- | --- | --- |
+| `full` (default) | `JobRead` | The job's record, the nested `tasks` array, and `config_snapshot` |
+| `lean` | `JobDetail` | The job's record alone — **no** `tasks` key and **no** `config_snapshot` key |
+
+`lean` returns exactly the shape
+[`GET /api/v1/jobs/by-build-id/{build_id}`](#get-apiv1jobsby-build-idbuild_id) returns, so
+the two lean job reads agree rather than diverging by a key. Both keys are *absent*, not
+empty: an empty `tasks` array would be indistinguishable from a job that genuinely has
+none. `is_stale` stays on `lean`, so a caller still learns its configuration has drifted
+without being handed the snapshot to diff, and `config_name` is still reported even though
+it is read *from* the dropped snapshot.
+
+`shape` names a shape rather than a field, which is why `lean` drops `config_snapshot`
+alongside `tasks` — the alternative was a fourth response model existing only to omit one
+field. It is also why the parameter is an enumeration rather than a boolean: a third value
+can be added without a second parameter that could contradict the first.
+
+`shape` is orthogonal to `scope`. It selects what a caller sees *of a job it may already
+read*, never which jobs it may read: `shape=lean` on another owner's job is still a `404`,
+and a non-admin passing `scope=all` is still a `403`. An unrecognized value is a `422`.
+
+`lean` trims the response, not the query — both shapes cost the same two database round
+trips, because tasks are eager-loaded either way. Do not reach for it as a performance
+switch. One consequence is welcome: `finished_at` is derived from those loaded tasks in
+both shapes, so it holds the same value in each — unlike `by-build-id`, which returns the
+same `JobDetail` shape but computes the field by subquery.
 
 ### The `JobRead` shape
 
 `JobRead` includes every `JobSummary` field **plus** the following. The last two — `tasks` and
-`config_snapshot` — are unique to this endpoint (and to `POST /jobs`, cancel and reconcile);
-`GET /jobs/by-build-id/{build_id}` returns everything else as `JobDetail`.
+`config_snapshot` — are carried only by the `full` shape of this endpoint (and by
+`POST /jobs`, cancel and reconcile); `shape=lean` here and
+`GET /jobs/by-build-id/{build_id}` both return everything else as `JobDetail`.
 
 | Field | Type | Notes |
 | --- | --- | --- |

@@ -88,6 +88,7 @@ Return one user. **Admin only.** Returns a `UserRead`.
 | `role` | string \| null | `admin` or `user`; nullable on read (may hold a legacy/pipeline value) |
 | `created_at` | datetime | ISO 8601 |
 | `updated_at` | datetime | ISO 8601 |
+| `last_login_at` | datetime \| null | When the user last authenticated; deliberately not `updated_at`, which moves on any row write. `null` where no login is on record |
 
 ```json
 {
@@ -95,7 +96,8 @@ Return one user. **Admin only.** Returns a `UserRead`.
   "email": "you@example.com",
   "role": "user",
   "created_at": "2026-08-01T09:00:00Z",
-  "updated_at": "2026-08-10T12:00:00Z"
+  "updated_at": "2026-08-10T12:00:00Z",
+  "last_login_at": "2026-08-09T08:15:00Z"
 }
 ```
 

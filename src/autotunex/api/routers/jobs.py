@@ -30,7 +30,7 @@ from autotunex.api.deps import (
 from autotunex.models.asset import AssetSummary
 from autotunex.models.common import DataScope, Page, ProblemDetail
 from autotunex.models.estimation import EstimateUsagesRequest, EstimateUsagesResponse
-from autotunex.models.job import JobCreate, JobDetail, JobRead, JobSummary
+from autotunex.models.job import JobCreate, JobDetail, JobRead, JobShape, JobSummary
 from autotunex.models.log import LogPage
 from autotunex.models.metric import MetricPage
 from autotunex.models.reward import GenerateTestSolutionsRequest, GenerateTestSolutionsResponse
@@ -102,10 +102,23 @@ async def generate_test_solutions(
     },
 )
 async def get_job(
-    job_id: UUID, service: JobServiceDep, scope: DataScope = Query(default=DataScope.OWN)
-) -> JobRead:
-    """Return a job with its current status."""
-    return await service.get(job_id, scope=scope)
+    job_id: UUID,
+    service: JobServiceDep,
+    scope: DataScope = Query(default=DataScope.OWN),
+    shape: JobShape = Query(default=JobShape.FULL),
+) -> JobRead | JobDetail:
+    """Return a job with its current status.
+
+    ``shape=full`` (the default) returns :class:`JobRead`; ``shape=lean`` returns
+    :class:`JobDetail`, dropping the nested build ``tasks`` array and the
+    ``config_snapshot`` blob — the same shape ``GET /jobs/by-build-id/{build_id}``
+    returns. Trials are on neither; they are paged by ``GET /jobs/{id}/trials``.
+
+    The union's member order matters: :class:`JobRead` subclasses
+    :class:`JobDetail`, so listing the base first would validate every full
+    response down to it and silently strip both fields.
+    """
+    return await service.get(job_id, scope=scope, shape=shape)
 
 
 @router.get(

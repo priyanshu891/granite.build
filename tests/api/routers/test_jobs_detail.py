@@ -1,8 +1,12 @@
-"""``GET /jobs/{id}`` — the detail response.
+"""``GET /jobs/{id}`` — the detail response, and the ``shape`` that selects it.
 
 Carries the blobs and nested tasks the list response omits, because the view
 shipped config_snapshot and output_artifacts on every row. It deliberately does
 **not** carry the trial list — see ``test_job_trials.py``.
+
+``?shape=lean`` narrows the response to ``JobDetail``, dropping ``tasks`` and
+``config_snapshot``; ``full`` is the default. Those tests assert key *absence*
+rather than empty values, and that the parameter never widens ``scope``.
 """
 
 from __future__ import annotations
@@ -284,3 +288,129 @@ async def test_detail_tolerates_a_list_shaped_output_artifacts(
 
     assert response.status_code == HTTPStatus.OK
     assert response.json()["output_artifacts"] == artifacts
+
+
+async def test_detail_nests_tasks_when_no_shape_is_requested(
+    client: AsyncClient, session: AsyncSession, job: JobTable
+) -> None:
+    """The default is the full shape — asserted, not assumed.
+
+    ``shape`` defaults to ``full`` precisely so that adding it changed no existing
+    client. This test is what would fail if the default were ever flipped.
+    """
+    session.add(
+        GbTaskTable(id=uuid4(), job_id=job.id, status=RunStatus.RUNNING, type=GbTaskType.TUNING)
+    )
+    job.config_snapshot = {"name": "as-it-ran"}
+    session.add(job)
+    await session.commit()
+
+    response = await client.get(f"{API}/jobs/{job.id}?scope=all")
+
+    body = response.json()
+    assert len(body["tasks"]) == 1
+    assert body["config_snapshot"] == {"name": "as-it-ran"}
+
+
+async def test_detail_shape_lean_omits_tasks_and_the_config_snapshot(
+    client: AsyncClient, session: AsyncSession, job: JobTable
+) -> None:
+    """``?shape=lean`` returns ``JobDetail`` — the keys are absent, not empty.
+
+    Key *absence* is the whole point: an empty ``tasks`` array would be
+    indistinguishable from a job that genuinely has none.
+    """
+    session.add(
+        GbTaskTable(id=uuid4(), job_id=job.id, status=RunStatus.RUNNING, type=GbTaskType.TUNING)
+    )
+    job.config_snapshot = {
+        "name": "as-it-ran",
+        "config_data": {"tune_config": {"num_samples": {"default": 12}}},
+    }
+    session.add(job)
+    await session.commit()
+
+    response = await client.get(f"{API}/jobs/{job.id}?scope=all&shape=lean")
+
+    body = response.json()
+    assert response.status_code == HTTPStatus.OK
+    assert "tasks" not in body
+    assert "config_snapshot" not in body
+    # Everything the lean shape does carry is still here, including the two fields
+    # derived *from* the dropped snapshot — losing the blob must not lose these.
+    assert body["config_name"] == "as-it-ran"
+    assert body["num_trials"] == 12
+    assert body["is_stale"] is True
+    assert body["model_source"] == "huggingface"
+
+
+async def test_detail_shape_lean_still_reports_finished_at(
+    client: AsyncClient, session: AsyncSession, job: JobTable
+) -> None:
+    """``finished_at`` survives the shape switch.
+
+    It is the one field the full shape derives from the loaded ``tasks``, so it is
+    the one that would silently go ``null`` if the lean branch stopped deriving it.
+    Unlike ``GET /jobs/by-build-id``, this endpoint still loads tasks and so still
+    derives the value from them rather than from a subquery.
+    """
+    session.add_all(
+        [
+            GbTaskTable(
+                id=uuid4(),
+                job_id=job.id,
+                type=GbTaskType.TUNING,
+                updated_at="2026-09-03 00:05:00",
+            ),
+            GbTaskTable(
+                id=uuid4(),
+                job_id=job.id,
+                type=GbTaskType.RITS,
+                updated_at="2026-09-03 00:09:00",
+            ),
+        ]
+    )
+    await session.commit()
+
+    response = await client.get(f"{API}/jobs/{job.id}?scope=all&shape=lean")
+
+    assert response.json()["finished_at"] == "2026-09-03 00:09:00"
+
+
+async def test_detail_shape_full_requested_explicitly_is_the_complete_shape(
+    client: AsyncClient, session: AsyncSession, job: JobTable
+) -> None:
+    """``?shape=full`` is the whole ``JobRead``.
+
+    Also the regression test for the response union's member ordering: ``JobRead``
+    is a ``JobDetail`` by inheritance, so a reversed ``JobRead | JobDetail`` union
+    would validate this response down to the base and silently strip both keys.
+    """
+    session.add(
+        GbTaskTable(id=uuid4(), job_id=job.id, status=RunStatus.RUNNING, type=GbTaskType.TUNING)
+    )
+    job.config_snapshot = {"name": "as-it-ran"}
+    session.add(job)
+    await session.commit()
+
+    response = await client.get(f"{API}/jobs/{job.id}?scope=all&shape=full")
+
+    body = response.json()
+    assert len(body["tasks"]) == 1
+    assert body["config_snapshot"] == {"name": "as-it-ran"}
+
+
+async def test_detail_shape_lean_of_another_users_job_is_still_a_404(
+    client: AsyncClient, job: JobTable
+) -> None:
+    """``shape`` selects a response shape and nothing else — it never widens scope."""
+    response = await client.get(f"{API}/jobs/{job.id}?shape=lean")
+
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+async def test_detail_rejects_an_unknown_shape(client: AsyncClient, job: JobTable) -> None:
+    """An unrecognized ``shape`` is a 422, not a silent fallback to the default."""
+    response = await client.get(f"{API}/jobs/{job.id}?scope=all&shape=medium")
+
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY

@@ -89,7 +89,7 @@ See [the `ConfigurationRead` shape](#the-configurationread-shape). On create,
 
 ## GET /api/v1/configurations
 
-List the caller's configurations, newest first. Returns a `Page<ConfigurationRead>`.
+List the caller's configurations, newest first. Returns a `Page<ConfigurationSummary>`.
 
 ### Query parameters
 
@@ -100,10 +100,17 @@ List the caller's configurations, newest first. Returns a `Page<ConfigurationRea
 | `scope` | string | `own` | `own` \| `all` (admin only for `all`) |
 | `q` | string | `none` | Case-insensitive substring filter. Matches the configuration name. |
 
-### Response `200` — `Page<ConfigurationRead>`
+### Response `200` — `Page<ConfigurationSummary>`
 
-`{ "items": ConfigurationRead[], "total": int, "limit": int, "offset": int }`. Here
+`{ "items": ConfigurationSummary[], "total": int, "limit": int, "offset": int }`. Here
 `associated_jobs` is populated (owner-scoped) for each configuration.
+
+`ConfigurationSummary` is the lean list shape: every field of `ConfigurationRead` except
+`config_data`, which is *absent* rather than `null` — a `null` could not be told apart from a
+row that genuinely has no `config_data` stored. See
+[the `ConfigurationRead` shape](#the-configurationread-shape) below for those fields; a client
+that needs a configuration's search space reads
+`GET /api/v1/configurations/{configuration_id}`.
 
 ### Notable statuses
 
