@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 import { InlineNotification, SkeletonText } from '@carbon/react'
 import { useQuery } from '@tanstack/react-query'
-import { getArtifactModelCard } from '@/api/gbserver'
+import { getArtifactModelCard } from '@granite-build/ui-core/api/gbserver'
 
 export function ModelCardPanel({ artifactId }: { artifactId: string }) {
   const { data: content, isLoading, error } = useQuery({

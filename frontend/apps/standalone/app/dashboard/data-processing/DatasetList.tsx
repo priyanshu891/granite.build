@@ -13,9 +13,9 @@ import {
   TableRow,
   Pagination,
 } from "@carbon/react";
-import type { DPDataset } from "@/api/dataProcessing";
-import { adaptStatus } from "@/api/gbserver";
-import { BuildStatusBadge } from "@/components/BuildStatusBadge";
+import type { DPDataset } from "@granite-build/ui-core/api/dataProcessing";
+import { adaptStatus } from "@granite-build/ui-core/api/gbserver";
+import { BuildStatusBadge } from "@granite-build/ui-core/components/BuildStatusBadge";
 
 interface Props {
   datasets: DPDataset[];

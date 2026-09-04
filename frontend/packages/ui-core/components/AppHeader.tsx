@@ -31,8 +31,8 @@ import {
   Screen,
   Switcher as SwitcherIcon,
 } from "@carbon/icons-react";
-import { useTheme } from "@/hooks/useTheme";
-import type { ThemePreference } from "@/lib/themePreference";
+import { useTheme } from "../hooks/useTheme";
+import type { ThemePreference } from "../lib/themePreference";
 import styles from "./AppHeader.module.scss";
 
 // Our own ids rather than Carbon's internal class names, so the outside-click

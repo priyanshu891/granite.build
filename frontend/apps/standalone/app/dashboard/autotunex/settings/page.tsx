@@ -1,9 +1,9 @@
 'use client'
 
-import { PageHeader } from '@/components/PageHeader'
-import { AutotunexTabs } from '@/components/AutotunexTabs'
-import { ConfigurationsTable } from '@/components/ConfigurationsTable'
-import { DatasetsTable } from '@/components/DatasetsTable'
+import { PageHeader } from '@granite-build/ui-core/components/PageHeader'
+import { AutotunexTabs } from '@granite-build/ui-core/components/AutotunexTabs'
+import { ConfigurationsTable } from '@granite-build/ui-core/components/ConfigurationsTable'
+import { DatasetsTable } from '@granite-build/ui-core/components/DatasetsTable'
 import styles from './Settings.module.scss'
 
 export default function SettingsPage() {

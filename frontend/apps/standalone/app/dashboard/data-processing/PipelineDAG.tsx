@@ -10,8 +10,8 @@ import {
   CardNodeTitle,
   ArrowRightMarker,  // used in SVG <defs>
 } from '@carbon/charts-react'
-import type { DPNode, DPEdge, DPDataset } from '@/api/dataProcessing'
-import { ARTIFACT_TYPE_CONFIG } from '@/config/artifactTypes'
+import type { DPNode, DPEdge, DPDataset } from '@granite-build/ui-core/api/dataProcessing'
+import { ARTIFACT_TYPE_CONFIG } from '@granite-build/ui-core/config/artifactTypes'
 import styles from './page.module.scss'
 
 interface Props {

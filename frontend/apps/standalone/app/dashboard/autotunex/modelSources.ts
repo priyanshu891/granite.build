@@ -1,4 +1,4 @@
-import type { ModelSource } from '@/types'
+import type { ModelSource } from '@granite-build/ui-core/types/index'
 
 export const MODEL_SOURCE_LABELS: Record<ModelSource, string> = {
   huggingface: 'Huggingface',

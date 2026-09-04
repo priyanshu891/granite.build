@@ -2,7 +2,7 @@
 
 import { CopyButton, SkeletonText } from '@carbon/react'
 import { useQuery } from '@tanstack/react-query'
-import { getBuildArchiveFiles } from '@/api/gbserver'
+import { getBuildArchiveFiles } from '@granite-build/ui-core/api/gbserver'
 
 interface Props {
   buildId: string

@@ -18,9 +18,9 @@ import {
   TableRow,
 } from "@carbon/react";
 import { Document } from "@carbon/icons-react";
-import { BuildStatusBadge } from "@/components/BuildStatusBadge";
-import { getArtifact, getBuildStepLog } from "@/api/gbserver";
-import type { Artifact, BuildTargetRun, BuildStatus } from "@/types";
+import { BuildStatusBadge } from "@granite-build/ui-core/components/BuildStatusBadge";
+import { getArtifact, getBuildStepLog } from "@granite-build/ui-core/api/gbserver";
+import type { Artifact, BuildTargetRun, BuildStatus } from "@granite-build/ui-core/types";
 
 interface Props {
   targets?: Record<string, BuildTargetRun> | BuildTargetRun[];

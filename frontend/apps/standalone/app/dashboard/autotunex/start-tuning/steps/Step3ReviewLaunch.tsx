@@ -2,11 +2,11 @@
 
 import { Tile, TextInput, Tag, Button, ProgressBar } from '@carbon/react'
 import { DataBase, Settings, ModelTuned, Checkmark, Edit } from '@carbon/icons-react'
-import type { ColumnMetadata, Configuration, Dataset, DatasetForm, LaunchPhase, ModelSource, Resources } from '@/types'
-import { getConfigSummary } from '../wizardUtils'
+import type { ColumnMetadata, Configuration, Dataset, DatasetForm, LaunchPhase, ModelSource, Resources } from '@granite-build/ui-core/types/index'
+import { getConfigSummary } from '@granite-build/ui-core/lib/autotunex/wizardUtils'
 import { MODEL_SOURCE_LABELS } from '../../modelSources'
 import styles from './Step3ReviewLaunch.module.scss'
-import layoutStyles from '../layout.module.scss'
+import layoutStyles from '@granite-build/ui-core/components/layout.module.scss'
 
 function formatFileSize(bytes: number): string {
   if (!bytes || bytes <= 0) return ''

@@ -3,8 +3,8 @@
 import { LineChart } from "@carbon/charts-react";
 import { ScaleTypes } from "@carbon/charts";
 import { InlineLoading } from "@carbon/react";
-import type { FailureTrendResponse } from "@/types";
-import { useChartsTheme } from "@/hooks/useTheme";
+import type { FailureTrendResponse } from "../types";
+import { useChartsTheme } from "../hooks/useTheme";
 
 interface Props {
   data: FailureTrendResponse | null | undefined;

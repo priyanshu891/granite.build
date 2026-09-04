@@ -23,8 +23,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getAIAnalysis,
   submitAIFeedback,
-} from "@/api/analytics";
-import type { AIAnalysis } from "@/types";
+} from "../api/analytics";
+import type { AIAnalysis } from "../types";
 
 interface Props {
   buildId: string;

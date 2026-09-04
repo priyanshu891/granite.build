@@ -14,7 +14,7 @@
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
 
-const { parseStoredPreference, resolveTheme } = require('../lib/themePreference.ts')
+const { parseStoredPreference, resolveTheme } = require('../../../packages/ui-core/lib/themePreference.ts')
 
 describe('parseStoredPreference', () => {
   it('treats a missing value as following the system', () => {

@@ -15,7 +15,7 @@
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
 
-const { normalizeVerlRow, normalizeVerlRows } = require('../app/dashboard/autotunex/start-tuning/verlNormalize.ts')
+const { normalizeVerlRow, normalizeVerlRows } = require('../../../packages/ui-core/lib/autotunex/verlNormalize.ts')
 
 // The exact field access the step's buildTestCasesFromRows performs.
 function stepSeesFilled(row) {

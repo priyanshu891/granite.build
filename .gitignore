@@ -38,11 +38,6 @@ var/
 wheels/
 share/python-wheels/
 *.egg-info/
-
-# frontend/lib/ is application source, not Python build output. The `lib/` rule
-# in the packaging block above matches it at any depth, which silently drops new
-# files added there (frontend/lib/sse.ts only survives because it predates it).
-!frontend/lib/
 .installed.cfg
 *.egg
 MANIFEST
@@ -212,21 +207,27 @@ report.xml
 # WandB
 wandb/
 
-# Frontend (Next.js)
+# Frontend (Next.js workspace: packages/ui-core, apps/standalone)
 frontend/node_modules/
-frontend/.next/
-frontend/out/
-frontend/.env
-frontend/.env.local
-frontend/certificates/
-frontend/*.tsbuildinfo
+frontend/**/node_modules/
+frontend/**/.next/
+frontend/**/out/
+frontend/**/.env
+frontend/**/.env.local
+frontend/apps/standalone/certificates/
+frontend/**/*.tsbuildinfo
+
+# The Python packaging rule `lib/` above (unanchored) also matches source
+# directories named lib/ inside the frontend workspace (e.g. ui-core/lib/) —
+# un-ignore those specifically rather than widening the Python rule.
+!frontend/**/lib/
 
 # Compiled frontend served by gbserver — built by `make build-frontend`, not committed
 src/gbserver/static/ui/
 
-# Superpowers SDD scratch (ledger, briefs, review packages) — local only
-.superpowers/
-
 
 # autotunex SvelteKit source lives under autotunex/src/ux/src/lib; re-include it.
 !autotunex/**/lib/
+
+# Superpowers SDD scratch (ledger, briefs, review packages) — local only
+.superpowers/

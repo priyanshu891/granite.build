@@ -13,7 +13,7 @@ import {
   SkeletonText,
 } from '@carbon/react'
 import { useQuery } from '@tanstack/react-query'
-import { getArtifactContents } from '@/api/gbserver'
+import { getArtifactContents } from '@granite-build/ui-core/api/gbserver'
 
 export function ContentsPanel({ artifactId }: { artifactId: string }) {
   const { data, isLoading, error } = useQuery({

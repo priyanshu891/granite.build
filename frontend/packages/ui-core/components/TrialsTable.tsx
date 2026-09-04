@@ -27,13 +27,13 @@ import {
 import { ArrowLeft } from '@carbon/icons-react'
 import { RadarChart } from '@carbon/charts-react'
 import { useQuery } from '@tanstack/react-query'
-import { useChartsTheme } from '@/hooks/useTheme'
-import { getJobTrials } from '@/api/autotunex'
-import { listSpaces } from '@/api/gbserver'
-import { TrialLogViewer } from '@/components/TrialLogViewer'
-import { TrialCompare } from '@/components/TrialCompare'
-import { TrialProgressSummary } from '@/components/TrialProgressSummary'
-import type { JobDetail, Trial } from '@/types'
+import { useChartsTheme } from '../hooks/useTheme'
+import { getJobTrials } from '../api/autotunex'
+import { listSpaces } from '../api/gbserver'
+import { TrialLogViewer } from './TrialLogViewer'
+import { TrialCompare } from './TrialCompare'
+import { TrialProgressSummary } from './TrialProgressSummary'
+import type { JobDetail, Trial } from '../types/index'
 
 const HEADERS = [
   { key: 'created_at', header: 'Created on' },

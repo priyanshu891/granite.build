@@ -16,9 +16,9 @@ import {
 } from "@carbon/react";
 import { Download, Copy, Renew, Restart } from "@carbon/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { getBuildStepLog, getBuildLiveLogs } from "@/api/gbserver";
-import { getAIAnalysis, analyzeLogsContent } from "@/api/analytics";
-import type { AIAnalysis, BuildStatusDetail, BuildStepRun } from "@/types";
+import { getBuildStepLog, getBuildLiveLogs } from "@granite-build/ui-core/api/gbserver";
+import { getAIAnalysis, analyzeLogsContent } from "@granite-build/ui-core/api/analytics";
+import type { AIAnalysis, BuildStatusDetail, BuildStepRun } from "@granite-build/ui-core/types";
 
 interface Props {
   buildId: string;

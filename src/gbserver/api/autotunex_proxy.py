@@ -19,8 +19,14 @@ In standalone mode the frontend is served by gbserver at the same origin, so
 AutoTuneX calls arrive as same-origin ``/api/autotunex/*`` requests. This module
 forwards them server-side to the AutoTuneX FastAPI server's ``/api/v1/*``
 routes, so browser cookies flow with no CORS. Mirrors the ``next dev`` rewrite in
-frontend/next.config.ts. The AutoTuneX server enforces its own cookie auth;
-gbserver treats ``/api/autotunex/*`` as public (see auth._PUBLIC_PATH_PREFIXES).
+frontend/next.config.ts.
+
+gbserver treats ``/api/autotunex/*`` as public for every method (see
+auth._PUBLIC_PATH_PREFIXES). Note that the upstream does not necessarily
+authenticate what is forwarded: AutoTuneX defaults to
+``auth_providers=["disabled"]``, which enforces nothing. This proxy is therefore
+only safe in a localhost-only standalone deployment — see the warning in
+api/auth.py before exposing gbserver on a reachable interface.
 """
 
 import os
@@ -41,9 +47,10 @@ _UPSTREAM_PREFIX = "/api/v1"
 # Public path this proxy is mounted at; the browser side of the mapping.
 _PUBLIC_PREFIX = "/api/autotunex"
 
-# Headers we must not forward verbatim: httpx sets Host from the URL and
-# recomputes request length; the StreamingResponse sets its own framing.
-_DROP_REQUEST_HEADERS = {"host", "content-length"}
+# Headers we must not forward verbatim: httpx sets Host from the URL; the
+# StreamingResponse sets its own framing on the way back. Content-Length is
+# deliberately NOT dropped -- see the body handling in proxy_autotunex.
+_DROP_REQUEST_HEADERS = {"host"}
 _DROP_RESPONSE_HEADERS = {
     "content-length",
     "transfer-encoding",
@@ -52,6 +59,12 @@ _DROP_RESPONSE_HEADERS = {
 }
 
 _PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
+
+# An unresponsive AutoTuneX (hung, not down) must not pin a gbserver worker
+# forever. read/write are per-chunk waits rather than whole-transfer budgets, so
+# a generous value still allows slow multipart dataset uploads and large
+# result-archive downloads while bounding a truly stalled connection.
+_TIMEOUT = httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=10.0)
 
 router = APIRouter()
 
@@ -62,7 +75,7 @@ def _get_client() -> httpx.AsyncClient:
     """Return the shared AsyncClient, creating it on first use."""
     global _client
     if _client is None:
-        _client = httpx.AsyncClient(timeout=None)
+        _client = httpx.AsyncClient(timeout=_TIMEOUT)
     return _client
 
 
@@ -89,9 +102,7 @@ def _rewrite_location(value: str) -> str:
     redirect) are left untouched.
     """
     parts = urlsplit(value)
-    if parts.path == _UPSTREAM_PREFIX or parts.path.startswith(
-        _UPSTREAM_PREFIX + "/"
-    ):
+    if parts.path == _UPSTREAM_PREFIX or parts.path.startswith(_UPSTREAM_PREFIX + "/"):
         new_path = _PUBLIC_PREFIX + parts.path[len(_UPSTREAM_PREFIX) :]
         return urlunsplit(("", "", new_path, parts.query, parts.fragment))
     return value
@@ -99,7 +110,20 @@ def _rewrite_location(value: str) -> str:
 
 @router.api_route("/api/autotunex/{path:path}", methods=_PROXY_METHODS)
 async def proxy_autotunex(request: Request, path: str) -> Response:
-    url = f"{AUTOTUNEX_URL}{_UPSTREAM_PREFIX}/{path}"
+    # httpx applies RFC 3986 dot-segment removal when it parses a URL, so a `..`
+    # segment in `path` escapes the /api/v1 mount and turns this into a relay to
+    # ANY path on the upstream host (uvicorn hands the raw ASGI path through
+    # unnormalized, so a non-browser client can send one). Resolve the URL first
+    # and refuse anything that no longer sits under the API prefix.
+    #
+    # The base is rstripped so a trailing slash on AUTOTUNEX_API_URL cannot make
+    # that `//api/v1/...`, which the check would read as leaving the API space
+    # (and which was previously forwarded upstream as a double slash).
+    upstream_url = httpx.URL(f"{AUTOTUNEX_URL.rstrip('/')}{_UPSTREAM_PREFIX}/{path}")
+    if not upstream_url.path.startswith(_UPSTREAM_PREFIX + "/"):
+        logger.warning("rejected AutoTuneX proxy path escaping the API mount: %r", path)
+        return JSONResponse({"detail": "Invalid proxy path."}, status_code=400)
+
     fwd_headers = {
         k: v
         for k, v in request.headers.items()
@@ -112,15 +136,35 @@ async def proxy_autotunex(request: Request, path: str) -> Response:
     # browser's, or empty) so the jar is never consulted for injection.
     if not any(k.lower() == "cookie" for k in fwd_headers):
         fwd_headers["cookie"] = ""
-    body = await request.body()
+
+    # Forward the body as a stream rather than reading it with request.body().
+    # Buffering would fully materialize a multi-GB training-set upload in this
+    # process (and again inside httpx) -- exactly the case the generous write
+    # timeout above exists to support.
+    #
+    # The client's Content-Length is passed through: the bytes are relayed
+    # unchanged so it stays accurate, and httpx honours an explicit
+    # Content-Length instead of falling back to Transfer-Encoding: chunked,
+    # which keeps the upstream wire format identical to the browser's.
+    #
+    # Only attach a body when the request declares one, so a bodyless GET/HEAD
+    # is not sent with a spurious chunked encoding.
+    declares_body = (
+        request.headers.get("content-length") is not None
+        or "transfer-encoding" in request.headers
+    )
+    content = request.stream() if declares_body else None
 
     client = _get_client()
     upstream_request = client.build_request(
         request.method,
-        url,
+        upstream_url,
         headers=fwd_headers,
-        params=request.query_params.multi_items(),
-        content=body,
+        # tuple(), not the list multi_items() returns: httpx accepts either, but
+        # list is invariant so mypy rejects list[tuple[str, str]] against the
+        # wider pair type it declares. Duplicate keys are preserved either way.
+        params=tuple(request.query_params.multi_items()),
+        content=content,
     )
     try:
         upstream = await client.send(upstream_request, stream=True)

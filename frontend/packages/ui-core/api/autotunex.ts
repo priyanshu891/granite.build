@@ -38,10 +38,10 @@ import type {
   TuningAsset,
   TuningForm,
   TuningJob,
-} from '@/types'
+} from '../types/index'
 import axios from 'axios'
-import { autotunexApiBase } from '@/api/client'
-import { normalizeVerlRows } from '@/app/dashboard/autotunex/start-tuning/verlNormalize'
+import { autotunexApiBase } from './client'
+import { normalizeVerlRows } from '../lib/autotunex/verlNormalize'
 import {
   adaptAsset,
   adaptConfiguration,
@@ -51,9 +51,9 @@ import {
   collectPages,
   pageQuery,
   toListResult,
-} from '@/api/autotunexAdapters'
+} from './autotunexAdapters'
 
-// Re-exported so `import { adaptJob, pageQuery, … } from '@/api/autotunex'`
+// Re-exported so `import { adaptJob, pageQuery, … } from './autotunex'`
 // keeps working for tests/consumers — the implementations live in
 // `@/api/autotunexAdapters` purely so that leaf module stays free of
 // non-type-only imports (see its header comment for why that matters).

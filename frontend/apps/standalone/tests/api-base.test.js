@@ -8,7 +8,7 @@
 const { describe, it, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
 
-const { apiBase, autotunexApiBase } = require('../api/client.ts')
+const { apiBase, autotunexApiBase } = require('../../../packages/ui-core/api/client.ts')
 
 const saved = {}
 function save(k) { saved[k] = process.env[k] }

@@ -16,7 +16,7 @@ const vm = require('node:vm')
 const fs = require('node:fs')
 const path = require('node:path')
 
-const { parseStoredPreference, resolveTheme } = require('../lib/themePreference.ts')
+const { parseStoredPreference, resolveTheme } = require('../../../packages/ui-core/lib/themePreference.ts')
 
 const THEME_ATTR = 'data-carbon-theme'
 const PREF_ATTR = 'data-theme-pref'

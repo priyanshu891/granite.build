@@ -7,10 +7,10 @@ import {
   InlineNotification,
 } from "@carbon/react";
 import { useQuery } from "@tanstack/react-query";
-import { listBuilds, getBuildTags, listSpaces } from "@/api/gbserver";
-import { BuildsTable } from "@/components/BuildsTable";
-import { PageHeader } from "@/components/PageHeader";
-import type { BuildStatus } from "@/types";
+import { listBuilds, getBuildTags, listSpaces } from "@granite-build/ui-core/api/gbserver";
+import { BuildsTable } from "@granite-build/ui-core/components/BuildsTable";
+import { PageHeader } from "@granite-build/ui-core/components/PageHeader";
+import type { BuildStatus } from "@granite-build/ui-core/types";
 import styles from "./page.module.scss";
 
 function TagDropdownItem({ label }: { id: string; label: string }) {

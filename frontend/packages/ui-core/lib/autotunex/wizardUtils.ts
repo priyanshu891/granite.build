@@ -5,8 +5,8 @@ import type {
   ModelSource,
   ParsedDataRow,
   TuningGoal,
-} from '@/types'
-import { ALGORITHM_DETAILS, ALGORITHM_OPTIONS, ALGORITHM_TO_DATASET_TYPE, DATASET_EXAMPLES } from '@/config/autotunexAlgorithms'
+} from '../../types/index'
+import { ALGORITHM_DETAILS, ALGORITHM_OPTIONS, ALGORITHM_TO_DATASET_TYPE, DATASET_EXAMPLES } from '../../config/autotunexAlgorithms'
 
 export function toUpperCase(text: string): string | undefined {
   if (!text) return undefined

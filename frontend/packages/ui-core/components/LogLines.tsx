@@ -1,7 +1,7 @@
 'use client'
 
 import { InlineLoading, ProgressBar } from '@carbon/react'
-import type { LogEntry } from '@/types'
+import type { LogEntry } from '../types/index'
 import styles from './TuningLogViewer.module.scss'
 
 interface Props {

@@ -14,11 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import gzip
 
 import httpx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 import gbserver.api.autotunex_proxy as proxy_mod
 from gbserver.api.autotunex_proxy import router
@@ -160,9 +162,7 @@ def test_rewrites_absolute_upstream_location_header(monkeypatch):
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             307,
-            headers={
-                "location": "http://autotunex.test/api/v1/datasets/ABC123"
-            },
+            headers={"location": "http://autotunex.test/api/v1/datasets/ABC123"},
         )
 
     monkeypatch.setattr(proxy_mod, "AUTOTUNEX_URL", "http://autotunex.test")
@@ -183,9 +183,7 @@ def test_rewrites_location_when_upstream_url_has_trailing_slash(monkeypatch):
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             307,
-            headers={
-                "location": "http://autotunex.test/api/v1/datasets/XYZ"
-            },
+            headers={"location": "http://autotunex.test/api/v1/datasets/XYZ"},
         )
 
     monkeypatch.setattr(proxy_mod, "AUTOTUNEX_URL", "http://autotunex.test/")
@@ -243,13 +241,137 @@ def test_does_not_leak_cookies_between_requests(monkeypatch):
     # unrelated requests/users. Using two clients isolates that.
     app = _make_app()
     # Request 1: user A carries their cookie; upstream returns Set-Cookie.
-    TestClient(app).get(
-        "/api/autotunex/auth/me", headers={"cookie": "session=USER_A"}
-    )
+    TestClient(app).get("/api/autotunex/auth/me", headers={"cookie": "session=USER_A"})
     # Request 2: a different, cookie-less request must NOT carry USER_A upstream.
     TestClient(app).get("/api/autotunex/job/by_build_id/x")
 
     assert seen_cookies[0] == "session=USER_A"
-    assert seen_cookies[1] in (None, ""), (
-        f"cookie leaked to a cookie-less request: {seen_cookies[1]!r}"
+    assert seen_cookies[1] in (
+        None,
+        "",
+    ), f"cookie leaked to a cookie-less request: {seen_cookies[1]!r}"
+
+
+def test_streams_request_body_instead_of_buffering(monkeypatch):
+    """A dataset upload must be relayed incrementally.
+
+    ``await request.body()`` materialized the entire request in this process (and
+    again inside httpx), so a multi-GB training set risked OOMing gbserver for a
+    request it only relays. Reading the body is therefore made a hard failure
+    here, while the forwarded bytes and framing are asserted unchanged.
+    """
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = request.content
+        seen["content_length"] = request.headers.get("content-length")
+        seen["transfer_encoding"] = request.headers.get("transfer-encoding")
+        return httpx.Response(200, json={"ok": True})
+
+    monkeypatch.setattr(proxy_mod, "AUTOTUNEX_URL", "http://autotunex.test")
+    monkeypatch.setattr(proxy_mod, "_client", _client_with_handler(handler))
+
+    async def _forbidden_body(self):
+        raise AssertionError("proxy must stream the request body, not buffer it")
+
+    monkeypatch.setattr(Request, "body", _forbidden_body)
+
+    payload = b"x" * (256 * 1024)
+    client = TestClient(_make_app())
+    resp = client.post(
+        "/api/autotunex/datasets/abc/upload",
+        content=payload,
+        headers={"content-type": "application/octet-stream"},
     )
+
+    assert resp.status_code == 200
+    assert seen["body"] == payload
+    # The client's Content-Length is passed through rather than dropped, so httpx
+    # keeps that framing instead of switching the upstream to chunked.
+    assert seen["content_length"] == str(len(payload))
+    assert seen["transfer_encoding"] is None
+
+
+def test_bodyless_get_is_not_given_chunked_encoding(monkeypatch):
+    """Streaming must not add a body to a request that never declared one."""
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["transfer_encoding"] = request.headers.get("transfer-encoding")
+        seen["body"] = request.content
+        return httpx.Response(200, json={"ok": True})
+
+    monkeypatch.setattr(proxy_mod, "AUTOTUNEX_URL", "http://autotunex.test")
+    monkeypatch.setattr(proxy_mod, "_client", _client_with_handler(handler))
+
+    client = TestClient(_make_app())
+    resp = client.get("/api/autotunex/jobs")
+
+    assert resp.status_code == 200
+    assert seen["transfer_encoding"] is None
+    assert seen["body"] == b""
+
+
+def _raw_asgi_get(app, raw_path: str):
+    """GET with an UNNORMALIZED path, the way a non-browser client can send one.
+
+    TestClient goes through httpx, which applies RFC 3986 dot-segment removal
+    before the request leaves, so it cannot express this case at all. Uvicorn
+    performs no such normalization, so the app really does see the raw path.
+    """
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": raw_path,
+        "raw_path": raw_path.encode(),
+        "query_string": b"",
+        "headers": [(b"host", b"localhost")],
+        "client": ("203.0.113.9", 55555),
+        "server": ("localhost", 8080),
+        "root_path": "",
+    }
+    messages = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        messages.append(message)
+
+    asyncio.run(app(scope, receive, send))
+    status = next(m["status"] for m in messages if m["type"] == "http.response.start")
+    return status
+
+
+def test_rejects_path_escaping_the_upstream_api_mount(monkeypatch):
+    """A `..` segment must not turn the proxy into an arbitrary-path relay.
+
+    httpx removes dot segments when it parses the URL, so the concatenated
+    f"{AUTOTUNEX_URL}/api/v1/{path}" resolved to a path OUTSIDE /api/v1 —
+    e.g. /api/autotunex/../../internal/admin reached
+    http://upstream/internal/admin. Since this prefix is also exempt from
+    gbserver auth, that was an unauthenticated relay to any path on the
+    upstream host.
+    """
+    reached = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        reached.append(str(request.url))
+        return httpx.Response(200, json={"ok": True})
+
+    monkeypatch.setattr(proxy_mod, "AUTOTUNEX_URL", "http://autotunex.test")
+    monkeypatch.setattr(proxy_mod, "_client", _client_with_handler(handler))
+
+    app = _make_app()
+    for escaping in (
+        "/api/autotunex/../../internal/admin",
+        "/api/autotunex/a/../../../etc/passwd",
+        "/api/autotunex/..",
+    ):
+        status = _raw_asgi_get(app, escaping)
+        assert status == 400, f"{escaping} must be refused, got {status}"
+
+    assert reached == [], f"nothing may be forwarded upstream, saw {reached}"

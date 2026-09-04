@@ -10,7 +10,7 @@ import { ChevronDown } from '@carbon/icons-react'
 import { Children, isValidElement, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
-import type { BuildEvent } from '@/types'
+import type { BuildEvent } from '@granite-build/ui-core/types'
 
 interface Props {
   events: BuildEvent[]

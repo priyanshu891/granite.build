@@ -10,9 +10,9 @@ import {
   describeBuild,
   getBuildStatus,
   getBuildEvents,
-} from "@/api/gbserver";
-import { BuildStatusBadge } from "@/components/BuildStatusBadge";
-import { PageHeader } from "@/components/PageHeader";
+} from "@granite-build/ui-core/api/gbserver";
+import { BuildStatusBadge } from "@granite-build/ui-core/components/BuildStatusBadge";
+import { PageHeader } from "@granite-build/ui-core/components/PageHeader";
 import { BuildDetails } from "./BuildDetails";
 
 const ACTIVE_STATUSES = new Set(["running", "submitted", "pending"]);

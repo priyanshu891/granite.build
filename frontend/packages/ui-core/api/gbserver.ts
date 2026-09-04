@@ -12,7 +12,7 @@
  *   GET  /spaces/           → { spaces: StoredSpace[] }
  */
 import axios from 'axios'
-import { apiBase } from '@/api/client'
+import { apiBase } from './client'
 import type {
   Build,
   BuildStatus,
@@ -22,7 +22,7 @@ import type {
   BuildStepRun,
   Artifact,
   Space,
-} from '@/types'
+} from '../types'
 
 const client = axios.create({ baseURL: apiBase('/api/v1') })
 

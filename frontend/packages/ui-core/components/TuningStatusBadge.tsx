@@ -1,6 +1,6 @@
 'use client'
 
-import type { TuningStatus } from '@/types'
+import type { TuningStatus } from '../types/index'
 
 // Mirrors BuildStatusBadge's shape+color convention (frontend/components/BuildStatusBadge.tsx)
 // applied to the 7 tuning-job statuses instead of Build's 10.

@@ -15,7 +15,7 @@
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
 
-const { computeSectionNames } = require('../app/dashboard/autotunex/start-tuning/configSections.ts')
+const { computeSectionNames } = require('../../../packages/ui-core/lib/autotunex/configSections.ts')
 
 // Real top-level keys as returned by the autotune core template
 // (autotune.utils.get_autotune_config) — note: NO `general_config`.

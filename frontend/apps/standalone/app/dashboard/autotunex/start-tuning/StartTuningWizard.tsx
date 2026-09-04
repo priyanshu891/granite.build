@@ -21,7 +21,7 @@ import type {
   TuningForm,
   TuningGoal,
   WizardDraft,
-} from '@/types'
+} from '@granite-build/ui-core/types/index'
 import {
   AUTOTUNEX_FEATURES,
   createDataset,
@@ -35,10 +35,11 @@ import {
   updateConfiguration as apiUpdateConfiguration,
   createConfiguration as apiCreateConfiguration,
   uploadDataset,
-} from '@/api/autotunex'
-import { getRequiredColumns, isModelSelectionValid, normalizeTokenizerListFields, overlayColumnMapping } from './wizardUtils'
-import { normalizeVerlRows } from './verlNormalize'
-import { ALGORITHM_DETAILS, ALGORITHM_OPTIONS } from '@/config/autotunexAlgorithms'
+} from '@granite-build/ui-core/api/autotunex'
+import { getRequiredColumns, isModelSelectionValid, normalizeTokenizerListFields, overlayColumnMapping } from '@granite-build/ui-core/lib/autotunex/wizardUtils'
+import { normalizeVerlRows } from '@granite-build/ui-core/lib/autotunex/verlNormalize'
+import { DATASET_READY_TIMEOUT_MS } from '@granite-build/ui-core/lib/autotunex/datasetReady'
+import { ALGORITHM_DETAILS, ALGORITHM_OPTIONS } from '@granite-build/ui-core/config/autotunexAlgorithms'
 import { clearDraft, saveDraft } from './wizardDraft'
 import { Step0GetStarted } from './steps/Step0GetStarted'
 import { Step1DatasetUpload } from './steps/Step1DatasetUpload'
@@ -49,7 +50,6 @@ import styles from './StartTuningWizard.module.scss'
 
 const DRAFT_DEBOUNCE_MS = 500
 const DATASET_READY_POLL_MS = 1500
-const DATASET_READY_TIMEOUT_MS = 5 * 60 * 1000
 
 /**
  * The v0.3.5 multipart upload returns 202 with status "uploading" — the
@@ -198,12 +198,27 @@ export function StartTuningWizard() {
         const hasDataset = existingDatasetId !== null || parsedData.length > 0
         const hasName = datasetForm.name.trim() !== ''
         const requiredCols = getRequiredColumns(selectedAlgorithm)
-        const allMapped = requiredCols.every((c) => columnMapping[c])
+        // Column mapping applies only to a fresh upload. An existing dataset was
+        // already uploaded with its mapping applied, `columnMapping` is unused
+        // downstream for it (neither the uploadDataset call nor the preview
+        // overlay runs), and Step 1 renders no mapping controls for it — so
+        // requiring it here left Next permanently disabled with nothing the user
+        // could do about it. Same bypass the adjacent hasValidation check uses.
+        const allMapped = existingDatasetId !== null || requiredCols.every((c) => columnMapping[c])
         const hasValidation = existingDatasetId !== null || isSplitEnabled || validationFile !== null
         return hasDataset && hasName && allMapped && hasValidation && isDatasetCompatible
       }
-      case 2:
-        return selectedConfigId !== null && !isEditingConfig && !isCreatingConfig
+      case 2: {
+        // A pending config's name now goes straight into the payload
+        // apiCreateConfiguration POSTs, so an empty name has to be caught here.
+        // Otherwise the launch fails in the creating_config phase — after the
+        // dataset has already been created and uploaded.
+        const pendingIsNamed =
+          selectedConfigId !== '__pending__' || (pendingNewConfig?.name ?? '').trim() !== ''
+        return (
+          selectedConfigId !== null && !isEditingConfig && !isCreatingConfig && pendingIsNamed
+        )
+      }
       case 3:
         if (hasRewardStep) {
           // Reward-function validation is gated off in this environment (see
@@ -235,6 +250,7 @@ export function StartTuningWizard() {
     validationFile,
     isDatasetCompatible,
     selectedConfigId,
+    pendingNewConfig,
     isEditingConfig,
     isCreatingConfig,
     hasRewardStep,
@@ -376,6 +392,17 @@ export function StartTuningWizard() {
     createdConfigIdRef.current = null
   }
 
+  // The pending-config card renames `selectedConfig` (its display state), but
+  // `pendingNewConfig` is the object POSTed by apiCreateConfiguration at launch.
+  // Without this the configuration was created under its previous name while the
+  // review card and the generated experiment name showed the new one.
+  function handlePendingConfigRename(name: string) {
+    setPendingNewConfig((prev) => (prev ? { ...prev, name } : prev))
+    // Matches handlePendingConfig: the name is part of what gets created, so a
+    // config created by an earlier failed launch must not be reused.
+    createdConfigIdRef.current = null
+  }
+
   function handlePendingConfigUpdate(data: PendingConfigUpdate) {
     setPendingConfigUpdate(data)
   }
@@ -387,6 +414,15 @@ export function StartTuningWizard() {
   }
 
   function handleDatasetChanged() {
+    // The dataset being launched against changed, so drop every id derived from
+    // the previous one. Leaving `datasetId` set made `datasetId ||
+    // existingDatasetId` in handleLaunch resolve to the OLD dataset and skip the
+    // upload branch entirely, so the job trained on the previous dataset while
+    // the review card showed the newly-picked file.
+    setDatasetId(null)
+    // Only set during a launch attempt; a stale value would upload the new file
+    // into the dataset record created by a previous, failed attempt.
+    createdDatasetIdRef.current = null
     setSelectedConfigId(null)
     setSelectedConfig(null)
     setPendingNewConfig(null)
@@ -590,6 +626,7 @@ export function StartTuningWizard() {
             isCreatingConfig={isCreatingConfig}
             setIsCreatingConfig={setIsCreatingConfig}
             onPendingConfig={handlePendingConfig}
+            onPendingConfigRename={handlePendingConfigRename}
             onPendingConfigUpdate={handlePendingConfigUpdate}
             onClearPendingConfig={handleClearPendingConfig}
             autotuneEnabled={autotuneEnabled}

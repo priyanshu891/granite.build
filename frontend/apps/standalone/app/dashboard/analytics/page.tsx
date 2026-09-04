@@ -32,8 +32,8 @@ import {
   Categories,
 } from "@carbon/icons-react";
 import Link from "next/link";
-import { PageHeader } from "@/components/PageHeader";
-import { BaseTile } from "@/components/BaseTile";
+import { PageHeader } from "@granite-build/ui-core/components/PageHeader";
+import { BaseTile } from "@granite-build/ui-core/components/BaseTile";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getBuildStatusChart,
@@ -45,10 +45,10 @@ import {
   getSavedTrend,
   deleteSavedTrend,
   toggleTrendVisibility,
-} from "@/api/analytics";
-import { BuildStatusChart } from "@/components/BuildStatusChart";
-import { FailureTrendChart } from "@/components/FailureTrendChart";
-import type { FailureTrendResponse, TrendHistoryItem } from "@/types";
+} from "@granite-build/ui-core/api/analytics";
+import { BuildStatusChart } from "@granite-build/ui-core/components/BuildStatusChart";
+import { FailureTrendChart } from "@granite-build/ui-core/components/FailureTrendChart";
+import type { FailureTrendResponse, TrendHistoryItem } from "@granite-build/ui-core/types";
 
 const DAYS_OPTIONS = [
   { id: "7", label: "Last 7 days" },

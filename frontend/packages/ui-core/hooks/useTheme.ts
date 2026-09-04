@@ -8,8 +8,8 @@ import {
   THEME_STORAGE_KEY,
   parseStoredPreference,
   resolveTheme,
-} from '@/lib/themePreference'
-import type { Theme, ThemePreference } from '@/lib/themePreference'
+} from '../lib/themePreference'
+import type { Theme, ThemePreference } from '../lib/themePreference'
 
 export type { Theme, ThemePreference }
 

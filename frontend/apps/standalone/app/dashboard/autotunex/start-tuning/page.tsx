@@ -1,4 +1,4 @@
-import { PageHeader } from '@/components/PageHeader'
+import { PageHeader } from '@granite-build/ui-core/components/PageHeader'
 import { StartTuningWizard } from './StartTuningWizard'
 
 export default function StartTuningPage() {

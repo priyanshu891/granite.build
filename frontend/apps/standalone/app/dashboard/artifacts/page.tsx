@@ -22,9 +22,9 @@ import {
 } from "@carbon/react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { listArtifacts, listSpaces, getArtifactTags } from "@/api/gbserver";
-import { TagsCell } from "@/components/TagsCell";
-import { PageHeader } from "@/components/PageHeader";
+import { listArtifacts, listSpaces, getArtifactTags } from "@granite-build/ui-core/api/gbserver";
+import { TagsCell } from "@granite-build/ui-core/components/TagsCell";
+import { PageHeader } from "@granite-build/ui-core/components/PageHeader";
 import styles from "./page.module.scss";
 
 function TagDropdownItem({ label }: { id: string; label: string }) {

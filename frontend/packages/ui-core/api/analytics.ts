@@ -4,13 +4,13 @@
  * All calls return null gracefully when analytics is not configured.
  */
 import axios, { AxiosError } from 'axios'
-import { apiBase } from '@/api/client'
+import { apiBase } from './client'
 import type {
   BuildStatusChartPoint,
   FailureTrendResponse,
   TrendHistoryResponse,
   AIAnalysis,
-} from '@/types'
+} from '../types'
 
 const client = axios.create({ baseURL: apiBase('/api/analytics') })
 

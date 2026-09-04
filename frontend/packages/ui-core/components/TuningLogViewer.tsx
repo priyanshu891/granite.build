@@ -1,8 +1,8 @@
 'use client'
 
-import { getJobLogs } from '@/api/autotunex'
-import { useScrollingLogs } from '@/hooks/useScrollingLogs'
-import type { TuningJob } from '@/types'
+import { getJobLogs } from '../api/autotunex'
+import { useScrollingLogs } from '../hooks/useScrollingLogs'
+import type { TuningJob } from '../types/index'
 import { LogLines } from './LogLines'
 
 const ACTIVE_STATUSES = new Set(['running', 'pending'])

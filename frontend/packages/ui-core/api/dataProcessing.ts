@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { apiBase } from '@/api/client'
+import { apiBase } from './client'
 
 const client = axios.create({ baseURL: apiBase('/api/analytics/data-processing') })
 

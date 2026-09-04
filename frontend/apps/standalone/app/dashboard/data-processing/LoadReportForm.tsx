@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { TextInput, Checkbox, Button, InlineNotification, InlineLoading } from '@carbon/react'
-import { loadDPReport, type DPReportResult } from '@/api/dataProcessing'
+import { loadDPReport, type DPReportResult } from '@granite-build/ui-core/api/dataProcessing'
 import styles from './page.module.scss'
 
 export function LoadReportForm() {

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.scss'
-import { ClientShell } from '@/components/ClientShell'
+import { ClientShell } from '@granite-build/ui-core/components/ClientShell'
 
 export const metadata: Metadata = {
   title: 'Granite.build',

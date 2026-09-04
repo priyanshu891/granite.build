@@ -31,9 +31,9 @@ import {
   TableCell,
 } from '@carbon/react'
 import { Reset, Information } from '@carbon/icons-react'
-import type { ColumnMapping, ColumnMetadata, Dataset, DatasetForm, DatasetFormatType, ParsedDataRow, TuningGoal } from '@/types'
-import { getAutotuneDatasetTypes, getDataset, getDatasets, suggestColumnMappingAI } from '@/api/autotunex'
-import { countLinesInFileAsync, processUploadedFileAsync } from '../processUploadedFile'
+import type { ColumnMapping, ColumnMetadata, Dataset, DatasetForm, DatasetFormatType, ParsedDataRow, TuningGoal } from '@granite-build/ui-core/types/index'
+import { getAutotuneDatasetTypes, getDataset, getDatasets, suggestColumnMappingAI } from '@granite-build/ui-core/api/autotunex'
+import { countLinesInFileAsync, processUploadedFileAsync } from '@granite-build/ui-core/lib/autotunex/processUploadedFile'
 import {
   applyColumnMapping,
   detectDatasetFormat,
@@ -49,10 +49,10 @@ import {
   suggestColumnMapping as suggestColumnMappingHeuristic,
   toUpperCase,
   validateDatasetForGoal,
-} from '../wizardUtils'
-import { ALGORITHM_DETAILS, ALGORITHM_TO_DATASET_TYPE } from '@/config/autotunexAlgorithms'
+} from '@granite-build/ui-core/lib/autotunex/wizardUtils'
+import { ALGORITHM_DETAILS, ALGORITHM_TO_DATASET_TYPE } from '@granite-build/ui-core/config/autotunexAlgorithms'
 import styles from './Step1DatasetUpload.module.scss'
-import layoutStyles from '../layout.module.scss'
+import layoutStyles from '@granite-build/ui-core/components/layout.module.scss'
 
 const ACCEPTED_TYPES = ['.jsonl', '.json', '.csv', '.parquet']
 
@@ -185,6 +185,9 @@ export function Step1DatasetUpload({
   const [validationRecordCount, setValidationRecordCount] = useState(0)
   const [activePreviewTab, setActivePreviewTab] = useState(0)
   const [userColumns, setUserColumns] = useState<string[]>([])
+  // Increments per upload so a late record count can tell whether it is still
+  // describing the file currently selected.
+  const countTokenRef = useRef(0)
   const [dataSourceIndex, setDataSourceIndex] = useState(0)
 
   const [isAiSuggesting, setIsAiSuggesting] = useState(false)
@@ -258,16 +261,19 @@ export function Step1DatasetUpload({
   useEffect(() => {
     if (isSplitEnabled || !validationFile) return
     let alive = true
-    processUploadedFileAsync(validationFile, 50).then((rawData) => {
-      if (!alive) return
-      const result = buildPreviewData(rawData)
-      setValPreviewHeaders(result.headers)
-      setValPreviewRows(result.rows)
-      setValidationRecordCount(rawData.length)
-      countLinesInFileAsync(validationFile).then((count) => {
-        if (alive) setValidationRecordCount(count)
+    processUploadedFileAsync(validationFile, 50)
+      .then((rawData) => {
+        if (!alive) return
+        const result = buildPreviewData(rawData)
+        setValPreviewHeaders(result.headers)
+        setValPreviewRows(result.rows)
+        setValidationRecordCount(rawData.length)
+        // Returned so the chained catch below covers this rejection too.
+        return countLinesInFileAsync(validationFile).then((count) => {
+          if (alive) setValidationRecordCount(count)
+        })
       })
-    })
+      .catch(() => {})
     return () => {
       alive = false
     }
@@ -317,10 +323,18 @@ export function Step1DatasetUpload({
 
       setAiSuggestion({ confidence: result.confidence, reasoning: result.reasoning ?? '', algorithm: result.tuning_type })
 
+      // Tracks the algorithm this mapping should be filtered against. `setSelectedAlgorithm`
+      // does not update the `selectedAlgorithm` captured by this closure, so reading
+      // that below applied the AI's column mapping against the PREVIOUS algorithm
+      // whenever the AI changed it.
+      let effectiveAlgorithm = selectedAlgorithm
+
       if (result.tuning_type) {
         const aiAlgoDetail = ALGORITHM_DETAILS.find((a) => a.id === result.tuning_type)
         if (!selectedGoal || (aiAlgoDetail && aiAlgoDetail.category === selectedGoal)) {
           setSelectedAlgorithm(result.tuning_type)
+          // Only when the suggestion is actually adopted.
+          effectiveAlgorithm = result.tuning_type
         }
       }
 
@@ -329,7 +343,7 @@ export function Step1DatasetUpload({
         const newSuggested = new Set<string>()
 
         const types = hasDatasetTypes ? datasetTypes : await getAutotuneDatasetTypes()
-        const algo = selectedAlgorithm
+        const algo = effectiveAlgorithm
         const aiAllCols = hasDatasetTypes || Object.keys(types).length > 0 ? getColumnsFromTypes(algo, types).map((c) => c.name) : getRequiredColumns(algo)
 
         const typeKey = ALGORITHM_TO_DATASET_TYPE[algo]
@@ -393,7 +407,17 @@ export function Step1DatasetUpload({
       }
 
       setTotalRecords(rawData.length)
-      countLinesInFileAsync(file).then(setTotalRecords)
+      // The exact count streams in a worker and can outlive this upload. Without a
+      // token, a slow count from a file the user has since replaced overwrites the
+      // newer file's total; without a catch, a failure (a malformed file now
+      // reports an unterminated quoted field) is an unhandled rejection. The
+      // sample-derived estimate just set above stands if the count cannot finish.
+      const countToken = ++countTokenRef.current
+      countLinesInFileAsync(file)
+        .then((count) => {
+          if (countTokenRef.current === countToken) setTotalRecords(count)
+        })
+        .catch(() => {})
 
       onDatasetChanged()
       suggestMappingWithAI(rawData, metadata)

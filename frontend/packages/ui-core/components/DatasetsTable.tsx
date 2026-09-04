@@ -27,9 +27,9 @@ import {
 import { Add, TrashCan } from '@carbon/icons-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
-import type { Dataset } from '@/types'
-import { getDatasets, deleteDataset } from '@/api/autotunex'
-import { listSpaces } from '@/api/gbserver'
+import type { Dataset } from '../types/index'
+import { getDatasets, deleteDataset } from '../api/autotunex'
+import { listSpaces } from '../api/gbserver'
 import { SettingsDeleteModal } from './SettingsDeleteModal'
 import { SettingsDatasetView } from './SettingsDatasetView'
 import { SettingsDatasetCreate } from './SettingsDatasetCreate'
@@ -71,6 +71,17 @@ export function DatasetsTable() {
     }, 300)
     return () => clearTimeout(timer)
   }, [searchInput])
+
+  // `selectedIds` shadows Carbon's own selection, and Carbon rebuilds its
+  // checkboxes from whatever rows it is handed. A selection left over from a
+  // previous page/size/search/scope would therefore stay in `selectedIds`
+  // while disappearing from the UI — the batch bar and the confirmation count
+  // would disagree, and the delete would remove datasets the user can no longer
+  // see. It also keeps `anyUndeletable` honest, since `byId` only holds the
+  // current page. Clear it whenever the visible set changes.
+  useEffect(() => {
+    setSelectedIds((prev) => (prev.length === 0 ? prev : []))
+  }, [page, pageSize, q, scope])
 
   // No "current active space" concept exists in this dashboard (no space
   // context/provider), so the own/all scope toggle is gated on the viewer
@@ -122,8 +133,12 @@ export function DatasetsTable() {
   const rows = items.map((d) => ({
     id: d.id,
     name: d.name,
-    train_records: formatCompact(d.train_records),
-    validation_records: formatCompact(d.validation_records),
+    // Raw numbers, not formatCompact strings: Carbon's isSortable compares
+    // numbers numerically but falls back to localeCompare for strings, where
+    // parseFloat('1.2K') is 1.2 — so "1.2K" sorted before "980". The compact
+    // form is applied at render instead.
+    train_records: d.train_records,
+    validation_records: d.validation_records,
     created_at: d.created_at ?? '',
   }))
 
@@ -211,6 +226,9 @@ export function DatasetsTable() {
                               </CarbonLink>
                             ) : cell.info.header === 'created_at' ? (
                               cell.value ? new Date(cell.value as string).toLocaleString() : '—'
+                            ) : cell.info.header === 'train_records' ||
+                              cell.info.header === 'validation_records' ? (
+                              formatCompact(cell.value as number)
                             ) : (
                               (cell.value as React.ReactNode)
                             )}
@@ -260,7 +278,7 @@ export function DatasetsTable() {
         onCreated={() => setCreateOpen(false)}
       />
 
-      <SettingsDatasetView open={viewId != null} datasetId={viewId} onClose={() => setViewId(null)} />
+      <SettingsDatasetView open={viewId != null} datasetId={viewId} onClose={() => setViewId(null)} scope={scope} />
     </>
   )
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { LogEntry } from '@/types'
+import type { LogEntry } from '../types/index'
 
 const DEFAULT_PAGE_SIZE = 200
 const DEFAULT_POLL_MS = 10_000

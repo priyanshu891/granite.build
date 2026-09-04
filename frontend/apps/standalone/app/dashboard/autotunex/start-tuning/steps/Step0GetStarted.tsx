@@ -26,14 +26,14 @@ import {
 } from '@carbon/icons-react'
 import ReactMarkdown from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
-import type { HuggingFaceModel, ModelSource, TuningGoal } from '@/types'
-import { GOAL_OPTIONS } from '@/config/autotunexAlgorithms'
-import { getDefaultAlgorithmForGoal } from '../wizardUtils'
+import type { HuggingFaceModel, ModelSource, TuningGoal } from '@granite-build/ui-core/types/index'
+import { GOAL_OPTIONS } from '@granite-build/ui-core/config/autotunexAlgorithms'
+import { getDefaultAlgorithmForGoal } from '@granite-build/ui-core/lib/autotunex/wizardUtils'
 import { MODEL_SOURCE_LABELS, MODEL_SOURCE_OPTIONS } from '../../modelSources'
-import { getHFModelCard, getHFModels } from '@/api/autotunex'
+import { getHFModelCard, getHFModels } from '@granite-build/ui-core/api/autotunex'
 import { resolveModelComboItem, type ModelSuggestion } from '../modelComboSelection'
 import styles from './Step0GetStarted.module.scss'
-import layoutStyles from '../layout.module.scss'
+import layoutStyles from '@granite-build/ui-core/components/layout.module.scss'
 
 const GOAL_ICONS: Record<TuningGoal, ComponentType<{ size?: number }>> = {
   sft: Education,

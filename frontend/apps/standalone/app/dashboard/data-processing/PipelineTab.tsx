@@ -3,9 +3,9 @@
 import React from "react";
 import Link from "next/link";
 import { DataTableSkeleton } from "@carbon/react";
-import type { DPDataset } from "@/api/dataProcessing";
-import { adaptStatus } from "@/api/gbserver";
-import { BuildStatusBadge } from "@/components/BuildStatusBadge";
+import type { DPDataset } from "@granite-build/ui-core/api/dataProcessing";
+import { adaptStatus } from "@granite-build/ui-core/api/gbserver";
+import { BuildStatusBadge } from "@granite-build/ui-core/components/BuildStatusBadge";
 import styles from "./page.module.scss";
 
 interface Props {

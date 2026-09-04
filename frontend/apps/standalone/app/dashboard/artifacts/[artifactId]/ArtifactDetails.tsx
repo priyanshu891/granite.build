@@ -8,7 +8,7 @@ import {
   TabPanels,
   TabsVertical,
 } from '@carbon/react'
-import type { Artifact } from '@/types'
+import type { Artifact } from '@granite-build/ui-core/types'
 import { DetailsPanel } from './DetailsPanel'
 import { ContentsPanel } from './ContentsPanel'
 import { ModelCardPanel } from './ModelCardPanel'

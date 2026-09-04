@@ -4,9 +4,9 @@ import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { InlineNotification, SkeletonText } from '@carbon/react'
 import { useQuery } from '@tanstack/react-query'
-import { getArtifact } from '@/api/gbserver'
-import { PageHeader } from '@/components/PageHeader'
-import { ARTIFACT_TYPE_CONFIG, artifactTypeKey } from '@/config/artifactTypes'
+import { getArtifact } from '@granite-build/ui-core/api/gbserver'
+import { PageHeader } from '@granite-build/ui-core/components/PageHeader'
+import { ARTIFACT_TYPE_CONFIG, artifactTypeKey } from '@granite-build/ui-core/config/artifactTypes'
 import { ArtifactDetails } from './ArtifactDetails'
 
 // useSearchParams() bails the page out to client-side rendering up to the

@@ -2,8 +2,8 @@
 
 import { LineChart } from '@carbon/charts-react'
 import { ScaleTypes } from '@carbon/charts'
-import type { BuildStatusChartPoint } from '@/types'
-import { useChartsTheme } from '@/hooks/useTheme'
+import type { BuildStatusChartPoint } from '../types'
+import { useChartsTheme } from '../hooks/useTheme'
 
 interface Props {
   data: BuildStatusChartPoint[]

@@ -22,7 +22,7 @@ const {
   groupCompareKeys,
   findDifferingKeys,
   getOddOnesOut,
-} = require('../components/trialCompareGrouping.ts')
+} = require('../../../packages/ui-core/components/trialCompareGrouping.ts')
 
 // Three flattened compare rows, shaped like toCompareRow() output: id +
 // flattened config + rounded metrics. Ordered best-loss-first as the view does.

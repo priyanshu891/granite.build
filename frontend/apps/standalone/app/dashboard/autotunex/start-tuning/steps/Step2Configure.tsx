@@ -4,13 +4,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Tile, Select, SelectItem, Button, TextInput, Tag, InlineLoading, InlineNotification, Checkbox } from '@carbon/react'
 import { Add, Settings, Edit } from '@carbon/icons-react'
-import type { Configuration, ConfigData, ConfigForm, ListResult, PendingConfigData, PendingConfigUpdate, TuningGoal } from '@/types'
-import { getConfiguration, getConfigurations, getConfigurationTemplate } from '@/api/autotunex'
-import { ALGORITHM_DETAILS } from '@/config/autotunexAlgorithms'
-import { ConfigDisplay } from '../ConfigDisplay'
-import { CreateConfigForm } from '../CreateConfigForm'
+import type { Configuration, ConfigData, ConfigForm, ListResult, PendingConfigData, PendingConfigUpdate, TuningGoal } from '@granite-build/ui-core/types/index'
+import { getConfiguration, getConfigurations, getConfigurationTemplate } from '@granite-build/ui-core/api/autotunex'
+import { ALGORITHM_DETAILS } from '@granite-build/ui-core/config/autotunexAlgorithms'
+import { ConfigDisplay } from '@granite-build/ui-core/components/ConfigDisplay'
+import { CreateConfigForm } from '@granite-build/ui-core/components/CreateConfigForm'
 import styles from './Step2Configure.module.scss'
-import layoutStyles from '../layout.module.scss'
+import layoutStyles from '@granite-build/ui-core/components/layout.module.scss'
 
 const SFT_ALGORITHMS = ['lora', 'sft', 'alora', 'lokr', 'loha', 'vera']
 const RL_ALGORITHMS = ['dpo', 'kto', 'ppo', 'grpo', 'dapo']
@@ -58,6 +58,8 @@ interface Step2ConfigureProps {
   isCreatingConfig: boolean
   setIsCreatingConfig: (b: boolean) => void
   onPendingConfig: (data: PendingConfigData) => void
+  /** Rename of an already-pending config; must reach the payload POSTed at launch. */
+  onPendingConfigRename: (name: string) => void
   onPendingConfigUpdate: (data: PendingConfigUpdate) => void
   onClearPendingConfig: () => void
   autotuneEnabled: boolean
@@ -76,6 +78,7 @@ export function Step2Configure({
   isCreatingConfig,
   setIsCreatingConfig,
   onPendingConfig,
+  onPendingConfigRename,
   onPendingConfigUpdate,
   onClearPendingConfig,
   autotuneEnabled,
@@ -214,7 +217,16 @@ export function Step2Configure({
     if (!selectedConfig || !editableConfig) return
 
     const tuner_type = editableConfig.tuner_type || selectedConfig.tuner_type
-    const rl_tuner_type = editableConfig.rl_tuner_type || selectedConfig.rl_tuner_type || null
+    // `editableConfig.rl_tuner_type` is authoritative once CreateConfigForm has
+    // mounted, because its effect mirrors the dropdown into the config and writes
+    // null for the "none" selection. A `||` chain cannot tell "explicitly none"
+    // from "never set", so switching an existing DPO config to none fell straight
+    // back to 'dpo' and saved it — the algorithm could be set but never cleared.
+    // Presence of the key is the signal; fall back only when the form never ran.
+    const rl_tuner_type =
+      editableConfig.rl_tuner_type !== undefined
+        ? editableConfig.rl_tuner_type || null
+        : selectedConfig.rl_tuner_type || null
     const configData: ConfigData = {
       tune_config: editableConfig.tune_config,
       tuners_config: editableConfig.tuners_config,
@@ -492,7 +504,10 @@ export function Step2Configure({
                   id="pending-config-name"
                   value={selectedConfig.name}
                   labelText="Configuration Name"
-                  onChange={(e) => setSelectedConfig({ ...selectedConfig, name: e.target.value })}
+                  onChange={(e) => {
+                    setSelectedConfig({ ...selectedConfig, name: e.target.value })
+                    onPendingConfigRename(e.target.value)
+                  }}
                 />
                 <div className={styles.createdConfigActions}>
                   <Button kind="tertiary" renderIcon={Edit} size="sm" onClick={openCreateForm}>Edit</Button>

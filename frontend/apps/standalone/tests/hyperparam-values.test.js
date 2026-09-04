@@ -14,7 +14,7 @@
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
 
-const { parseValuesInput, formatValues } = require('../app/dashboard/autotunex/start-tuning/hyperparamValues.ts')
+const { parseValuesInput, formatValues } = require('../../../packages/ui-core/lib/autotunex/hyperparamValues.ts')
 
 describe('parseValuesInput', () => {
   it('parses and sorts a valid comma-separated list', () => {

@@ -6,11 +6,11 @@ import { CenterSquare, ZoomIn, ZoomFit, ZoomOut } from '@carbon/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import type { ElkExtendedEdge } from 'elkjs'
-import type { Artifact } from '@/types'
-import { getBuild, getBuildStatus, getArtifactLineage } from '@/api/gbserver'
-import type { ArtifactRunEntry } from '@/api/gbserver'
-import BuildLineagePanel from '@/app/dashboard/builds/[buildId]/LineagePanel'
-import Graph, { type ElkNodeEx, type GraphHandle, type NodeType } from '@/components/LineageGraph/Graph'
+import type { Artifact } from '@granite-build/ui-core/types'
+import { getBuild, getBuildStatus, getArtifactLineage } from '@granite-build/ui-core/api/gbserver'
+import type { ArtifactRunEntry } from '@granite-build/ui-core/api/gbserver'
+import BuildLineagePanel from '../../builds/[buildId]/LineagePanel'
+import Graph, { type ElkNodeEx, type GraphHandle, type NodeType } from '@granite-build/ui-core/components/LineageGraph/Graph'
 
 function artifactTypeToNodeType(artifactType: string): NodeType {
   switch (artifactType.toUpperCase()) {

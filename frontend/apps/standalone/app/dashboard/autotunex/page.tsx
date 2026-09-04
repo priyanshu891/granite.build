@@ -4,12 +4,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { InlineNotification } from '@carbon/react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getJobs, deleteJob } from '@/api/autotunex'
-import { listSpaces } from '@/api/gbserver'
-import { AutotunexTabs } from '@/components/AutotunexTabs'
-import { TuningsTable } from '@/components/TuningsTable'
-import { TuningDeleteModal } from '@/components/TuningDeleteModal'
-import { TuningCompareModal } from '@/components/TuningCompareModal'
+import { getJobs, deleteJob } from '@granite-build/ui-core/api/autotunex'
+import { listSpaces } from '@granite-build/ui-core/api/gbserver'
+import { AutotunexTabs } from '@granite-build/ui-core/components/AutotunexTabs'
+import { TuningsTable } from '@granite-build/ui-core/components/TuningsTable'
+import { TuningDeleteModal } from '@granite-build/ui-core/components/TuningDeleteModal'
+import { TuningCompareModal } from '@granite-build/ui-core/components/TuningCompareModal'
 
 export default function AutoTuneXPage() {
   const router = useRouter()
@@ -81,6 +81,16 @@ export default function AutoTuneXPage() {
     setScope(newScope)
     setPage(1)
   }, [])
+
+  // `selectedIds` shadows the table's own selection, which TuningsTable
+  // rebuilds from the rows it is handed. A selection left over from a previous
+  // page/size/search/scope would stay here while vanishing from the UI, so the
+  // delete would permanently remove jobs the user can no longer see and the
+  // compare modal would receive fewer jobs than the count shown. Clear it
+  // whenever the visible set changes.
+  useEffect(() => {
+    setSelectedIds((prev) => (prev.length === 0 ? prev : []))
+  }, [page, pageSize, q, scope])
 
   const selectedJobs = items.filter((j) => selectedIds.includes(j.id))
 

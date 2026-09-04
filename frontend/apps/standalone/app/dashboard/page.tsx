@@ -21,14 +21,14 @@ import {
 } from "@carbon/react";
 import { Folder, User } from "@carbon/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { listBuilds, getBuildCount, listSpaces } from "@/api/gbserver";
+import { listBuilds, getBuildCount, listSpaces } from "@granite-build/ui-core/api/gbserver";
 import {
   getBuildStatusChart,
-} from "@/api/analytics";
-import { useChartsTheme } from "@/hooks/useTheme";
-import { BuildStatusBadge } from "@/components/BuildStatusBadge";
-import { BaseTile } from "@/components/BaseTile";
-import type { Build } from "@/types";
+} from "@granite-build/ui-core/api/analytics";
+import { useChartsTheme } from "@granite-build/ui-core/hooks/useTheme";
+import { BuildStatusBadge } from "@granite-build/ui-core/components/BuildStatusBadge";
+import { BaseTile } from "@granite-build/ui-core/components/BaseTile";
+import type { Build } from "@granite-build/ui-core/types/index";
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -151,15 +151,24 @@ function MyBuildsTile() {
 }
 // ── AutoTuneX tiles ─────────────────────────────────────────────────────
 
-// Builds tagged either "autotunex" or "model-customisation" are both treated
-// as model-customisation activity elsewhere (see BuildDetails.tsx), and the
-// gbserver tags filter is AND-only — so we fetch both and dedupe by uuid.
+// A build counts as model-customisation activity under any of these tags — the
+// same three spellings BuildDetails.tsx gates its AutoTuneX tabs on. Keep the two
+// lists in step: a tag only one of them knows about makes the tile disagree with
+// the build page.
+const MODEL_CUSTOMISATION_TAGS = [
+  "model-customization",
+  "model-customisation",
+  "autotunex",
+];
+
+// The gbserver tags filter is AND-only, so one tag per request, then dedupe by
+// uuid (a build carrying two spellings would otherwise be counted twice).
 async function fetchModelCustomisationStats() {
-  const [modelCustomization] = await Promise.all([
-    listBuilds({ tags: ["model-customization"] }),
-  ]);
+  const results = await Promise.all(
+    MODEL_CUSTOMISATION_TAGS.map((tag) => listBuilds({ tags: [tag] })),
+  );
   const byId = new Map<string, Build>();
-  for (const b of [...modelCustomization.items]) byId.set(b.uuid, b);
+  for (const r of results) for (const b of r.items) byId.set(b.uuid, b);
   const builds = Array.from(byId.values());
 
   return {
@@ -193,6 +202,7 @@ function AutoTuneXTile() {
       title="Model Customization"
       action={startTuningLink}
       isRefreshing={isRefreshing}
+      onRefresh={() => { markRefreshing(); void refetch() }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
         <StatRow label="Total tunings" value={stats?.total ?? "—"} />

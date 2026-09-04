@@ -3,8 +3,8 @@
 import * as React from "react";
 import { CopyButton, Link as CarbonLink, SkeletonText, Tag } from "@carbon/react";
 import styles from "./DetailsPanel.module.scss";
-import type { Build, BuildStatusDetail } from "@/types";
-import { BuildStatusBadge } from "@/components/BuildStatusBadge";
+import type { Build, BuildStatusDetail } from "@granite-build/ui-core/types/index";
+import { BuildStatusBadge } from "@granite-build/ui-core/components/BuildStatusBadge";
 
 
 interface DetailFieldProps {

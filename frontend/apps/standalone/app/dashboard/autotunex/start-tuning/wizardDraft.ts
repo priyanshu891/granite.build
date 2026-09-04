@@ -1,4 +1,4 @@
-import type { WizardDraft } from '@/types'
+import type { WizardDraft } from '@granite-build/ui-core/types/index'
 
 const DRAFT_KEY = 'autotunex_wizard_draft'
 const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000 // 24 hours

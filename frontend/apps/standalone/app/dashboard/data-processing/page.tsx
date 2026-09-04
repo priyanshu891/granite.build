@@ -19,9 +19,9 @@ import {
   getDPNodeCounts,
   getDPPipelineStatus,
   type DPNode,
-} from "@/api/dataProcessing";
-import { PageHeader } from "@/components/PageHeader";
-import { BaseTile } from "@/components/BaseTile";
+} from "@granite-build/ui-core/api/dataProcessing";
+import { PageHeader } from "@granite-build/ui-core/components/PageHeader";
+import { BaseTile } from "@granite-build/ui-core/components/BaseTile";
 import { PipelineDAG } from "./PipelineDAG";
 import { DatasetList } from "./DatasetList";
 import { LoadReportForm } from "./LoadReportForm";

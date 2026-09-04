@@ -1,6 +1,6 @@
 'use client'
 
-import type { BuildStatus } from '@/types'
+import type { BuildStatus } from '../types'
 
 // Carbon's shape-indicator pattern (carbondesignsystem.com/patterns/status-indicator-pattern)
 // has no ready-made icon set — implementers draw the shapes themselves. Drawn
