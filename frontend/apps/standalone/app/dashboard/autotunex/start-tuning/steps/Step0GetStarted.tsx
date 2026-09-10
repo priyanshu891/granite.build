@@ -26,7 +26,7 @@ import {
 } from '@carbon/icons-react'
 import ReactMarkdown from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
-import type { HuggingFaceModel, ModelSource, TuningGoal } from '@granite-build/ui-core/types/index'
+import type { HuggingFaceModel, ModelSource, TuningGoal } from '@granite-build/ui-core/types'
 import { GOAL_OPTIONS } from '@granite-build/ui-core/config/autotunexAlgorithms'
 import { getDefaultAlgorithmForGoal } from '@granite-build/ui-core/lib/autotunex/wizardUtils'
 import { MODEL_SOURCE_LABELS, MODEL_SOURCE_OPTIONS } from '../../modelSources'

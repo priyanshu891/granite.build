@@ -16,7 +16,7 @@ import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
 import { getJobAssets, resultArchiveUrl, resultFileUrl } from '../api/autotunex'
 import { listSpaces } from '../api/gbserver'
-import type { TuningStatus } from '../types/index'
+import type { TuningStatus } from '../types'
 
 function formatBytes(bytes: number): string {
   if (!bytes) return '0 B'

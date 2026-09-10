@@ -2,7 +2,7 @@
 
 import { getTrialLogs } from '../api/autotunex'
 import { useScrollingLogs } from '../hooks/useScrollingLogs'
-import type { TuningStatus } from '../types/index'
+import type { TuningStatus } from '../types'
 import { LogLines } from './LogLines'
 
 const ACTIVE_STATUSES = new Set<TuningStatus>(['running', 'pending'])

@@ -40,7 +40,7 @@ import type {
   TuningAsset,
   TuningForm,
   TuningJob,
-} from '../types/index'
+} from '../types'
 import axios from 'axios'
 import { autotunexApiBase } from './client'
 import { normalizeVerlRows } from '../lib/autotunex/verlNormalize'

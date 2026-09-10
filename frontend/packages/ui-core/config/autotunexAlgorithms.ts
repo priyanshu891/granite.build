@@ -1,4 +1,4 @@
-import type { AlgorithmDetail, AlgorithmOption, TuningGoal } from '../types/index'
+import type { AlgorithmDetail, AlgorithmOption, TuningGoal } from '../types'
 
 // ── Step 0 goal questionnaire ─────────────────────────────────────────────────
 

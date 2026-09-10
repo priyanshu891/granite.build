@@ -12,7 +12,7 @@ import {
   Tag,
 } from '@carbon/react'
 import { ChevronDown, ChevronRight } from '@carbon/icons-react'
-import type { Trial } from '../types/index'
+import type { Trial } from '../types'
 import { getOddOnesOut, groupCompareKeys } from './trialCompareGrouping'
 
 // ── Reference-parity helpers (ported from AutoTuneX Compare.svelte / Utils) ────

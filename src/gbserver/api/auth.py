@@ -239,11 +239,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             return response
 
-        # Allow frontend bootstrap endpoints — client needs these before it has a token
-        if path in ("/api/config", "/api/environments"):
-            response = await call_next(request)
-            return response
-
         # Read auth mode at request time (not import time) so that env vars
         # set after import (e.g. by the standalone command) are picked up.
         auth_mode = os.getenv("GBSERVER_AUTH_MODE", "github")

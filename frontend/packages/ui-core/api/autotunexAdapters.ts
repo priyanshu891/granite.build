@@ -17,7 +17,7 @@ import type {
   TuningAsset,
   TuningJob,
   TuningStatus,
-} from '../types/index'
+} from '../types'
 
 // ── Pagination ──────────────────────────────────────────────────────────────────
 

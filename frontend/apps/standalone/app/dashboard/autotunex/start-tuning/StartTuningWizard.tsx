@@ -21,7 +21,7 @@ import type {
   TuningForm,
   TuningGoal,
   WizardDraft,
-} from '@granite-build/ui-core/types/index'
+} from '@granite-build/ui-core/types'
 import {
   AUTOTUNEX_FEATURES,
   createDataset,

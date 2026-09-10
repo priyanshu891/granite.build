@@ -31,7 +31,7 @@ import {
   TableCell,
 } from '@carbon/react'
 import { Reset, Information } from '@carbon/icons-react'
-import type { ColumnMapping, ColumnMetadata, Dataset, DatasetForm, DatasetFormatType, ParsedDataRow, TuningGoal } from '@granite-build/ui-core/types/index'
+import type { ColumnMapping, ColumnMetadata, Dataset, DatasetForm, DatasetFormatType, ParsedDataRow, TuningGoal } from '@granite-build/ui-core/types'
 import { getAutotuneDatasetTypes, getDataset, getDatasets, suggestColumnMappingAI } from '@granite-build/ui-core/api/autotunex'
 import { countLinesInFileAsync, processUploadedFileAsync } from '@granite-build/ui-core/lib/autotunex/processUploadedFile'
 import {

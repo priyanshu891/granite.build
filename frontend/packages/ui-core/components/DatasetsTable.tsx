@@ -27,7 +27,7 @@ import {
 import { Add, TrashCan } from '@carbon/icons-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
-import type { Dataset } from '../types/index'
+import type { Dataset } from '../types'
 import { getDatasets, deleteDataset } from '../api/autotunex'
 import { listSpaces } from '../api/gbserver'
 import { SettingsDeleteModal } from './SettingsDeleteModal'

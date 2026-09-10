@@ -34,15 +34,14 @@ const nextConfig: NextConfig = {
   ...(!isProd && (gbserverApiUrl || autotunexApiUrl)
     ? {
         async rewrites() {
-          // trailingSlash: true means requests can arrive with a trailing slash
-          // (e.g. /api/v1/spaces/). With only a `:path*` rule, Next.js's rewrite
-          // matcher drops that trailing slash when building the destination, so
-          // the proxied request reaches gbserver as /api/v1/spaces — which then
-          // 404s (or, pre-fix on the gbserver side, 307-redirected to an
-          // absolute gbserver URL that the browser followed cross-origin into a
-          // CORS error). A dedicated `:path*/` rule preserves it, per
-          // https://nextjs.org/docs/app/api-reference/config/next-config-js/rewrites#rewriting-to-an-external-url
+          // gbserver is strict about trailing slashes (some routes require a
+          // trailing slash, e.g. /api/v1/builds/, others reject it). Preserve
+          // the client's slash verbatim: match slash-terminated paths first so
+          // :path* doesn't drop the final "/" before the query string.
           const rules: { source: string; destination: string }[] = []
+          // AutoTuneX first: /api/autotunex/* is more specific than the /api/:path*
+          // catch-all below, which would otherwise swallow it and send AutoTuneX
+          // calls to gbserver.
           if (autotunexApiUrl) {
             rules.push(
               {

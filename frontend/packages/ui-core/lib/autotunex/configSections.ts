@@ -1,4 +1,4 @@
-import type { TuningGoal } from '../../types/index'
+import type { TuningGoal } from '../../types'
 
 // Canonical tab order for advanced mode (ensures consistent ordering regardless of Object.keys order).
 export const SECTION_ORDER = [
