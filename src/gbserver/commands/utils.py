@@ -150,8 +150,9 @@ def check_and_init_for_standalone(space_dir: Optional[str] = None) -> None:
        the user can override them).
     2. Reload ``gbserver.types.constants`` so values captured at import time pick
        up the just-applied defaults.
-    3. Migrate any legacy SQLite db before the storage factory opens it, then
-       install the SQLite storage factory.
+    3. Install the storage factory: SQLite by default (migrating any legacy
+       SQLite db first), or the SQL/Postgres factory when
+       GBSERVER_METADATA_STORAGE=sql is set.
     4. Install the standalone space access manager (bypasses Lakehouse auth).
     5. If ``space_dir`` is given, register the standalone space under its current
        name and legacy aliases (only the standalone *server* knows the space dir;
@@ -189,13 +190,22 @@ def check_and_init_for_standalone(space_dir: Optional[str] = None) -> None:
 
     importlib.reload(gbserver.types.constants)
 
-    # 3. Force SQLite storage — standalone always uses SQLite.
-    from gbserver.storage.sqlite.storage_factory import SqliteStorageFactory
+    # 3. Install the storage factory. Standalone defaults to SQLite, but honors an
+    #    explicit GBSERVER_METADATA_STORAGE=sql override (plus the GBSERVER_SQL_*
+    #    connection vars) so a local Postgres can back standalone.
+    from gbserver.types.constants import ENV_VAR_METADATA_STORAGE
 
-    # Migrate any legacy ~/.llmb db into GB_HOME_DIR before the factory opens it.
-    _migrate_legacy_sqlite_db()
+    if os.environ.get(ENV_VAR_METADATA_STORAGE, "sqlite").lower() == "sql":
+        from gbserver.storage.sql.storage_factory import SQLStorageFactory
 
-    singleton_storage.set_storage_factory(SqliteStorageFactory())
+        singleton_storage.set_storage_factory(SQLStorageFactory())
+    else:
+        from gbserver.storage.sqlite.storage_factory import SqliteStorageFactory
+
+        # Migrate any legacy ~/.llmb db into GB_HOME_DIR before the factory opens it.
+        _migrate_legacy_sqlite_db()
+
+        singleton_storage.set_storage_factory(SqliteStorageFactory())
 
     # 4. Use standalone space access manager — bypasses Lakehouse authorization.
     from gbserver.spaces.space_access_manager import set_space_access_manager
