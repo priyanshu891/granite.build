@@ -30,6 +30,11 @@ type Scope = 'own' | 'all'
 
 const ACTIVE_STATUSES = new Set(['running', 'pending'])
 
+// Clearance from the trials table above. Shared by every state this component
+// can render — charts, loader, or notification — so a run with no step metrics
+// doesn't butt its notification against the table's last row.
+const BLOCK_SPACING: CSSProperties = { marginTop: '2rem' }
+
 function formatSeconds(seconds: number): string {
   const total = Math.round(seconds)
   const hours = Math.floor(total / 3600)
@@ -197,7 +202,7 @@ export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, scop
       : 'full data set'
   }, [trainingConfig])
 
-  if (isLoading) return <InlineLoading description="Loading metrics…" />
+  if (isLoading) return <InlineLoading description="Loading metrics…" style={BLOCK_SPACING} />
 
   if (isError) {
     return (
@@ -207,6 +212,7 @@ export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, scop
         subtitle={String(error)}
         lowContrast
         hideCloseButton
+        style={BLOCK_SPACING}
       />
     )
   }
@@ -223,6 +229,7 @@ export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, scop
         }
         lowContrast
         hideCloseButton
+        style={BLOCK_SPACING}
       />
     )
   }
@@ -230,7 +237,7 @@ export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, scop
   const sharedSpec = { theme, colorScale, xTitle, height: '260px' } as const
 
   return (
-    <div style={{ marginTop: '2rem' }}>
+    <div style={BLOCK_SPACING}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'flex-end', marginBottom: '0.5rem' }}>
         <div style={{ minWidth: '11rem' }}>
           <FormLabel style={{ marginBottom: '0.375rem' }}>X axis</FormLabel>
