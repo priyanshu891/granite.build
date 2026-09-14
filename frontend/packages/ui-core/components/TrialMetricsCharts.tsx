@@ -19,7 +19,7 @@ import { metricChartOptions } from './metricChartOptions'
 import {
   METRIC_PALETTE,
   derivePhases,
-  emaChartRows,
+  runOrigins,
   splitMetricRows,
   toChartRows,
 } from './trialMetrics'
@@ -30,10 +30,14 @@ type Scope = 'own' | 'all'
 
 const ACTIVE_STATUSES = new Set(['running', 'pending'])
 
-// Clearance from the trials table above. Shared by every state this component
-// can render — charts, loader, or notification — so a run with no step metrics
-// doesn't butt its notification against the table's last row.
-const BLOCK_SPACING: CSSProperties = { marginTop: '2rem' }
+// The x axes this section offers, in switcher order.
+const X_KEYS: readonly MetricXKey[] = ['epoch', 'elapsed', 'global_step']
+
+const X_TITLES: Record<MetricXKey, string> = {
+  epoch: 'Epoch',
+  elapsed: 'Minutes elapsed',
+  global_step: 'Global step',
+}
 
 function formatSeconds(seconds: number): string {
   const total = Math.round(seconds)
@@ -112,7 +116,6 @@ interface Props {
 export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, scope }: Props) {
   const theme = useChartsTheme()
   const [xKey, setXKey] = useState<MetricXKey>('epoch')
-  const [smooth, setSmooth] = useState(true)
 
   const isActive = ACTIVE_STATUSES.has(job.status)
   const {
@@ -131,28 +134,28 @@ export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, scop
   const search = useMemo(() => splitMetricRows(phases.search), [phases.search])
   const final = useMemo(() => splitMetricRows(phases.final), [phases.final])
 
-  const xTitle = xKey === 'epoch' ? 'Epoch' : 'Global step'
+  const xTitle = X_TITLES[xKey]
+
+  // Origins for the `elapsed` axis, taken from each phase's whole row set rather
+  // than from the split series a chart happens to draw — see `runOrigins`.
+  const searchOrigins = useMemo(() => runOrigins(phases.search), [phases.search])
+  const finalOrigins = useMemo(() => runOrigins(phases.final), [phases.final])
+
   const searchLoss = useMemo(
-    () => {
-      const raw = toChartRows(search.trainSteps, xKey, (r) => r.loss)
-      return smooth ? emaChartRows(raw) : raw
-    },
-    [search.trainSteps, xKey, smooth]
+    () => toChartRows(search.trainSteps, xKey, (r) => r.loss, searchOrigins),
+    [search.trainSteps, xKey, searchOrigins]
   )
   const searchEval = useMemo(
-    () => toChartRows(search.evals, xKey, (r) => r.extra?.eval_loss),
-    [search.evals, xKey]
+    () => toChartRows(search.evals, xKey, (r) => r.extra?.eval_loss, searchOrigins),
+    [search.evals, xKey, searchOrigins]
   )
   const searchLr = useMemo(
-    () => toChartRows(search.trainSteps, xKey, (r) => r.learning_rate),
-    [search.trainSteps, xKey]
+    () => toChartRows(search.trainSteps, xKey, (r) => r.learning_rate, searchOrigins),
+    [search.trainSteps, xKey, searchOrigins]
   )
   const searchGrad = useMemo(
-    () => {
-      const raw = toChartRows(search.trainSteps, xKey, (r) => r.grad_norm)
-      return smooth ? emaChartRows(raw) : raw
-    },
-    [search.trainSteps, xKey, smooth]
+    () => toChartRows(search.trainSteps, xKey, (r) => r.grad_norm, searchOrigins),
+    [search.trainSteps, xKey, searchOrigins]
   )
 
   // The final run is one run, so it gets one hue family rather than a slot from
@@ -162,17 +165,16 @@ export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, scop
   const FINAL_EVAL = 'Eval loss'
   const finalScale = { [FINAL_TRAIN]: palette[0], [FINAL_EVAL]: palette[2] }
   const finalRows = useMemo(() => {
-    const rawTrain = toChartRows(final.trainSteps, xKey, (r) => r.loss)
-    const train = (smooth ? emaChartRows(rawTrain) : rawTrain).map((r) => ({
+    const train = toChartRows(final.trainSteps, xKey, (r) => r.loss, finalOrigins).map((r) => ({
       ...r,
       group: FINAL_TRAIN,
     }))
-    const evals = toChartRows(final.evals, xKey, (r) => r.extra?.eval_loss).map((r) => ({
+    const evals = toChartRows(final.evals, xKey, (r) => r.extra?.eval_loss, finalOrigins).map((r) => ({
       ...r,
       group: FINAL_EVAL,
     }))
     return [...train, ...evals]
-  }, [final.trainSteps, final.evals, xKey, smooth])
+  }, [final.trainSteps, final.evals, xKey, finalOrigins])
 
   const finalSummary = final.summaries[0]?.extra
   const bestFinalEval = useMemo(() => {
@@ -202,7 +204,7 @@ export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, scop
       : 'full data set'
   }, [trainingConfig])
 
-  if (isLoading) return <InlineLoading description="Loading metrics…" style={BLOCK_SPACING} />
+  if (isLoading) return <InlineLoading description="Loading metrics…" />
 
   if (isError) {
     return (
@@ -212,7 +214,6 @@ export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, scop
         subtitle={String(error)}
         lowContrast
         hideCloseButton
-        style={BLOCK_SPACING}
       />
     )
   }
@@ -229,7 +230,6 @@ export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, scop
         }
         lowContrast
         hideCloseButton
-        style={BLOCK_SPACING}
       />
     )
   }
@@ -237,31 +237,26 @@ export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, scop
   const sharedSpec = { theme, colorScale, xTitle, height: '260px' } as const
 
   return (
-    <div style={BLOCK_SPACING}>
+    <div style={{ marginTop: '2rem' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'flex-end', marginBottom: '0.5rem' }}>
-        <div style={{ minWidth: '11rem' }}>
+        {/* Carbon gives the switcher `inline-size: 100%`, so this minWidth is the
+            only thing setting its width — three options need 16rem to keep
+            "Realtime" from truncating. */}
+        <div style={{ minWidth: '16rem' }}>
           <FormLabel style={{ marginBottom: '0.375rem' }}>X axis</FormLabel>
           {/* Epoch by default: trials differ in batch size, so the same work takes
               a different number of steps and a step axis crushes the shorter runs
-              into the left of the plot. */}
+              into the left of the plot. Realtime answers a different question —
+              how much wall-clock time a config costs — and reads per run, so the
+              curves still start together instead of spreading across the clock. */}
           <ContentSwitcher
             size="sm"
-            selectedIndex={xKey === 'epoch' ? 0 : 1}
-            onChange={({ index }) => setXKey(index === 0 ? 'epoch' : 'global_step')}
+            selectedIndex={X_KEYS.indexOf(xKey)}
+            onChange={({ index }) => setXKey(X_KEYS[index ?? 0])}
           >
             <Switch name="epoch" text="Epoch" />
+            <Switch name="elapsed" text="Realtime" />
             <Switch name="step" text="Step" />
-          </ContentSwitcher>
-        </div>
-        <div style={{ minWidth: '11rem' }}>
-          <FormLabel style={{ marginBottom: '0.375rem' }}>Smoothing</FormLabel>
-          <ContentSwitcher
-            size="sm"
-            selectedIndex={smooth ? 0 : 1}
-            onChange={({ index }) => setSmooth(index === 0)}
-          >
-            <Switch name="ema" text="EMA" />
-            <Switch name="raw" text="Raw" />
           </ContentSwitcher>
         </div>
       </div>
@@ -323,7 +318,7 @@ export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, scop
             </div>
           )}
           <Chart
-            title={`Loss${smooth ? ' (train smoothed)' : ''}`}
+            title="Loss"
             rows={finalRows}
             options={metricChartOptions({
               theme,
@@ -357,7 +352,7 @@ export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, scop
               width instead of half of it beside an empty column. */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'flex-start' }}>
             <Chart
-              title={`Training loss${smooth ? ' (smoothed)' : ''}`}
+              title="Training loss"
               rows={searchLoss}
               options={metricChartOptions({ ...sharedSpec, yTitle: 'Loss' })}
               style={{ flex: '1 1 24rem', minWidth: 0 }}
@@ -373,21 +368,28 @@ export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, scop
           <div style={{ marginTop: '1rem' }}>
             <Accordion>
               <AccordionItem title="Diagnostics — learning rate and gradient norm">
-              <Chart
-                title="Learning rate"
-                rows={searchLr}
-                options={metricChartOptions({
-                  ...sharedSpec,
-                  yTitle: 'Learning rate',
-                  height: '220px',
-                  logY: true,
-                })}
-              />
-              <Chart
-                title={`Gradient norm${smooth ? ' (smoothed)' : ''}`}
-                rows={searchGrad}
-                options={metricChartOptions({ ...sharedSpec, yTitle: 'Grad norm', height: '220px' })}
-              />
+                {/* Paired like the loss charts above — see that comment for why
+                    `flexWrap` and `minWidth: 0` are both load-bearing, and why
+                    the Charts are the flex items themselves. */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'flex-start' }}>
+                  <Chart
+                    title="Learning rate"
+                    rows={searchLr}
+                    options={metricChartOptions({
+                      ...sharedSpec,
+                      yTitle: 'Learning rate',
+                      height: '220px',
+                      logY: true,
+                    })}
+                    style={{ flex: '1 1 24rem', minWidth: 0 }}
+                  />
+                  <Chart
+                    title="Gradient norm"
+                    rows={searchGrad}
+                    options={metricChartOptions({ ...sharedSpec, yTitle: 'Grad norm', height: '220px' })}
+                    style={{ flex: '1 1 24rem', minWidth: 0 }}
+                  />
+                </div>
               </AccordionItem>
             </Accordion>
           </div>
