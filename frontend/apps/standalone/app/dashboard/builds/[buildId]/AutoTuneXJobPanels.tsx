@@ -4,8 +4,8 @@ import { SkeletonText, InlineNotification } from '@carbon/react'
 import { useQuery } from '@tanstack/react-query'
 import { getJobByBuildId } from '@granite-build/ui-core/api/autotunex'
 import { listSpaces } from '@granite-build/ui-core/api/gbserver'
-import { TrialsTable } from '@granite-build/ui-core/components/TrialsTable'
-import { TuningLogViewer } from '@granite-build/ui-core/components/TuningLogViewer'
+import { TrialsTable } from '@granite-build/ui-core/components/autotunex/trials/TrialsTable'
+import { TuningLogViewer } from '@granite-build/ui-core/components/autotunex/tunings/TuningLogViewer'
 
 /**
  * Trials & Logs for the AutoTuneX tuning job linked to a build, mirroring the
