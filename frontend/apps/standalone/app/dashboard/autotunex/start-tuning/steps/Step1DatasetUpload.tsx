@@ -23,17 +23,12 @@ import {
   TabPanels,
   TabPanel,
   Tooltip,
-  Table,
-  TableHead,
-  TableRow,
-  TableHeader,
-  TableBody,
-  TableCell,
 } from '@carbon/react'
 import { Reset, Information } from '@carbon/icons-react'
 import type { ColumnMapping, ColumnMetadata, Dataset, DatasetForm, DatasetFormatType, ParsedDataRow, TuningGoal } from '@granite-build/ui-core/types'
 import { getAutotuneDatasetTypes, getDataset, getDatasets, suggestColumnMappingAI } from '@granite-build/ui-core/api/autotunex'
 import { countLinesInFileAsync, processUploadedFileAsync } from '@granite-build/ui-core/lib/autotunex/processUploadedFile'
+import { PreviewTable } from '@granite-build/ui-core/components/autotunex/shared/PreviewTable'
 import {
   applyColumnMapping,
   detectDatasetFormat,
@@ -77,31 +72,6 @@ function buildPreviewData(data: ParsedDataRow[]): { headers: PreviewHeader[]; ro
     return processedRow
   })
   return { headers, rows }
-}
-
-function PreviewTable({ headers, rows }: { headers: PreviewHeader[]; rows: Record<string, any>[] }) {
-  return (
-    <div style={{ overflowX: 'auto' }}>
-      <Table size="sm">
-        <TableHead>
-          <TableRow>
-            {headers.map((h) => (
-              <TableHeader key={h.key}>{h.header}</TableHeader>
-            ))}
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.id}>
-              {headers.map((h) => (
-                <TableCell key={h.key}>{row[h.key]}</TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  )
 }
 
 function InfoTooltip({ label }: { label: string }) {
@@ -885,10 +855,10 @@ export function Step1DatasetUpload({
                   </TabList>
                   <TabPanels>
                     <TabPanel style={{ padding: '0.5rem 0' }}>
-                      <PreviewTable headers={previewHeaders} rows={previewRows} />
+                      <PreviewTable headers={previewHeaders} rows={previewRows} maxRows={15} />
                     </TabPanel>
                     <TabPanel style={{ padding: '0.5rem 0' }}>
-                      <PreviewTable headers={valPreviewHeaders} rows={valPreviewRows} />
+                      <PreviewTable headers={valPreviewHeaders} rows={valPreviewRows} maxRows={15} />
                     </TabPanel>
                   </TabPanels>
                 </Tabs>
@@ -900,7 +870,7 @@ export function Step1DatasetUpload({
                       {previewRows.length} of {totalRecords.toLocaleString()} records
                     </span>
                   </div>
-                  <PreviewTable headers={previewHeaders} rows={previewRows} />
+                  <PreviewTable headers={previewHeaders} rows={previewRows} maxRows={15} />
                 </>
               )}
             </Tile>
