@@ -121,6 +121,20 @@ export function TrialsTable({ job }: Props) {
     return trialColorScale(ordered, bestId, theme)
   }, [trials, bestId, theme])
 
+  // Columns for the hyperparameters the tuner actually searched — see
+  // searchedHyperparams. Empty for a job whose trials carry no tuner_flags, in which
+  // case the table renders exactly as it did before this feature.
+  const hyperparamKeys = useMemo(() => searchedHyperparams(trials), [trials])
+  const tableHeaders = useMemo(
+    () => [...BASE_HEADERS, ...hyperparamKeys.map((key) => ({ key, header: hyperparamColumnLabel(key) }))],
+    [hyperparamKeys]
+  )
+
+  // The cell render and the toolbar filter must agree, or search matches text the
+  // cells do not show. Both go through this.
+  const cellText = (key: string, value: unknown) =>
+    hyperparamKeys.includes(key) ? formatHyperparamValue(value) : formatCell(key, value)
+
   if (isLoading) {
     return <InlineLoading description="Loading trials…" />
   }
@@ -214,19 +228,6 @@ export function TrialsTable({ job }: Props) {
   // selection across a remount without contesting ownership of it afterwards.
   // That is what lets Back keep the selection: the compare view unmounts this
   // table, so returning mounts a fresh one that would come up unticked.
-  // Columns for the hyperparameters the tuner actually searched — see
-  // searchedHyperparams. Empty for a job whose trials carry no tuner_flags, in which
-  // case the table renders exactly as it did before this feature.
-  const hyperparamKeys = useMemo(() => searchedHyperparams(trials), [trials])
-  const tableHeaders = useMemo(
-    () => [...BASE_HEADERS, ...hyperparamKeys.map((key) => ({ key, header: hyperparamColumnLabel(key) }))],
-    [hyperparamKeys]
-  )
-
-  // The cell render and the toolbar filter must agree, or search matches text the
-  // cells do not show. Both go through this.
-  const cellText = (key: string, value: unknown) =>
-    hyperparamKeys.includes(key) ? formatHyperparamValue(value) : formatCell(key, value)
 
   const rows = trials
     .map((t) => ({
