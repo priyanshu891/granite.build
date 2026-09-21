@@ -50,9 +50,8 @@ import type { JobDetail, Trial } from '../../../types'
 // Hyperparameter columns are appended to these at render time. Appended, not
 // inserted: cause-then-effect would read more naturally, but on a wide sweep it
 // pushes Loss and Total time off the right edge — losing the comparison the columns
-// exist for. These five keep their positions and the rest scroll.
+// exist for. These four keep their positions and the rest scroll.
 const BASE_HEADERS = [
-  { key: 'created_at', header: 'Created on' },
   { key: 'id', header: 'Trial id' },
   { key: 'status', header: 'Status' },
   { key: 'loss', header: 'Loss' },
@@ -233,7 +232,6 @@ export function TrialsTable({ job }: Props) {
   const rows = trials
     .map((t) => ({
       id: t.id,
-      created_at: t.created_at,
       status: t.status,
       // Shared with Compare and bestTrialId so the same trials cannot be ordered two
       // different ways -- see primaryMetric.
