@@ -231,3 +231,84 @@ class TestReferenceBuilds:
         assert "autotune-config" in step["config"]
         assert cfg_path in step["config"]["custom_code_config"]["start_command"]
         assert "--config_file " + cfg_path in step["config"]["custom_code_config"]["start_command"]
+
+
+def _ds(tmp_path, *names):
+    ds = tmp_path / "ds"
+    ds.mkdir(exist_ok=True)
+    for n in names:
+        (ds / n).write_text("")
+    return ds
+
+
+class TestResolveSplit:
+    @pytest.mark.parametrize("ext", [".parquet", ".jsonl", ".json", ".csv"])
+    def test_resolves_each_supported_format(self, tmp_path, ext):
+        mod = _load_run_module()
+        ds = _ds(tmp_path, "finance_train" + ext)
+        assert mod.resolve_split(str(ds), None, "_train") == str(ds / ("finance_train" + ext))
+
+    def test_parquet_wins_when_all_formats_present(self, tmp_path):
+        mod = _load_run_module()
+        ds = _ds(tmp_path, "f_train.parquet", "f_train.jsonl", "f_train.json", "f_train.csv")
+        assert mod.resolve_split(str(ds), None, "_train").endswith("f_train.parquet")
+
+    def test_jsonl_wins_over_json_and_csv(self, tmp_path):
+        mod = _load_run_module()
+        ds = _ds(tmp_path, "f_train.jsonl", "f_train.json", "f_train.csv")
+        assert mod.resolve_split(str(ds), None, "_train").endswith("f_train.jsonl")
+
+    def test_json_wins_over_csv(self, tmp_path):
+        mod = _load_run_module()
+        ds = _ds(tmp_path, "f_train.json", "f_train.csv")
+        assert mod.resolve_split(str(ds), None, "_train").endswith("f_train.json")
+
+    def test_validation_suffix_resolves_independently(self, tmp_path):
+        mod = _load_run_module()
+        ds = _ds(tmp_path, "f_train.parquet", "f_validation.csv")
+        assert mod.resolve_split(str(ds), None, "_validation").endswith("f_validation.csv")
+
+    def test_absolute_override_returned_as_is(self, tmp_path):
+        mod = _load_run_module()
+        ds = _ds(tmp_path, "f_train.parquet")
+        other = tmp_path / "elsewhere.parquet"
+        other.write_text("")
+        assert mod.resolve_split(str(ds), str(other), "_train") == str(other)
+
+    def test_relative_override_joined_onto_dataset_dir(self, tmp_path):
+        mod = _load_run_module()
+        ds = _ds(tmp_path, "f_train.parquet", "custom.csv")
+        assert mod.resolve_split(str(ds), "custom.csv", "_train") == str(ds / "custom.csv")
+
+    def test_missing_override_exits_naming_the_path(self, tmp_path):
+        mod = _load_run_module()
+        ds = _ds(tmp_path, "f_train.parquet")
+        with pytest.raises(SystemExit) as exc:
+            mod.resolve_split(str(ds), "typo.jsonl", "_train")
+        assert "typo.jsonl" in str(exc.value)
+
+    def test_no_match_in_any_format_exits_naming_extensions(self, tmp_path):
+        mod = _load_run_module()
+        ds = _ds(tmp_path, "readme.txt")
+        with pytest.raises(SystemExit) as exc:
+            mod.resolve_split(str(ds), None, "_train")
+        msg = str(exc.value)
+        for ext in (".parquet", ".jsonl", ".json", ".csv"):
+            assert ext in msg, ext
+
+    def test_same_format_duplicates_take_alphabetically_first(self, tmp_path):
+        mod = _load_run_module()
+        ds = _ds(tmp_path, "beta_train.parquet", "alpha_train.parquet")
+        assert mod.resolve_split(str(ds), None, "_train").endswith("alpha_train.parquet")
+
+    def test_build_argv_resolves_a_parquet_only_dataset(self, tmp_path):
+        mod = _load_run_module()
+        env = _base_env(tmp_path)
+        ds = Path(env["LLMB_BASH_INPUT_DATASET_FILES"])
+        for f in ds.iterdir():
+            f.unlink()
+        (ds / "wish_train.parquet").write_text("")
+        (ds / "wish_validation.parquet").write_text("")
+        argv = mod.build_argv(env)
+        assert argv[argv.index("--train_file") + 1].endswith("wish_train.parquet")
+        assert argv[argv.index("--validation_file") + 1].endswith("wish_validation.parquet")
