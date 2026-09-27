@@ -13,7 +13,6 @@ import type {
   DatasetForm,
   DatasetFormatType,
   LaunchPhase,
-  ModelSource,
   ParsedDataRow,
   PendingConfigData,
   PendingConfigUpdate,
@@ -21,6 +20,7 @@ import type {
   TuningForm,
   TuningGoal,
   WizardDraft,
+  WizardModelSource,
 } from '@granite-build/ui-core/types'
 import {
   AUTOTUNEX_FEATURES,
@@ -47,6 +47,7 @@ import {
   HF_IMPORT_READY_TIMEOUT_MS,
 } from '@granite-build/ui-core/lib/autotunex/datasetReady'
 import { ALGORITHM_DETAILS, ALGORITHM_OPTIONS } from '@granite-build/ui-core/config/autotunexAlgorithms'
+import { toWireModelSource } from '../modelSources'
 import { clearDraft, loadDraft, resolveDraft, saveDraft } from './wizardDraft'
 import { Step0GetStarted } from './steps/Step0GetStarted'
 import { Step1DatasetUpload } from './steps/Step1DatasetUpload'
@@ -134,7 +135,7 @@ export function StartTuningWizard() {
   const [selectedGoal, setSelectedGoal] = useState<TuningGoal | null>('sft')
   const [selectedAlgorithm, setSelectedAlgorithm] = useState('lora')
   const [selectedModel, setSelectedModel] = useState('ibm-granite/granite-4.0-h-micro')
-  const [modelSource, setModelSource] = useState<ModelSource>('huggingface')
+  const [modelSource, setModelSource] = useState<WizardModelSource>('huggingface')
   const [autotuneEnabled, setAutotuneEnabled] = useState(true)
 
   // Step 1: Dataset
@@ -799,7 +800,7 @@ export function StartTuningWizard() {
         config_id: finalConfigId!,
         dataset_id: launchDatasetId,
         model: selectedModel.trim(),
-        model_source: modelSource,
+        model_source: toWireModelSource(modelSource),
         experiment_name: experimentName.trim().replace(/\s+/g, '_'),
         autotune: autotuneEnabled,
         // No seed control exists in this wizard's UI — use the API default.
