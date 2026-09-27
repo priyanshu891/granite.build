@@ -37,6 +37,7 @@ import type {
   Resources,
   RewardFunctionValidationResult,
   Trial,
+  TunedModel,
   TuningAsset,
   TuningForm,
   TuningJob,
@@ -50,6 +51,7 @@ import {
   adaptJob,
   adaptSuggestion,
   adaptTrial,
+  adaptTunedModel,
   collectKeysetPages,
   collectPages,
   pageQuery,
@@ -60,7 +62,7 @@ import {
 // keeps working for tests/consumers — the implementations live in
 // `@/api/autotunexAdapters` purely so that leaf module stays free of
 // non-type-only imports (see its header comment for why that matters).
-export { adaptAsset, adaptConfiguration, adaptJob, adaptSuggestion, adaptTrial, collectKeysetPages, collectPages, pageQuery, toListResult }
+export { adaptAsset, adaptConfiguration, adaptJob, adaptSuggestion, adaptTrial, adaptTunedModel, collectKeysetPages, collectPages, pageQuery, toListResult }
 
 const client = axios.create({ baseURL: autotunexApiBase('') })
 
@@ -92,6 +94,15 @@ export async function getHFModelCard(modelId: string): Promise<string> {
     responseType: 'text',
   })
   return data
+}
+
+// ── Tuned models ──────────────────────────────────────────────────────────────
+// The caller's own completed, full-weight tuning outputs (HF repos in an
+// allowlisted namespace) that a new job can tune further.
+
+export async function getTunedModels(p: ListParams): Promise<ListResult<TunedModel>> {
+  const { data } = await client.get('/jobs/tuned-models', { params: pageQuery(p) })
+  return toListResult(data, adaptTunedModel)
 }
 
 // ── Caller identity ───────────────────────────────────────────────────────────
