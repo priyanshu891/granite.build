@@ -28,13 +28,19 @@ import {
 import ReactMarkdown from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 import { isAxiosError } from 'axios'
-import type { ModelSource, TuningGoal } from '@granite-build/ui-core/types'
+import type { TunedModel, TuningGoal, WizardModelSource } from '@granite-build/ui-core/types'
 import { GOAL_OPTIONS } from '@granite-build/ui-core/config/autotunexAlgorithms'
 import { getDefaultAlgorithmForGoal } from '@granite-build/ui-core/lib/autotunex/wizardUtils'
 import { stripFrontMatter } from '@granite-build/ui-core/lib/autotunex/modelCard'
 import { MODEL_SOURCE_LABELS, MODEL_SOURCE_OPTIONS } from '../../modelSources'
-import { getHFModelCard, getHFModels } from '@granite-build/ui-core/api/autotunex'
+import { getHFModelCard, getHFModels, getJobAssets, getTunedModels } from '@granite-build/ui-core/api/autotunex'
 import { resolveModelComboItem, type ModelSuggestion } from '../modelComboSelection'
+import {
+  checkTunedModelAssets,
+  tunedModelCheckFailure,
+  tunedModelLabel,
+  type TunedModelCheck,
+} from '../tunedModelSelection'
 import styles from './Step0GetStarted.module.scss'
 import layoutStyles from '@granite-build/ui-core/components/autotunex/shared/layout.module.scss'
 
@@ -63,8 +69,8 @@ interface Step0GetStartedProps {
   setSelectedGoal: (v: TuningGoal) => void
   selectedModel: string
   setSelectedModel: (v: string) => void
-  modelSource: ModelSource
-  setModelSource: (v: ModelSource) => void
+  modelSource: WizardModelSource
+  setModelSource: (v: WizardModelSource) => void
   prefetchedModels: string[] | null
 }
 
@@ -96,6 +102,21 @@ export function Step0GetStarted({
   // Same purpose as suggestTokenRef, for the model-card fetch.
   const modelCardTokenRef = useRef(0)
   const previousModelSource = useRef(modelSource)
+
+  // "My tuned models": the list (with its loading/error status and the last
+  // search term), the item the user picked, and its loadability check.
+  // `selectedModel` is cleared for a fresh pick until its check passes, and
+  // kept during a remount re-check unless that check fails -- either way
+  // it's what keeps Next/Launch disabled (isModelSelectionValid) without any
+  // new wizard state.
+  const [tunedModels, setTunedModels] = useState<TunedModel[]>([])
+  const [tunedListStatus, setTunedListStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [tunedQuery, setTunedQuery] = useState('')
+  const [pickedTuned, setPickedTuned] = useState<TunedModel | null>(null)
+  const [tunedCheck, setTunedCheck] = useState<'idle' | 'checking' | TunedModelCheck>('idle')
+  // Same purpose as suggestTokenRef, for the tuned-model list and the pick check.
+  const tunedListTokenRef = useRef(0)
+  const tunedCheckTokenRef = useRef(0)
 
   // Must not be derived from `suggestions` — see resolveModelComboItem.
   const comboSelectedItem = useMemo(() => resolveModelComboItem(selectedModel), [selectedModel])
@@ -150,10 +171,17 @@ export function Step0GetStarted({
     }
   }
 
-  // Reset dependent state when the model source changes (HuggingFace <-> Local)
+  // Reset dependent state when the model source changes
   useEffect(() => {
     if (modelSource === previousModelSource.current) return
     previousModelSource.current = modelSource
+    // A pick check or list fetch already in flight (handleTunedModelChange's
+    // getJobAssets call, or the mount effect's restore lookup / fetchTunedModels)
+    // must not land after the source has moved on — in either direction, away
+    // from or back to 'tuned_model' — or it overwrites the state this effect is
+    // about to reset.
+    ++tunedCheckTokenRef.current
+    ++tunedListTokenRef.current
 
     if (modelSource === 'custom_path') {
       // No default and nothing to search — the user types a path. Clearing the
@@ -162,6 +190,14 @@ export function Step0GetStarted({
       setSuggestions([])
       setModelCard(null)
       setModelCardStatus('idle')
+    } else if (modelSource === 'tuned_model') {
+      // Nothing is selected until a pick passes its check (see handleTunedModelChange).
+      setSelectedModel('')
+      setPickedTuned(null)
+      setTunedCheck('idle')
+      setModelCard(null)
+      setModelCardStatus('idle')
+      fetchTunedModels('')
     } else {
       setSelectedModel('ibm-granite/granite-4.0-h-micro')
       setSuggestions(models.map((id) => ({ id, text: id })))
@@ -173,6 +209,34 @@ export function Step0GetStarted({
   // Initial mount: use prefetched models if available, else fetch + a 5s readiness fallback
   useEffect(() => {
     let alive = true
+
+    // Step 0 remounts on Back, and a draft can restore onto "My tuned models";
+    // either way `pickedTuned` is gone but `selectedModel` may be set. Find the
+    // item again and re-run its check (not persisted), or clear the model.
+    if (modelSource === 'tuned_model') {
+      const restored = selectedModel
+      const token = ++tunedListTokenRef.current
+      setTunedListStatus('loading')
+      ;(async () => {
+        try {
+          const { items } = await getTunedModels({
+            page: 1,
+            pageSize: 20,
+            q: restored.split('/').pop() || undefined,
+          })
+          if (!alive || tunedListTokenRef.current !== token) return
+          setTunedModels(items)
+          setTunedListStatus('ready')
+          const match = items.find((m) => m.repo_id === restored)
+          if (match) handleTunedModelChange(match, { keepSelection: true })
+          else setSelectedModel('')
+        } catch {
+          if (!alive || tunedListTokenRef.current !== token) return
+          setTunedListStatus('error')
+          setSelectedModel('')
+        }
+      })()
+    }
 
     function withSelectedModel(base: ModelSuggestion[]): ModelSuggestion[] {
       return selectedModel && !base.some((s) => s.id === selectedModel)
@@ -233,6 +297,54 @@ export function Step0GetStarted({
     }
     setSelectedModel(selectedItem.id)
     fetchModelCard(selectedItem.id)
+  }
+
+  async function fetchTunedModels(term: string) {
+    const token = ++tunedListTokenRef.current
+    setTunedQuery(term.trim())
+    setTunedListStatus('loading')
+    try {
+      const { items } = await getTunedModels({ page: 1, pageSize: 20, q: term.trim() || undefined })
+      if (tunedListTokenRef.current !== token) return
+      setTunedModels(items)
+      setTunedListStatus('ready')
+    } catch {
+      if (tunedListTokenRef.current !== token) return
+      setTunedModels([])
+      setTunedListStatus('error')
+    }
+  }
+
+  function handleTunedInputChange(inputValue: string) {
+    // Carbon echoes the picked item's label into the input; searching for it
+    // would empty the list under the selection.
+    if (pickedTuned && inputValue === tunedModelLabel(pickedTuned)) return
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => fetchTunedModels(inputValue), 500)
+  }
+
+  async function handleTunedModelChange(
+    item: TunedModel | null | undefined,
+    options: { keepSelection?: boolean } = {}
+  ) {
+    const token = ++tunedCheckTokenRef.current
+    if (!options.keepSelection) setSelectedModel('')
+    setPickedTuned(item ?? null)
+    if (!item) {
+      setTunedCheck('idle')
+      return
+    }
+    setTunedCheck('checking')
+    try {
+      const result = checkTunedModelAssets(await getJobAssets(item.job_id))
+      if (tunedCheckTokenRef.current !== token) return
+      setTunedCheck(result)
+      setSelectedModel(result.ok ? item.repo_id : '')
+    } catch (err) {
+      if (tunedCheckTokenRef.current !== token) return
+      setTunedCheck(tunedModelCheckFailure(isAxiosError(err) ? err.response?.status : undefined))
+      setSelectedModel('')
+    }
   }
 
   return (
@@ -309,7 +421,7 @@ export function Step0GetStarted({
                   legendText="Model source"
                   name="model_source_wizard"
                   valueSelected={modelSource}
-                  onChange={(value) => setModelSource(value as ModelSource)}
+                  onChange={(value) => setModelSource(value as WizardModelSource)}
                 >
                   {MODEL_SOURCE_OPTIONS.map((o) => (
                     <RadioButton key={o.value} labelText={MODEL_SOURCE_LABELS[o.value]} value={o.value} id={o.id}  disabled={o.disabled}/>
@@ -331,6 +443,69 @@ export function Step0GetStarted({
                         invalid={selectedModel.trim() !== '' && !selectedModel.trim().startsWith('/')}
                         invalidText="Must be an absolute path"
                       />
+                    ) : modelSource === 'tuned_model' ? (
+                      <>
+                        <ComboBox
+                          id="tuned-model-combo"
+                          titleText="Tuned model"
+                          placeholder="Search your completed tunings..."
+                          helperText={
+                            tunedListStatus === 'ready' && tunedModels.length === 0 && !pickedTuned
+                              ? tunedQuery
+                                ? 'No tuned models match your search.'
+                                : 'No completed full-weight tuned models yet.'
+                              : undefined
+                          }
+                          items={tunedModels}
+                          itemToString={(item) => (item ? tunedModelLabel(item) : '')}
+                          selectedItem={pickedTuned}
+                          shouldFilterItem={() => true}
+                          onInputChange={handleTunedInputChange}
+                          onChange={({ selectedItem }) => {
+                            // Carbon fires onChange itself when `selectedItem` changes
+                            // programmatically (e.g. the restore lookup setting
+                            // `pickedTuned`) -- ignore that echo for the same item
+                            // rather than re-entering handleTunedModelChange without
+                            // keepSelection.
+                            if (selectedItem && selectedItem.job_id === pickedTuned?.job_id) return
+                            handleTunedModelChange(selectedItem)
+                          }}
+                        />
+                        {tunedListStatus === 'loading' && tunedModels.length === 0 && (
+                          <InlineLoading description="Loading your tuned models..." />
+                        )}
+                        {tunedListStatus === 'error' && (
+                          <>
+                            <InlineNotification
+                              kind="error"
+                              lowContrast
+                              hideCloseButton
+                              title="Couldn't load your tuned models"
+                              subtitle="Check your connection and try again."
+                            />
+                            <Button kind="ghost" size="sm" onClick={() => fetchTunedModels(tunedQuery)}>
+                              Retry
+                            </Button>
+                          </>
+                        )}
+                        {tunedCheck === 'checking' && (
+                          <InlineLoading description="Checking this model can be tuned further..." />
+                        )}
+                        {typeof tunedCheck === 'object' && !tunedCheck.ok && (
+                          <InlineNotification
+                            kind="error"
+                            lowContrast
+                            hideCloseButton
+                            title="Can't use this model"
+                            subtitle={tunedCheck.reason}
+                          />
+                        )}
+                        {typeof tunedCheck === 'object' && !tunedCheck.ok && tunedCheck.retryable && (
+                          <Button kind="ghost" size="sm" onClick={() => handleTunedModelChange(pickedTuned)}>
+                            Retry
+                          </Button>
+                        )}
+                      </>
                     ) : comboBoxReady ? (
                       <ComboBox
                         id="model-combo"
