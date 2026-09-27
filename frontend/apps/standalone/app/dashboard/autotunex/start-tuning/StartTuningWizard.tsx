@@ -669,6 +669,7 @@ export function StartTuningWizard() {
       for (;;) {
         try {
           const created = await importHfDataset(payload)
+          if (!created?.id) throw new Error('Failed to import dataset from HuggingFace.')
           createdHfDatasetIdRef.current = created.id
           break
         } catch (err) {
