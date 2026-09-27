@@ -2,7 +2,7 @@
 
 import { Tile, TextInput, Tag, Button, ProgressBar } from '@carbon/react'
 import { DataBase, Settings, ModelTuned, Checkmark, Edit } from '@carbon/icons-react'
-import type { ColumnMetadata, Configuration, Dataset, DatasetForm, LaunchPhase, ModelSource, Resources } from '@granite-build/ui-core/types'
+import type { ColumnMetadata, Configuration, Dataset, DatasetForm, LaunchPhase, Resources, WizardModelSource } from '@granite-build/ui-core/types'
 import { getConfigSummary } from '@granite-build/ui-core/lib/autotunex/wizardUtils'
 import { MODEL_SOURCE_LABELS } from '../../modelSources'
 import styles from './Step3ReviewLaunch.module.scss'
@@ -32,7 +32,7 @@ interface Step3ReviewLaunchProps {
   selectedExistingDataset: Dataset | null
   selectedConfig: Configuration | null
   selectedModel: string
-  modelSource: ModelSource
+  modelSource: WizardModelSource
   experimentName: string
   setExperimentName: (v: string) => void
   isPendingDataset: boolean
