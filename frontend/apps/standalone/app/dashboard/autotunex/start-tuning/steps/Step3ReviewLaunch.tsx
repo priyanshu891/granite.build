@@ -51,6 +51,7 @@ interface Step3ReviewLaunchProps {
   autotuneEnabled: boolean
   columnMetadata: ColumnMetadata[]
   onEditStep: (step: number) => void
+  isLaunching: boolean
 }
 
 export function Step3ReviewLaunch({
@@ -76,6 +77,7 @@ export function Step3ReviewLaunch({
   autotuneEnabled,
   columnMetadata,
   onEditStep,
+  isLaunching,
 }: Step3ReviewLaunchProps) {
   const isExisting = !!selectedExistingDataset
   const hfSummary = hfImport ? hfSnapshotSummary(hfImport) : null
@@ -130,7 +132,7 @@ export function Step3ReviewLaunch({
               <ModelTuned size={20} className={styles.cardIcon} />
               <h6 className={styles.cardHeading}>Model</h6>
               <div style={{ marginLeft: 'auto' }}>
-                <Button kind="ghost" size="sm" renderIcon={Edit} iconDescription="Edit model" hasIconOnly onClick={() => onEditStep(0)} />
+                <Button kind="ghost" size="sm" renderIcon={Edit} iconDescription="Edit model" hasIconOnly onClick={() => onEditStep(0)} disabled={isLaunching} />
               </div>
             </div>
             <div className={styles.cardBody}>
@@ -161,7 +163,7 @@ export function Step3ReviewLaunch({
               <h6 className={styles.cardHeading}>Dataset</h6>
               {isPendingDataset && <Tag type="cyan" size="sm">New</Tag>}
               <div style={{ marginLeft: 'auto' }}>
-                <Button kind="ghost" size="sm" renderIcon={Edit} iconDescription="Edit dataset" hasIconOnly onClick={() => onEditStep(1)} />
+                <Button kind="ghost" size="sm" renderIcon={Edit} iconDescription="Edit dataset" hasIconOnly onClick={() => onEditStep(1)} disabled={isLaunching} />
               </div>
             </div>
             <div className={styles.cardBody}>
@@ -273,7 +275,7 @@ export function Step3ReviewLaunch({
               <h6 className={styles.cardHeading}>Configuration</h6>
               {isPendingConfig && <Tag type="cyan" size="sm">New</Tag>}
               <div style={{ marginLeft: 'auto' }}>
-                <Button kind="ghost" size="sm" renderIcon={Edit} iconDescription="Edit configuration" hasIconOnly onClick={() => onEditStep(2)} />
+                <Button kind="ghost" size="sm" renderIcon={Edit} iconDescription="Edit configuration" hasIconOnly onClick={() => onEditStep(2)} disabled={isLaunching} />
               </div>
             </div>
             {selectedConfig ? (
