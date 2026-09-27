@@ -796,6 +796,7 @@ export interface LogEntry {
 }
 
 export type LaunchPhase =
+  | 'importing_dataset'
   | 'creating_dataset'
   | 'uploading_files'
   | 'creating_config'
