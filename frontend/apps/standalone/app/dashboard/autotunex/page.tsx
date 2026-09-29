@@ -1,13 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { InlineNotification } from '@carbon/react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { getJobs, deleteJob } from '@granite-build/ui-core/api/autotunex'
 import { deleteEach, isBulkDeleteError } from '@granite-build/ui-core/lib/autotunex/bulkDelete'
-import { listSpaces } from '@granite-build/ui-core/api/gbserver'
+import { pruneSelection } from '@granite-build/ui-core/lib/autotunex/tableSelection'
+import { adminDefaultScope } from '@granite-build/ui-core/api/client'
+import { useAutotunexIsAdmin } from '@granite-build/ui-core/hooks/useAutotunexIsAdmin'
 import { AutotunexTabs } from '@granite-build/ui-core/components/autotunex/shared/AutotunexTabs'
 import { TuningsTable } from '@granite-build/ui-core/components/autotunex/tunings/TuningsTable'
 import { TuningDeleteModal } from '@granite-build/ui-core/components/autotunex/tunings/TuningDeleteModal'
@@ -20,7 +22,6 @@ export default function AutoTuneXPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [q, setQ] = useState('')
-  const [scope, setScope] = useState<'own' | 'all'>('own')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteError, setDeleteError] = useState<string | undefined>(undefined)
@@ -29,17 +30,9 @@ export default function AutoTuneXPage() {
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => () => clearTimeout(searchDebounceRef.current), [])
 
-  // Reused verbatim from the builds/artifacts pages (`["spaces"]` queryKey) so
-  // this shares the same React Query cache entry rather than issuing a
-  // duplicate `listSpaces()` fetch. There's no "current active space" concept
-  // in this dashboard (no space context/provider — grepped for one), so the
-  // scope toggle is gated on "is admin of at least one space" rather than a
-  // single active space's `is_admin`.
-  const { data: spaces = [] } = useQuery({
-    queryKey: ['spaces'],
-    queryFn: listSpaces,
-  })
-  const isSpaceAdmin = spaces.some((s) => s.is_admin)
+  // Only an AutoTuneX admin may request scope=all.
+  const { isAdmin } = useAutotunexIsAdmin()
+  const scope = isAdmin ? adminDefaultScope() : 'own'
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['autotunex-jobs', page, pageSize, q, scope],
@@ -47,7 +40,8 @@ export default function AutoTuneXPage() {
     placeholderData: (prev) => prev,
   })
 
-  const items = data?.items ?? []
+  // Memoised so it is a stable dependency for the selection-pruning effect below.
+  const items = useMemo(() => data?.items ?? [], [data])
   const total = data?.total ?? 0
 
   const deleteMutation = useMutation({
@@ -95,20 +89,18 @@ export default function AutoTuneXPage() {
     }, 300)
   }, [])
 
-  const handleScopeChange = useCallback((newScope: 'own' | 'all') => {
-    setScope(newScope)
-    setPage(1)
-  }, [])
-
-  // `selectedIds` shadows the table's own selection, which TuningsTable
-  // rebuilds from the rows it is handed. A selection left over from a previous
-  // page/size/search/scope would stay here while vanishing from the UI, so the
-  // delete would permanently remove jobs the user can no longer see and the
-  // compare modal would receive fewer jobs than the count shown. Clear it
-  // whenever the visible set changes.
+  // `selectedIds` shadows the table's own selection. Carbon does not rebuild its
+  // checkboxes from the rows it is handed -- it carries `isSelected` forward for
+  // every id it still knows -- so this prunes to the visible rows rather than
+  // emptying, which is exactly what Carbon's own selection does. Emptying left
+  // rows ticked with an empty shadow, and Delete then confirmed a count of 0,
+  // removed nothing and closed as a success. Pruning keeps the two in step: a job
+  // that leaves the page/search/scope drops out of both, so the delete can still
+  // never reach a job the user cannot see, and the compare modal can never receive
+  // fewer jobs than the count shown. See pruneSelection.
   useEffect(() => {
-    setSelectedIds((prev) => (prev.length === 0 ? prev : []))
-  }, [page, pageSize, q, scope])
+    setSelectedIds((prev) => pruneSelection(prev, items.map((j) => j.id)))
+  }, [items])
 
   const selectedJobs = items.filter((j) => selectedIds.includes(j.id))
 
@@ -136,8 +128,6 @@ export default function AutoTuneXPage() {
         onPageChange={handlePageChange}
         onSearch={handleSearch}
         scope={scope}
-        onScopeChange={handleScopeChange}
-        showScopeToggle={isSpaceAdmin}
         onRowClick={(id) => router.push(`/dashboard/autotunex/_/?id=${id}`)}
         onDeleteSelected={() => setDeleteOpen(true)}
         onCompareSelected={() => setCompareOpen(true)}

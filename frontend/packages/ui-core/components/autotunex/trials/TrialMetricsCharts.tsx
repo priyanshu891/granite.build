@@ -20,7 +20,9 @@ import styles from './TrialMetricsCharts.module.scss'
 import {
   METRIC_PALETTE,
   derivePhases,
+  logDomain,
   positiveRows,
+  rowsForKnownRuns,
   rowsForTrials,
   runOrigins,
   splitMetricRows,
@@ -28,6 +30,7 @@ import {
 } from './trialMetrics'
 import type { MetricXKey } from './trialMetrics'
 import type { JobDetail, Trial } from '../../../types'
+import { isSearchComplete } from './trialProgress'
 
 type Scope = 'own' | 'all'
 
@@ -137,14 +140,31 @@ export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, sele
   )
 
   const trialIds = useMemo(() => trials.map((t) => t.id), [trials])
-  const phases = useMemo(() => derivePhases(rows, trialIds, trialsLoaded), [rows, trialIds, trialsLoaded])
+  // A run absent from /trials is only the final run once the search can no longer
+  // start a new trial -- otherwise a stale trials poll makes a still-searching trial
+  // render as the completed final run. See isSearchComplete.
+  const searchComplete = useMemo(() => isSearchComplete(trials, job.num_trials), [trials, job.num_trials])
+  const phases = useMemo(
+    () => derivePhases(rows, trialIds, trialsLoaded, searchComplete),
+    [rows, trialIds, trialsLoaded, searchComplete]
+  )
 
   // A selection narrows the search phase to the ticked trials. With nothing
-  // ticked these charts are off screen entirely (see `showSearch`), so the
-  // unfiltered rows are only ever what the no-final-run fallback draws.
+  // ticked these charts are only on screen at all as the no-final-run fallback
+  // (see `showSearch`), and they then draw every run the table lists.
+  //
+  // Not `phases.search` raw, which is not the same set: `derivePhases` falls back
+  // to calling the whole stream "search" whenever it cannot trust the split, and a
+  // job that finished without resolving all `num_trials` trial rows leaves it there
+  // for good — so the phase can hold runs that have no row in the table, the final
+  // run among them. See `rowsForKnownRuns`. On a job whose split did happen this is
+  // a no-op, because the phase already holds only known ids.
   const searchRows = useMemo(
-    () => (selectedIds.length > 0 ? rowsForTrials(phases.search, selectedIds) : phases.search),
-    [phases.search, selectedIds]
+    () =>
+      selectedIds.length > 0
+        ? rowsForTrials(phases.search, selectedIds)
+        : rowsForKnownRuns(phases.search, trialIds),
+    [phases.search, selectedIds, trialIds]
   )
   const search = useMemo(() => splitMetricRows(searchRows), [searchRows])
   const final = useMemo(() => splitMetricRows(phases.final), [phases.final])
@@ -153,8 +173,9 @@ export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, sele
 
   // Origins for the `elapsed` axis, taken from each phase's whole row set rather
   // than from the split series a chart happens to draw — see `runOrigins`. A set
-  // narrowed to a selection is still a whole row set: `rowsForTrials` drops whole
-  // runs and leaves the survivors' rows intact, so their origins do not move.
+  // narrowed to a selection, or to the table's runs, is still a whole row set: both
+  // filters drop whole runs and leave the survivors' rows intact, so their origins
+  // do not move.
   const searchOrigins = useMemo(() => runOrigins(searchRows), [searchRows])
   const finalOrigins = useMemo(() => runOrigins(phases.final), [phases.final])
 
@@ -175,25 +196,48 @@ export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, sele
     [search.trainSteps, xKey, searchOrigins]
   )
 
-  // The final run is one run, so it gets one hue family rather than a slot from
-  // the per-trial scale (whose ids it isn't in — it never appears in /trials).
+  // The final phase gets its own hue family rather than a slot from the per-trial
+  // scale (whose ids it isn't in — it never appears in /trials).
+  //
+  // `derivePhases` is built to attribute *several* runs to this phase, so the series
+  // are keyed per run whenever there is more than one. Collapsing them into two
+  // constant groups drew two independent runs as a single loss curve that zig-zagged
+  // between them; with one run — the ordinary case — the labels stay unsuffixed.
   const palette = METRIC_PALETTE[theme]
-  const FINAL_TRAIN = 'Training loss'
-  const FINAL_EVAL = 'Eval loss'
-  const finalScale = { [FINAL_TRAIN]: palette[0], [FINAL_EVAL]: palette[2] }
-  const finalRows = useMemo(() => {
-    const train = toChartRows(final.trainSteps, xKey, (r) => r.loss, finalOrigins).map((r) => ({
-      ...r,
-      group: FINAL_TRAIN,
-    }))
-    const evals = toChartRows(final.evals, xKey, (r) => r.extra?.eval_loss, finalOrigins).map((r) => ({
-      ...r,
-      group: FINAL_EVAL,
-    }))
-    return [...train, ...evals]
-  }, [final.trainSteps, final.evals, xKey, finalOrigins])
+  const finalIds = phases.finalTrialIds
+  const isSingleFinalRun = finalIds.length <= 1
+  const shortId = (id: string) => id.split('_').pop() || id
+  const trainGroup = (id: string | null | undefined) =>
+    isSingleFinalRun || !id ? 'Training loss' : `Training loss (${shortId(id)})`
+  const evalGroup = (id: string | null | undefined) =>
+    isSingleFinalRun || !id ? 'Eval loss' : `Eval loss (${shortId(id)})`
 
-  const finalSummary = final.summaries[0]?.extra
+  const finalScale = useMemo(() => {
+    if (isSingleFinalRun) return { 'Training loss': palette[0], 'Eval loss': palette[2] }
+    const scale: Record<string, string> = {}
+    finalIds.forEach((id, i) => {
+      scale[trainGroup(id)] = palette[(i * 2) % palette.length]
+      scale[evalGroup(id)] = palette[(i * 2 + 1) % palette.length]
+    })
+    return scale
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finalIds, isSingleFinalRun, palette])
+
+  const finalRows = useMemo(() => {
+    const train = toChartRows(final.trainSteps, xKey, (r) => r.loss, finalOrigins, (r) =>
+      trainGroup(r.trial_id)
+    )
+    const evals = toChartRows(final.evals, xKey, (r) => r.extra?.eval_loss, finalOrigins, (r) =>
+      evalGroup(r.trial_id)
+    )
+    return [...train, ...evals]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [final.trainSteps, final.evals, xKey, finalOrigins, isSingleFinalRun, finalIds])
+
+  // Only meaningful for a single final run: with several, `summaries[0]` is whichever
+  // run happened to report first, so the tiles would describe one run under a heading
+  // that covers them all.
+  const finalSummary = isSingleFinalRun ? final.summaries[0]?.extra : undefined
   const bestFinalEval = useMemo(() => {
     const values = final.evals
       .map((r) => r.extra?.eval_loss)
@@ -221,35 +265,35 @@ export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, sele
       : 'full data set'
   }, [trainingConfig])
 
-  if (isLoading) return <InlineLoading description="Loading metrics…" />
+  // The loading and error returns below sit where the charts would, directly under
+  // the trials table, so they take the same top margin as the charts section;
+  // without it a notification butts against the table's last row.
+  if (isLoading) {
+    return (
+      <div style={{ marginTop: '2rem' }}>
+        <InlineLoading description="Loading metrics…" />
+      </div>
+    )
+  }
 
   if (isError) {
     return (
-      <InlineNotification
-        kind="error"
-        title="Couldn't load step metrics"
-        subtitle={String(error)}
-        lowContrast
-        hideCloseButton
-      />
+      <div style={{ marginTop: '2rem' }}>
+        <InlineNotification
+          kind="error"
+          title="Couldn't load step metrics"
+          subtitle={String(error)}
+          lowContrast
+          hideCloseButton
+        />
+      </div>
     )
   }
 
-  if (rows.length === 0) {
-    return (
-      <InlineNotification
-        kind="info"
-        title={isActive ? 'Waiting for the first logged step' : 'This run logged no step metrics'}
-        subtitle={
-          isActive
-            ? 'Curves appear here as the run reports them.'
-            : 'Older runs finished before per-step metrics were recorded.'
-        }
-        lowContrast
-        hideCloseButton
-      />
-    )
-  }
+  // No step rows, running or finished: the section draws nothing rather than a
+  // notice. A running job's stream keeps polling, so its charts appear in this
+  // spot once the first step lands.
+  if (rows.length === 0) return null
 
   const sharedSpec = { theme, colorScale, xTitle, height: '260px' } as const
 
@@ -432,6 +476,7 @@ export function TrialMetricsCharts({ job, trials, trialsLoaded, colorScale, sele
                       yTitle: 'Learning rate',
                       height: '220px',
                       logY: true,
+                      yDomain: logDomain(searchLr),
                     })}
                     style={{ flex: '1 1 24rem', minWidth: 0 }}
                   />

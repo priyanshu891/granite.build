@@ -6,7 +6,9 @@ then runs the tuning pipeline against a local fm-tune checkout.
 
 ## Inputs
 - `model` (model, uri|binding) — HF id / Local / PVC; resolved to `$LLMB_BASH_INPUT_MODEL`.
-- `dataset_files` (dataset, uri|binding) — a fileset with `*_train.jsonl` + `*_validation.jsonl`.
+- `dataset_files` (dataset, uri|binding) — a fileset with a `*_train` + `*_validation`
+  file in any of `.parquet`, `.jsonl`, `.json`, `.csv`. When a split is present in
+  several formats the first match in that order wins; override with `TRAIN_FILE` / `VAL_FILE`.
 - `hpo_config` (fileset, optional) — used only if no inline `config.autotune-config`.
 
 ## Output

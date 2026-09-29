@@ -17,20 +17,34 @@ import sys
 
 ARTIFACT_ID = "custom"  # must match outputs.custom in build.yaml
 
+# Split-file formats, in resolution order: the first one present wins. Every
+# fm-tune loader (driver_single, driver_single_trl, driver_multi_trl_ds/fsdp)
+# accepts all four, so the step does not restrict the fileset to jsonl.
+SPLIT_EXTS = (".parquet", ".jsonl", ".json", ".csv")
+
 
 def _bool(env, name, default=False):
     v = env.get(name)
     return default if v is None else v.strip().lower() in ("1", "true", "yes", "on")
 
 
-def resolve_split(dataset_dir, override, pattern):
-    """Explicit override wins (abs or relative to dataset_dir); else the sole glob match."""
+def resolve_split(dataset_dir, override, suffix):
+    """Explicit override wins (abs or relative to dataset_dir); else the first
+    SPLIT_EXTS match for the split named by suffix, e.g. "_train"."""
     if override:
-        return override if os.path.isabs(override) else os.path.join(dataset_dir, override)
-    matches = sorted(glob.glob(os.path.join(dataset_dir, pattern)))
-    if not matches:
-        sys.exit("autotune: no file matching " + repr(pattern) + " under " + repr(dataset_dir))
-    return matches[0]
+        path = override if os.path.isabs(override) else os.path.join(dataset_dir, override)
+        if not os.path.isfile(path):
+            sys.exit("autotune: split override does not exist: " + repr(path))
+        return path
+    for ext in SPLIT_EXTS:
+        matches = sorted(glob.glob(os.path.join(dataset_dir, "*" + suffix + ext)))
+        if matches:
+            return matches[0]
+    sys.exit(
+        "autotune: no file matching '*" + suffix + "' with any of "
+        + " ".join(SPLIT_EXTS)
+        + " under " + repr(dataset_dir)
+    )
 
 
 def _algo_defaults(config_file):
@@ -65,8 +79,8 @@ def build_argv(env):
         if not value:
             sys.exit("autotune: required " + label + " is unset")
 
-    train = resolve_split(dataset_dir, env.get("TRAIN_FILE"), "*_train.jsonl")
-    validation = resolve_split(dataset_dir, env.get("VAL_FILE"), "*_validation.jsonl")
+    train = resolve_split(dataset_dir, env.get("TRAIN_FILE"), "_train")
+    validation = resolve_split(dataset_dir, env.get("VAL_FILE"), "_validation")
     ta_default, rl_default = _algo_defaults(config_file)
     run_name = env.get("RUN_NAME") or env.get("JOB_ID") or "autotune-run"
 

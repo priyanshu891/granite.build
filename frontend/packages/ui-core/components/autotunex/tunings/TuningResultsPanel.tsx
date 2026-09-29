@@ -15,20 +15,9 @@ import { Download } from '@carbon/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
 import { getJobAssets, resultArchiveUrl, resultFileUrl } from '../../../api/autotunex'
-import { listSpaces } from '../../../api/gbserver'
+import { useAutotunexIsAdmin } from '../../../hooks/useAutotunexIsAdmin'
 import type { TuningStatus } from '../../../types'
-
-function formatBytes(bytes: number): string {
-  if (!bytes) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let i = 0
-  let v = bytes
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024
-    i++
-  }
-  return `${v.toFixed(1)} ${units[i]}`
-}
+import { formatBytes } from '../../../lib/autotunex/formatBytes'
 
 function formatModified(modified: string | null): string {
   if (!modified) return '—'
@@ -42,11 +31,11 @@ interface Props {
 }
 
 export function TuningResultsPanel({ jobId, jobStatus }: Props) {
-  // Same cached `['spaces']` query the rest of the detail view uses to pick a
-  // scope — admins read `scope=all` so they can see assets for jobs they don't
+  // Same cached admin check the rest of the detail view uses to pick a scope —
+  // AutoTuneX admins read `scope=all` so they can see assets for jobs they don't
   // own. No extra fetch: React Query dedupes on the shared key.
-  const { data: spaces = [] } = useQuery({ queryKey: ['spaces'], queryFn: listSpaces })
-  const scope = spaces.some((s) => s.is_admin) ? 'all' : 'own'
+  const { isAdmin } = useAutotunexIsAdmin()
+  const scope = isAdmin ? 'all' : 'own'
 
   // Output assets only exist once the job has completed. Gating the fetch here
   // also avoids hammering the endpoint with guaranteed 409s while a job runs —
