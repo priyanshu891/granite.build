@@ -274,8 +274,8 @@ COPY --from=py-builder /opt/granite.build /opt/granite.build
 # standalone bash build step runs `pip install -e $FM_TUNE_ROOT[$EXTRA]` into its
 # own venv, so it needs the tree on disk. Shipping it makes the default llmb/bash
 # path use this local checkout (AUTOTUNEX_BASH_FM_TUNE_ROOT below) — no trainer
-# clone, no GB_TOKEN/GITHUB_HOST git credentials. Overriding FM_TUNE_ROOT with a
-# repo URL restores the clone path. The editable install writes .egg-info into the
+# clone, no GB_TOKEN/GITHUB_HOST git credentials (the bash build rejects a repo-URL
+# FM_TUNE_ROOT). The editable install writes .egg-info into the
 # tree, so appuser must own it (chown below).
 COPY src/fm-tune /opt/fm-tune
 
@@ -296,30 +296,17 @@ COPY docker/aio/Caddyfile /etc/caddy/Caddyfile
 # console-script shebang pins the gb venv, so it works from any PATH entry), and
 # make the entrypoint executable.
 #
-# git credential helper at the SYSTEM level (/etc/gitconfig): the bash step's
-# trainer is the vendored /opt/fm-tune by default (no clone). ONLY when
-# FM_TUNE_ROOT is overridden with a repo URL does the step `git clone` the trainer
-# from $GITHUB_HOST — and that clone runs under a CURATED env that does NOT carry
-# HOME (see gbserver's
-# environment/bash.py). Without HOME, git can't find the per-user ~/.gitconfig
-# the entrypoint writes, so the clone fails with "could not read Username" (exit
-# 128) and the whole build fails. The system config is read regardless of HOME,
-# so the helper is always found; it points at the runtime credential file the
-# entrypoint populates from $GB_TOKEN/$GITHUB_HOST (no secret is baked here — the
-# directive only names a path). Must be set as root, before USER appuser below.
-#
 # safe.directory '*': a tuning build's editable `pip install -e fm-tune-src[core]`
 # runs git to introspect the package version. The clone lives on the /data volume,
 # whose tree is owned by the image's build-time user (uid 1000) while the build may
 # run as a different uid (e.g. runAsUser:0 on OpenShift), so git aborts with
 # "detected dubious ownership" (exit 128) and the step fails. Trusting every repo
 # dir at the SYSTEM level fixes it regardless of HOME (the bash step runs without
-# one, same reason the credential helper is system-level); single-tenant image, so
-# '*' is acceptable.
+# one, so a per-user ~/.gitconfig is never read); single-tenant image, so '*' is
+# acceptable. Must be set as root, before USER appuser below.
 RUN ln -sf /opt/venv/gb/bin/llmb /usr/local/bin/llmb \
     && ln -sf /opt/venv/gb/bin/gb /usr/local/bin/gb \
     && ln -sf /opt/venv/gb/bin/gbserver /usr/local/bin/gbserver \
-    && git config --system credential.helper "store --file=/tmp/aio-git-credentials" \
     && git config --system --add safe.directory '*' \
     && chmod +x /usr/local/bin/aio-entrypoint.sh
 
@@ -349,9 +336,9 @@ ENV AUTOTUNEX_ENVIRONMENT=dev \
     API_BRIDGE_SERVER_PORT=8001 \
     AUTOTUNE_SERVER_URL=http://localhost:8001
 
-# Bash build step (standalone gbserver → space://steps/autotune) trainer defaults.
+# Bash build step (standalone gbserver → space://steps/command) trainer defaults.
 # FM_TUNE_ROOT points at the vendored trainer source COPYed above, so the default
-# build needs no clone or git credentials (override with a repo URL to clone).
+# build needs no clone or git credentials (override with another local checkout).
 # BACKEND=torch because this is a linux/amd64 CPU image (`mlx` is Apple-silicon
 # only). FM_TUNE_EXTRA=core,mlx installs the lean stack — the step does
 # `pip install -e $FM_TUNE_ROOT[$EXTRA]`, and `full` would build flash-attn from

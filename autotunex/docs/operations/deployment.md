@@ -289,9 +289,9 @@ clone above — the `granite.build` **pip package** from the public
 `github.com/ibm-granite/granite.build` at its `stable` tag — though still no
 credentials, just a much larger image (torch/Ray). `GB_TOKEN` and
 `GITHUB_HOST` play no part in the build: they are run-time settings (the token the
-`llmb` backend requires, plus the entrypoint's git credentials, which matter only
-if you point `AUTOTUNEX_BASH_FM_TUNE_ROOT` at a repo URL instead of the vendored
-trainer at `/opt/fm-tune`).
+`llmb` backend requires, plus the entrypoint's git credentials, which the bash
+build does not use: it runs the vendored trainer at `/opt/fm-tune` and never
+clones one).
 
 On Kubernetes/OpenShift, mount a PVC at `/data`: it is both the volume and `HOME`,
 so artifacts, datasets and gbserver's own SQLite state all land there. The image

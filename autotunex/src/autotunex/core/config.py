@@ -488,8 +488,8 @@ class Settings(BaseSettings):
 
     The ``custom_code`` and LSF start commands emit it as
     ``--autotunex_server_url`` only when it is set; the standalone local-bash
-    variant ALWAYS emits it as ``AUTOTUNEX_SERVER_URL``, defaulting to
-    ``http://localhost:8001`` (the api-bridge) when this is unset."""
+    variant ALWAYS emits that flag, defaulting to ``http://localhost:8001`` (the
+    api-bridge) when this is unset."""
 
     keep_diagnostics: bool = False
     """Keep a custom_code run's non-model artifacts in its uploaded output.
@@ -555,7 +555,7 @@ class Settings(BaseSettings):
     """granite.build's own (unprefixed) environment name.
 
     When ``"standalone"`` and ``job_backend="llmb"``, the launcher emits the
-    local-bash spec (``space://steps/autotune``) instead of custom_code. Read via
+    local-bash spec (``space://steps/command``) instead of custom_code. Read via
     a ``validation_alias`` so the ``AUTOTUNEX_`` prefix does **not** apply — the
     exact ``GB_ENVIRONMENT`` variable granite.build already sets is read, and the
     prefixed ``AUTOTUNEX_GB_ENVIRONMENT`` is deliberately ignored. The alias is an
@@ -565,17 +565,15 @@ class Settings(BaseSettings):
     kwarg (init kwargs match aliases, not field names, when an alias is set)."""
 
     bash_fm_tune_root: str | None = None
-    """``FM_TUNE_ROOT`` injected into the bash spec's ``bash.env`` (the fm-tune checkout/repo)."""
-
-    bash_fm_tune_ref: str | None = None
-    """``FM_TUNE_REF`` injected into the bash spec's ``bash.env`` (the fm-tune branch/tag/commit
-    to check out; ``None`` leaves the repo's default branch)."""
+    """``FM_TUNE_ROOT`` injected into the bash spec's ``bash.env``: the absolute path of a local
+    fm-tune checkout on the gbserver host. Required, and must be an absolute path, when
+    ``job_backend="llmb"`` runs the local-bash variant (checked at startup)."""
 
     bash_fm_tune_extra: str = "full,mlx"
-    """``FM_TUNE_EXTRA`` for the bash spec: the extras to install (default ``full,mlx``)."""
+    """fm-tune extras the bash spec installs into its venv (default ``full,mlx``)."""
 
     bash_backend: str = "mlx"
-    """``BACKEND`` for the bash spec: ``mlx`` (Apple Silicon) or ``torch``."""
+    """fm-tune's ``--backend`` for the bash spec: ``mlx`` (Apple Silicon) or ``torch``."""
 
     # --- Execution: LSF / SkyPilot standalone runner ---
     # See docs/superpowers/specs/2026-08-13-lsf-runner-design.md.
@@ -1128,8 +1126,10 @@ class Settings(BaseSettings):
           ``job_trainer_repo``, ``job_output_uri_root``); none are *required*. The
           bash spec anchors its run output under ``artifact_dir`` (as an absolute
           ``file://`` URI), not ``job_output_uri_root`` — the bash environment only
-          writes ``file://``. It still requires ``gb_server_url`` (the reconcile loop
-          polls the local gbserver) and still honours the ``gb_token_env`` presence check.
+          writes ``file://``. It requires ``gb_server_url`` (the reconcile loop
+          polls the local gbserver) and ``bash_fm_tune_root`` as an absolute path (the
+          trainer checkout the build runs), and still honours the ``gb_token_env``
+          presence check.
         - ``llmb`` with ``gb_environment="standalone"`` **and** ``lsf_cluster`` set
           (the LSF/SkyPilot variant) additionally requires ``lsf_environment_uri``,
           ``lsf_image`` and ``job_trainer_repo``.
@@ -1148,7 +1148,10 @@ class Settings(BaseSettings):
                     )
                 else:
                     # local-bash variant: no cluster inputs.
-                    required = (("gb_server_url", self.gb_server_url),)
+                    required = (
+                        ("gb_server_url", self.gb_server_url),
+                        ("bash_fm_tune_root", self.bash_fm_tune_root),
+                    )
             else:
                 required = (
                     ("job_runtime_image", self.job_runtime_image),
@@ -1161,6 +1164,12 @@ class Settings(BaseSettings):
                 raise ValueError(
                     f'job_backend="llmb" requires {", ".join(missing)} to be set '
                     "(an empty or whitespace-only value counts as unset)."
+                )
+            local_bash = self.gb_environment == "standalone" and not self.lsf_cluster
+            if local_bash and not os.path.isabs(self.bash_fm_tune_root or ""):
+                raise ValueError(
+                    "bash_fm_tune_root must be the absolute path of a local fm-tune "
+                    f"checkout on the gbserver host, got {self.bash_fm_tune_root!r}."
                 )
             # Over HTTP there is no ambient CLI-credential fallback, so the token
             # the reconcile loop authenticates to gbserver with is genuinely
