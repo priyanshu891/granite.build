@@ -7,8 +7,8 @@ The custom_code builder (``spec.py``) and the LSF/SkyPilot builder
 the ``|``-literal YAML dumper, the ``num_gpus_per_node`` derivation, reward-
 function injection for online RL, and the ``python main.py`` start command.
 They live here so there is exactly one implementation of each, rather than a
-copy per builder. The local-bash builder (``bash_spec.py``) deliberately shares
-none of these — it is a different execution shape.
+copy per builder. The local-bash builder (``bash_spec.py``) is a different
+execution shape and shares only the dumper and the start command.
 """
 
 from __future__ import annotations
@@ -109,10 +109,11 @@ def start_command(
     *,
     config_file: str,
     callback_url: str | None,
-    cuda_home: str,
+    cuda_home: str | None,
     model_at_root: bool = False,
     keep_diagnostics: bool = False,
     bind_base_model: bool = False,
+    backend: str | None = None,
 ) -> str:
     """Build the container's ``main.py`` invocation, a faithful port of build_start_cmd.
 
@@ -120,7 +121,9 @@ def start_command(
     2025 command; ``--tuning_algo``, ``--rl_algo``, ``--no_autotune`` and
     ``--autotunex_server_url`` are conditional. ``cuda_home`` is the only value that
     differs between the custom_code (``/usr/local/cuda-13.0``) and LSF
-    (``/opt/share/cuda-12.9``) builders — every other flag is identical.
+    (``/opt/share/cuda-12.9``) builders — every other flag is identical. The local-bash
+    builder passes ``cuda_home=None`` (no CUDA export) and a ``backend``, appended as
+    fm-tune's ``--backend`` (``mlx`` or ``torch``).
 
     ``model_at_root`` appends fm-tune's ``--model_at_root`` (the saved model is moved
     to the root of ``$OUTPUT_PATH``, everything else deleted), and with it
@@ -155,5 +158,8 @@ def start_command(
     flags.append(f"--job_id {ctx.job_id}")
     if callback_url:
         flags.append(f"--autotunex_server_url {callback_url}")
+    if backend:
+        flags.append(f"--backend {backend}")
     python_cmd = " ".join(flags)
-    return f"export CUDA_HOME={cuda_home} && export LOG_PATH=$OUTPUT_PATH && {python_cmd}"
+    cuda_export = f"export CUDA_HOME={cuda_home} && " if cuda_home else ""
+    return f"{cuda_export}export LOG_PATH=$OUTPUT_PATH && {python_cmd}"

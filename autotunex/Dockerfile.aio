@@ -274,8 +274,8 @@ COPY --from=py-builder /opt/granite.build /opt/granite.build
 # standalone bash build step runs `pip install -e $FM_TUNE_ROOT[$EXTRA]` into its
 # own venv, so it needs the tree on disk. Shipping it makes the default llmb/bash
 # path use this local checkout (AUTOTUNEX_BASH_FM_TUNE_ROOT below) — no trainer
-# clone, no GB_TOKEN/GITHUB_HOST git credentials. Overriding FM_TUNE_ROOT with a
-# repo URL restores the clone path. The editable install writes .egg-info into the
+# clone, no GB_TOKEN/GITHUB_HOST git credentials (the bash build rejects a repo-URL
+# FM_TUNE_ROOT). The editable install writes .egg-info into the
 # tree, so appuser must own it (chown below).
 COPY src/fm-tune /opt/fm-tune
 
@@ -297,9 +297,9 @@ COPY docker/aio/Caddyfile /etc/caddy/Caddyfile
 # make the entrypoint executable.
 #
 # git credential helper at the SYSTEM level (/etc/gitconfig): the bash step's
-# trainer is the vendored /opt/fm-tune by default (no clone). ONLY when
-# FM_TUNE_ROOT is overridden with a repo URL does the step `git clone` the trainer
-# from $GITHUB_HOST — and that clone runs under a CURATED env that does NOT carry
+# trainer is the vendored /opt/fm-tune (no clone). The bash build no longer clones
+# a trainer at all (a repo-URL FM_TUNE_ROOT is rejected); this was for the step's
+# `git clone` of the trainer from $GITHUB_HOST, which ran under a CURATED env that does NOT carry
 # HOME (see gbserver's
 # environment/bash.py). Without HOME, git can't find the per-user ~/.gitconfig
 # the entrypoint writes, so the clone fails with "could not read Username" (exit
@@ -349,9 +349,9 @@ ENV AUTOTUNEX_ENVIRONMENT=dev \
     API_BRIDGE_SERVER_PORT=8001 \
     AUTOTUNE_SERVER_URL=http://localhost:8001
 
-# Bash build step (standalone gbserver → space://steps/autotune) trainer defaults.
+# Bash build step (standalone gbserver → space://steps/command) trainer defaults.
 # FM_TUNE_ROOT points at the vendored trainer source COPYed above, so the default
-# build needs no clone or git credentials (override with a repo URL to clone).
+# build needs no clone or git credentials (override with another local checkout).
 # BACKEND=torch because this is a linux/amd64 CPU image (`mlx` is Apple-silicon
 # only). FM_TUNE_EXTRA=core,mlx installs the lean stack — the step does
 # `pip install -e $FM_TUNE_ROOT[$EXTRA]`, and `full` would build flash-attn from

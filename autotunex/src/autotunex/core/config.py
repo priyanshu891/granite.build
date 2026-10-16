@@ -555,7 +555,7 @@ class Settings(BaseSettings):
     """granite.build's own (unprefixed) environment name.
 
     When ``"standalone"`` and ``job_backend="llmb"``, the launcher emits the
-    local-bash spec (``space://steps/autotune``) instead of custom_code. Read via
+    local-bash spec (``space://steps/command``) instead of custom_code. Read via
     a ``validation_alias`` so the ``AUTOTUNEX_`` prefix does **not** apply — the
     exact ``GB_ENVIRONMENT`` variable granite.build already sets is read, and the
     prefixed ``AUTOTUNEX_GB_ENVIRONMENT`` is deliberately ignored. The alias is an
@@ -565,17 +565,15 @@ class Settings(BaseSettings):
     kwarg (init kwargs match aliases, not field names, when an alias is set)."""
 
     bash_fm_tune_root: str | None = None
-    """``FM_TUNE_ROOT`` injected into the bash spec's ``bash.env`` (the fm-tune checkout/repo)."""
-
-    bash_fm_tune_ref: str | None = None
-    """``FM_TUNE_REF`` injected into the bash spec's ``bash.env`` (the fm-tune branch/tag/commit
-    to check out; ``None`` leaves the repo's default branch)."""
+    """``FM_TUNE_ROOT`` injected into the bash spec's ``bash.env``: the absolute path of a local
+    fm-tune checkout on the gbserver host. Required to launch a bash job; a repo URL is
+    rejected at launch."""
 
     bash_fm_tune_extra: str = "full,mlx"
-    """``FM_TUNE_EXTRA`` for the bash spec: the extras to install (default ``full,mlx``)."""
+    """fm-tune extras the bash spec installs into its venv (default ``full,mlx``)."""
 
     bash_backend: str = "mlx"
-    """``BACKEND`` for the bash spec: ``mlx`` (Apple Silicon) or ``torch``."""
+    """fm-tune's ``--backend`` for the bash spec: ``mlx`` (Apple Silicon) or ``torch``."""
 
     # --- Execution: LSF / SkyPilot standalone runner ---
     # See docs/superpowers/specs/2026-08-13-lsf-runner-design.md.

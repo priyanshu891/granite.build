@@ -64,7 +64,6 @@ def get_tuning_launcher(settings: Settings) -> TuningLauncher:
             spec_builder = functools.partial(
                 build_bash_spec,
                 fm_tune_root=settings.bash_fm_tune_root,
-                fm_tune_ref=settings.bash_fm_tune_ref,
                 fm_tune_extra=settings.bash_fm_tune_extra,
                 backend=settings.bash_backend,
                 callback_url=settings.job_callback_url,
