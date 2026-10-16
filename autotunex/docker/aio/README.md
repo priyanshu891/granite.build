@@ -41,7 +41,9 @@ no git credentials — leave `GITHUB_HOST` unset. Set it only when a build perfo
 a runtime `git` clone against a private host (the bash build never does:
 `AUTOTUNEX_BASH_FM_TUNE_ROOT` must be a local checkout, not a repo URL). When
 both `GB_TOKEN` and `GITHUB_HOST` are set, the entrypoint provisions git
-credentials from them so those clones authenticate; the token is written to an
+credentials from them in the per-user git config, so clones by a process with a
+`HOME` (gbserver's own) authenticate; a bash build step runs with no `HOME`, so a
+`git` run inside one gets no credentials. The token is written to an
 ephemeral file under `/tmp`, never the `/data` volume, and nothing is baked into
 the image.
 

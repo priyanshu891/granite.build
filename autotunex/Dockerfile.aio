@@ -296,30 +296,17 @@ COPY docker/aio/Caddyfile /etc/caddy/Caddyfile
 # console-script shebang pins the gb venv, so it works from any PATH entry), and
 # make the entrypoint executable.
 #
-# git credential helper at the SYSTEM level (/etc/gitconfig): the bash step's
-# trainer is the vendored /opt/fm-tune (no clone). The bash build no longer clones
-# a trainer at all (a repo-URL FM_TUNE_ROOT is rejected); this was for the step's
-# `git clone` of the trainer from $GITHUB_HOST, which ran under a CURATED env that does NOT carry
-# HOME (see gbserver's
-# environment/bash.py). Without HOME, git can't find the per-user ~/.gitconfig
-# the entrypoint writes, so the clone fails with "could not read Username" (exit
-# 128) and the whole build fails. The system config is read regardless of HOME,
-# so the helper is always found; it points at the runtime credential file the
-# entrypoint populates from $GB_TOKEN/$GITHUB_HOST (no secret is baked here — the
-# directive only names a path). Must be set as root, before USER appuser below.
-#
 # safe.directory '*': a tuning build's editable `pip install -e fm-tune-src[core]`
 # runs git to introspect the package version. The clone lives on the /data volume,
 # whose tree is owned by the image's build-time user (uid 1000) while the build may
 # run as a different uid (e.g. runAsUser:0 on OpenShift), so git aborts with
 # "detected dubious ownership" (exit 128) and the step fails. Trusting every repo
 # dir at the SYSTEM level fixes it regardless of HOME (the bash step runs without
-# one, same reason the credential helper is system-level); single-tenant image, so
-# '*' is acceptable.
+# one, so a per-user ~/.gitconfig is never read); single-tenant image, so '*' is
+# acceptable. Must be set as root, before USER appuser below.
 RUN ln -sf /opt/venv/gb/bin/llmb /usr/local/bin/llmb \
     && ln -sf /opt/venv/gb/bin/gb /usr/local/bin/gb \
     && ln -sf /opt/venv/gb/bin/gbserver /usr/local/bin/gbserver \
-    && git config --system credential.helper "store --file=/tmp/aio-git-credentials" \
     && git config --system --add safe.directory '*' \
     && chmod +x /usr/local/bin/aio-entrypoint.sh
 

@@ -1,9 +1,10 @@
 #!/bin/sh
 # Entrypoint for the all-in-one image (Dockerfile.aio).
 #
-# Materializes git credentials from the RUNTIME environment so that any git pull
-# happening inside this container at run time — e.g. gbserver fetching the
-# trainer repo during a build — can authenticate against a private host.
+# Materializes git credentials from the RUNTIME environment so that a git pull by
+# a process with a HOME inside this container at run time — e.g. gbserver itself
+# — can authenticate against a private host. A bash build step runs with no HOME,
+# so the per-user config written here does not reach a git run inside one.
 #
 # Nothing is baked into the image: the host comes from $GITHUB_HOST and the
 # token from $GB_TOKEN, both injected via --env-file at run time. The credential

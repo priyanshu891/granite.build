@@ -17,6 +17,8 @@ no Python packages, and has no ``additional_files`` to carry the tuning config.
 from __future__ import annotations
 
 import base64
+import os
+import shlex
 from typing import Any
 
 import yaml
@@ -39,42 +41,72 @@ def _step_command(
     """Return ``command_config.command``: set up the bash runtime, then run ``main.py``.
 
     The command step runs this with ``sh -c`` in a PATH-less env, so it is POSIX sh.
-    One venv is cached across builds in ``.gb-venvs`` beside gbserver's ``workdir``
-    (the first run installs fm-tune's ``fm_tune_extra`` extras; later runs only
-    re-link the editable install). The tuning config is decoded beside
-    ``$OUTPUT_PATH``, so it does not ship inside the ``custom`` model artifact. The
-    last line registers ``$OUTPUT_PATH`` as that artifact; the bare ``echo`` before the
-    marker keeps it at column 0 even if ``main.py`` left a partial progress line, since
-    the bash monitor's artifact regex is ``^``-anchored. ``set -e`` means a failed run
-    prints no marker. No command line may *start* with the marker: the command step
-    echoes the whole command into ``job.log`` before running it, and a newline escape
-    there (which ``sh``'s ``echo`` may expand) would plant a bogus marker line.
+    The venv is cached in ``.gb-venvs`` beside gbserver's workdir (the parent of the
+    ``llm-build-<id>`` directory; a build outside that layout gets its own venv), and
+    keyed by ``FM_TUNE_ROOT``, the extras, the Python version and fm-tune's
+    ``pyproject.toml``, so a changed dependency set gets a fresh venv. Only the
+    first build of a key installs (``.installed`` marks a finished install, so a
+    reused venv needs no network; a venv whose interpreter has gone is rebuilt); a
+    ``mkdir`` lock holding its owner's PID makes a concurrent first build wait
+    instead of installing into the same venv, and a lock whose owner is dead (a
+    build killed mid-install) is taken over.
+
+    ``main.py`` writes to ``$OUTPUT_PATH``, the ``model`` subdirectory of the step's
+    output dir, and the last line registers that subdirectory as the ``custom``
+    artifact, keeping gbserver's ``job.log`` (still being written when the marker
+    is read) out of it. The tuning config is decoded beside the output dir. The bare
+    ``echo`` before the marker keeps it at column 0 even if ``main.py`` left a
+    partial progress line, since the bash monitor's artifact regex is ``^``-anchored.
+    ``set -e`` means a failed run prints no marker. No command line may *start* with
+    the marker: the command step echoes the whole command into ``job.log`` before
+    running it, and a newline escape there (which ``sh``'s ``echo`` may expand)
+    would plant a bogus marker line.
     """
     install_target = f'"${{FM_TUNE_ROOT}}[{fm_tune_extra}]"' if fm_tune_extra else '"$FM_TUNE_ROOT"'
     lines = [
         "set -eu",
         'export PATH="${LLMB_BASH_PYTHON_DIR:+$LLMB_BASH_PYTHON_DIR:}'
         '${PATH:-/usr/local/bin:/usr/bin:/bin}"',
-        'export OUTPUT_PATH="$LLMB_BASH_OUTPUT_DIR"',
-        'case "$OUTPUT_PATH" in'
-        ' */workdir/*) VENV_BASE="${OUTPUT_PATH%%/workdir/*}/.gb-venvs" ;;'
-        ' *) VENV_BASE="${TMPDIR:-/tmp}/.gb-venvs" ;; esac',
+        'OUT="$LLMB_BASH_OUTPUT_DIR"',
+        'export OUTPUT_PATH="$OUT/model"',
+        'mkdir -p "$OUTPUT_PATH"',
+        'case "$OUT" in'
+        ' */llm-build-*) VENV_BASE="$(dirname "${OUT%/llm-build-*}")/.gb-venvs" ;;'
+        ' *) VENV_BASE="$(dirname "$OUT")/.gb-venvs" ;; esac',
         'export HF_HOME="$VENV_BASE/hf-cache"',
-        'VENV="$VENV_BASE/autotune"',
-        '[ -x "$VENV/bin/python" ] ||'
-        ' { python3 -m venv "$VENV" && "$VENV/bin/pip" install --quiet --upgrade pip; }',
-        f'"$VENV/bin/pip" install --quiet -e {install_target}',
+        f'VENV="$VENV_BASE/autotune-$( {{ printf \'%s\\n\' "$FM_TUNE_ROOT"'
+        f' {shlex.quote(fm_tune_extra)}; python3 -V; cat "$FM_TUNE_ROOT/pyproject.toml"; }}'
+        " | cksum | cut -d ' ' -f 1)\"",
+        '[ -x "$VENV/bin/python" ] || rm -f "$VENV/.installed"',
+        'if [ ! -f "$VENV/.installed" ]; then',
+        '  mkdir -p "$VENV_BASE"',
+        '  until mkdir "$VENV.lock" 2>/dev/null; do',
+        '    owner="$(cat "$VENV.lock/pid" 2>/dev/null || true)"',
+        '    if [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null; then rm -rf "$VENV.lock";'
+        " else sleep 2; fi",
+        "  done",
+        '  echo "$$" > "$VENV.lock/pid"',
+        "  trap 'rm -rf \"$VENV.lock\"' EXIT; trap 'exit 143' TERM; trap 'exit 130' INT",
+        '  if [ ! -f "$VENV/.installed" ]; then',
+        '    python3 -m venv --clear "$VENV"',
+        '    "$VENV/bin/pip" install --quiet --upgrade pip',
+        f'    "$VENV/bin/pip" install --quiet -e {install_target}',
+        '    touch "$VENV/.installed"',
+        "  fi",
+        '  rm -rf "$VENV.lock"; trap - EXIT TERM INT',
+        "fi",
         'export PATH="$VENV/bin:$PATH"',
-        'AUTOTUNE_CONFIG_FILE="$(dirname "$OUTPUT_PATH")/autotune_config.yaml"',
+        'AUTOTUNE_CONFIG_FILE="$(dirname "$OUT")/autotune_config.yaml"',
         'printf \'%s\' "$AUTOTUNE_CONFIG_B64" | base64 -d > "$AUTOTUNE_CONFIG_FILE"',
         'cd "$FM_TUNE_ROOT"',
         start_command(
             ctx,
-            config_file="$AUTOTUNE_CONFIG_FILE",
+            config_file='"$AUTOTUNE_CONFIG_FILE"',
             callback_url=callback_url,
             cuda_home=None,
             bind_base_model=True,
             backend=backend,
+            shell_quote=True,
         ),
         f'echo; echo "GB_ARTIFACT_ID:{_ARTIFACT_ID} GB_ARTIFACT_PATH:$OUTPUT_PATH"',
     ]
@@ -112,7 +144,8 @@ def build_bash_spec(
         ctx: the launch inputs assembled from the job and its snapshot.
         fm_tune_root: ``FM_TUNE_ROOT`` for ``bash.env``: the absolute path of a local
             fm-tune checkout on the gbserver host (the command ``cd``s into it and runs
-            its ``main.py``). A repo URL is rejected.
+            its ``main.py``). Anything else, such as a repo URL or a relative path, is
+            rejected.
         fm_tune_extra: fm-tune extras installed into the step's venv (empty installs
             the base package only).
         backend: fm-tune's ``--backend`` (``mlx`` on Apple Silicon, or ``torch``).
@@ -130,12 +163,12 @@ def build_bash_spec(
         The rendered ``build.yaml`` document as text.
 
     Raises:
-        ValueError: ``fm_tune_root`` is unset or a repo URL rather than a local path.
+        ValueError: ``fm_tune_root`` is unset or not an absolute path.
     """
-    if not fm_tune_root or fm_tune_root.startswith("git@") or "://" in fm_tune_root:
+    if not fm_tune_root or not os.path.isabs(fm_tune_root):
         raise ValueError(
-            "The bash runner needs AUTOTUNEX_BASH_FM_TUNE_ROOT set to a local fm-tune "
-            f"checkout on the gbserver host, got {fm_tune_root!r}."
+            "The bash runner needs AUTOTUNEX_BASH_FM_TUNE_ROOT set to the absolute path of "
+            f"a local fm-tune checkout on the gbserver host, got {fm_tune_root!r}."
         )
     config_yaml = yaml.safe_dump(ctx.config_data, default_flow_style=False, sort_keys=False)
     env = {
