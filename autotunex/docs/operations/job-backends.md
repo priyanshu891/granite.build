@@ -179,15 +179,22 @@ polls the local server) plus:
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `AUTOTUNEX_BASH_FM_TUNE_ROOT` | unset | **Required.** Absolute path of a local fm-tune checkout on the gbserver host; the build `cd`s into it and runs its `main.py`. A repo URL is rejected at launch. |
+| `AUTOTUNEX_BASH_FM_TUNE_ROOT` | unset | **Required.** Absolute path of a local fm-tune checkout on the gbserver host; the build `cd`s into it and runs its `main.py`. Startup fails when it is unset or not an absolute path (a repo URL included). |
 | `AUTOTUNEX_BASH_FM_TUNE_EXTRA` | `full,mlx` | The fm-tune extras installed into the build's venv. |
 | `AUTOTUNEX_BASH_BACKEND` | `mlx` | fm-tune's `--backend`: `mlx` for Apple Silicon, or `torch`. |
 | `AUTOTUNEX_JOB_CALLBACK_URL` | unset (spec emits `http://localhost:8001`) | The api-bridge base URL the build reports its logs and metrics to, passed as `--autotunex_server_url`. Unlike the other two variants the bash spec **always** emits it, falling back to `http://localhost:8001` (the api-bridge's default port) when unset. |
 
 The bash spec runs the same `python main.py …` command as the other two variants on
 granite.build's built-in `space://steps/command` step, after a few lines that create
-(once) a cached venv with fm-tune installed and decode the tuning config. With fm-tune
-vendored in-tree (`src/fm-tune/`), point the root at that checkout:
+a cached venv with fm-tune installed and decode the tuning config. The venv lives in
+`.gb-venvs/` beside gbserver's `workdir/` and is keyed by the fm-tune root, the
+extras, the Python version and fm-tune's `pyproject.toml`: the first build of a key
+installs (concurrent first builds wait on a lock), later builds reuse it without
+network access, and a changed `pyproject.toml` gets a fresh venv. Delete
+`.gb-venvs/autotune-*` to reclaim the space of stale ones. The run's output, and the
+`custom` artifact the build publishes, is the `model/` subdirectory of the step's
+output dir, so gbserver's `job.log` stays out of it. With fm-tune vendored in-tree
+(`src/fm-tune/`), point the root at that checkout:
 
 ```
 AUTOTUNEX_BASH_FM_TUNE_ROOT=/abs/path/to/granite.build/autotunex/src/fm-tune

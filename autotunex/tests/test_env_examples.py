@@ -66,6 +66,8 @@ def test_bash_example_loads_as_the_standalone_bash_runner(
 ) -> None:
     monkeypatch.setenv("GB_TOKEN", "test-gb-token")
     monkeypatch.setenv("HF_TOKEN", "test-hf-token")
+    # The example leaves the trainer root for the operator to set; startup needs it.
+    monkeypatch.setenv("AUTOTUNEX_BASH_FM_TUNE_ROOT", "/opt/fm-tune")
 
     settings = Settings(_env_file=str(_ENVS_DIR / "bash.env.example"))
 

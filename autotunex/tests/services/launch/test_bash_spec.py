@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import base64
 import json
-import os
 import shlex
 import shutil
 import subprocess
@@ -141,6 +140,16 @@ def test_build_bash_spec_runs_the_shared_start_command() -> None:
     assert "CUDA_HOME" not in _command(_spec())
 
 
+def test_build_bash_spec_keeps_each_job_value_one_shell_word() -> None:
+    # The command runs under `sh -c` on the gbserver host, so a name must not split.
+    name = "my run; touch /tmp/pwned $(id)"
+    argv = _main_py_argv(_spec(_ctx(experiment_name=name, dataset_name="policy val")))
+
+    assert _flag(argv, "--run_name") == name
+    assert _flag(argv, "--output_model_name") == name
+    assert _flag(argv, "--train_file") == "<dataset>/policy val_train.jsonl"
+
+
 def test_build_bash_spec_names_splits_by_the_dataset_format() -> None:
     # HF-imported datasets are stored as <name>_train.parquet.
     argv = _main_py_argv(_spec(_ctx(data_format="parquet")))
@@ -161,9 +170,19 @@ def test_build_bash_spec_installs_the_configured_extras() -> None:
 
 
 @pytest.mark.parametrize(
-    "root", [None, "", "https://github.example.com/org/fm-tune", "git@host:org/fm-tune.git"]
+    "root",
+    [
+        None,
+        "",
+        "https://github.example.com/org/fm-tune",
+        "git@host:org/fm-tune.git",
+        "relative/fm-tune",
+        "file:///opt/fm-tune",
+    ],
 )
-def test_build_bash_spec_rejects_a_missing_or_remote_fm_tune_root(root: str | None) -> None:
+def test_build_bash_spec_rejects_an_fm_tune_root_that_is_not_an_absolute_path(
+    root: str | None,
+) -> None:
     with pytest.raises(ValueError, match="AUTOTUNEX_BASH_FM_TUNE_ROOT"):
         _spec(fm_tune_root=root)
 
@@ -212,95 +231,214 @@ def test_build_bash_spec_passes_file_uri_dataset_through() -> None:
     assert _custom(text)["inputs"]["dataset_files"]["uri"] == file_uri
 
 
-def test_generated_command_runs_main_py_and_registers_the_output(tmp_path: Path) -> None:
-    """Run the emitted command as the command step would, against a fake fm-tune.
+def _fake_python_dir(tmp_path: Path) -> tuple[Path, Path]:
+    """A ``python3`` whose ``-m venv`` makes a venv of the test interpreter and a fake pip.
 
-    A pre-seeded venv (the test interpreter plus a no-op pip) stands in for the cached
-    one, so nothing is installed; the bindings are rendered the way gbserver does.
+    The fake pip logs each call and sleeps briefly, so a second install racing the
+    first would show up in the log; everything else runs the real interpreter.
     """
-    fm_tune = tmp_path / "fm-tune"
-    fm_tune.mkdir()
-    record = tmp_path / "main_py_call.json"
-    (fm_tune / "main.py").write_text(
-        "import json, os, sys\n"
-        "argv = sys.argv[1:]\n"
-        "cfg = argv[argv.index('--config_file') + 1]\n"
-        "sys.stdout.write('Trial 3/8 [====>    ] 50%')\n"
-        f"json.dump({{'argv': argv, 'cwd': os.getcwd(), 'config': open(cfg).read()}},"
-        f" open({str(record)!r}, 'w'))\n"
+    pybin = tmp_path / "pybin"
+    pybin.mkdir()
+    pip_log = tmp_path / "pip.log"
+    (pybin / "python3").write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = -m ] && [ "$2" = venv ]; then\n'
+        "  for venv; do :; done\n"
+        '  [ "$3" != --clear ] || rm -rf "$venv"\n'
+        f'  mkdir -p "$venv/bin" && ln -sf {shlex.quote(sys.executable)} "$venv/bin/python"\n'
+        f'  printf \'#!/bin/sh\\necho "$*" >> {pip_log}\\nsleep 0.3\\n\' > "$venv/bin/pip"\n'
+        '  chmod +x "$venv/bin/pip"; exit 0\n'
+        "fi\n"
+        f'exec {shlex.quote(sys.executable)} "$@"\n'
     )
-    venv_bin = tmp_path / ".gb-venvs" / "autotune" / "bin"
-    venv_bin.mkdir(parents=True)
-    (venv_bin / "python").symlink_to(sys.executable)
-    (venv_bin / "pip").write_text("#!/bin/sh\nexit 0\n")
-    (venv_bin / "pip").chmod(0o755)
-    dataset = tmp_path / "dataset"
-    dataset.mkdir()
-    out = tmp_path / "workdir" / "outputs"
-    out.mkdir(parents=True)
+    (pybin / "python3").chmod(0o755)
+    return pybin, pip_log
 
-    text = _spec(fm_tune_root=str(fm_tune))
-    command = (
-        _command(text)
-        .replace(DATASET_BINDING, str(dataset))
-        .replace(MODEL_BINDING, "/models/smollm2")
-    )
+
+def _fake_fm_tune(tmp_path: Path, main_py: str) -> Path:
+    fm_tune = tmp_path / "fm-tune"
+    fm_tune.mkdir(exist_ok=True)
+    (fm_tune / "main.py").write_text(main_py)
+    (fm_tune / "pyproject.toml").write_text('[project]\nname = "fm-tune"\n')
+    return fm_tune
+
+
+def _launch(
+    text: str, out: Path, pybin: Path, *, dataset: str = "/d", model: str = "/m"
+) -> subprocess.Popen[str]:
+    """Start the emitted command as the command step would, bindings rendered."""
+    command = _command(text).replace(DATASET_BINDING, dataset).replace(MODEL_BINDING, model)
     # gbserver stringifies every bash.env value and hands the step no inherited
     # environment, so mirror both.
     env = {k: str(v) for k, v in _step_config(text)["bash"]["env"].items()}
-    env |= {
-        "LLMB_BASH_PYTHON_DIR": os.path.dirname(sys.executable),
-        "LLMB_BASH_OUTPUT_DIR": str(out),
-    }
-    proc = subprocess.run(
+    env |= {"LLMB_BASH_PYTHON_DIR": str(pybin), "LLMB_BASH_OUTPUT_DIR": str(out)}
+    out.mkdir(parents=True, exist_ok=True)
+    # gbserver tees the step's output into job.log inside the output dir.
+    (out / "job.log").write_text("gbserver log\n")
+    return subprocess.Popen(
         [shutil.which("sh") or "/bin/sh", "-c", command],
         env=env,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        timeout=60,
     )
 
-    assert proc.returncode == 0, proc.stderr
-    # The marker starts its own line even after main.py's unterminated progress line.
-    assert f"GB_ARTIFACT_ID:custom GB_ARTIFACT_PATH:{out}" in proc.stdout.splitlines()
+
+def _finish(proc: subprocess.Popen[str]) -> tuple[int, str, str]:
+    try:
+        stdout, stderr = proc.communicate(timeout=60)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        raise
+    return proc.returncode, stdout, stderr
+
+
+def _build_out(gb_home: Path, build: str = "llm-build-1") -> Path:
+    """The step output dir gbserver hands a bash launch, under ``<gb_home>/workdir``."""
+    return gb_home / "workdir" / build / "target-custom" / "step-command" / "launch-1" / "outputs"
+
+
+def test_generated_command_runs_main_py_and_registers_the_output(tmp_path: Path) -> None:
+    record = tmp_path / "main_py_call.json"
+    fm_tune = _fake_fm_tune(
+        tmp_path,
+        "import json, os, sys\n"
+        "argv = sys.argv[1:]\n"
+        "cfg = argv[argv.index('--config_file') + 1]\n"
+        "out = argv[argv.index('--output_dir') + 1]\n"
+        "open(os.path.join(out, 'adapter.bin'), 'w').close()\n"
+        "sys.stdout.write('Trial 3/8 [====>    ] 50%')\n"
+        f"json.dump({{'argv': argv, 'cwd': os.getcwd(), 'config': open(cfg).read()}},"
+        f" open({str(record)!r}, 'w'))\n",
+    )
+    pybin, _ = _fake_python_dir(tmp_path)
+    dataset = tmp_path / "dataset"
+    dataset.mkdir()
+    pwned = tmp_path / "pwned"
+    name = f"my run; touch {pwned} $(touch {pwned})"
+    # A GB home path that itself holds a `/workdir/` must not move the venv cache.
+    gb_home = tmp_path / "workdir" / "gb-home"
+    out = _build_out(gb_home)
+
+    text = _spec(_ctx(experiment_name=name), fm_tune_root=str(fm_tune))
+    returncode, stdout, stderr = _finish(
+        _launch(text, out, pybin, dataset=str(dataset), model="/models/smollm2")
+    )
+
+    assert returncode == 0, stderr
+    model = out / "model"
+    # The marker starts its own line even after main.py's unterminated progress line,
+    # and registers the model subdirectory, not the dir gbserver's job.log is in.
+    assert f"GB_ARTIFACT_ID:custom GB_ARTIFACT_PATH:{model}" in stdout.splitlines()
+    assert sorted(p.name for p in model.iterdir()) == ["adapter.bin"]
     call = json.loads(record.read_text())
     argv = call["argv"]
     assert Path(call["cwd"]).resolve() == fm_tune.resolve()
     assert yaml.safe_load(call["config"]) == {"tune_config": {"num_samples": {"default": 4}}}
     assert _flag(argv, "--train_file") == f"{dataset}/policy_val_train.jsonl"
     assert _flag(argv, "--model_name_or_path") == "/models/smollm2"
-    assert _flag(argv, "--output_dir") == str(out)
+    assert _flag(argv, "--output_dir") == str(model)
+    assert _flag(argv, "--run_name") == name
+    assert not pwned.exists()
     # The tuning config does not ship inside the `custom` artifact.
-    assert not Path(_flag(argv, "--config_file")).is_relative_to(out)
-    assert list(out.iterdir()) == []
+    assert not Path(_flag(argv, "--config_file")).is_relative_to(model)
+    # The venv is cached beside gbserver's workdir, keyed per fm-tune checkout.
+    assert len(list((gb_home / ".gb-venvs").glob("autotune-*/.installed"))) == 1
+
+
+def test_generated_command_reuses_the_venv_without_reinstalling(tmp_path: Path) -> None:
+    fm_tune = _fake_fm_tune(tmp_path, "pass\n")
+    pybin, pip_log = _fake_python_dir(tmp_path)
+    text = _spec(fm_tune_root=str(fm_tune))
+
+    for build in ("llm-build-1", "llm-build-2"):
+        returncode, _, stderr = _finish(_launch(text, _build_out(tmp_path, build), pybin))
+        assert returncode == 0, stderr
+
+    installs = [ln for ln in pip_log.read_text().splitlines() if " -e " in ln]
+    assert installs == [f"install --quiet -e {fm_tune}[full,mlx]"]
+
+
+def test_generated_command_installs_once_for_concurrent_first_builds(tmp_path: Path) -> None:
+    fm_tune = _fake_fm_tune(tmp_path, "pass\n")
+    pybin, pip_log = _fake_python_dir(tmp_path)
+    text = _spec(fm_tune_root=str(fm_tune))
+
+    procs = [_launch(text, _build_out(tmp_path, f"llm-build-{i}"), pybin) for i in range(3)]
+    results = [_finish(proc) for proc in procs]
+
+    assert [code for code, _, _ in results] == [0, 0, 0], [err for _, _, err in results]
+    installs = [ln for ln in pip_log.read_text().splitlines() if " -e " in ln]
+    assert len(installs) == 1, installs
+
+
+def test_generated_command_takes_over_a_lock_whose_owner_died(tmp_path: Path) -> None:
+    fm_tune = _fake_fm_tune(tmp_path, "pass\n")
+    pybin, pip_log = _fake_python_dir(tmp_path)
+    text = _spec(fm_tune_root=str(fm_tune))
+    assert _finish(_launch(text, _build_out(tmp_path, "llm-build-1"), pybin))[0] == 0
+    (venv,) = (tmp_path / ".gb-venvs").glob("autotune-*")
+    # A build killed mid-install leaves its lock behind and no finished install.
+    (venv / ".installed").unlink()
+    dead = subprocess.Popen(["true"])
+    dead.wait()
+    lock = venv.with_name(f"{venv.name}.lock")
+    lock.mkdir()
+    (lock / "pid").write_text(f"{dead.pid}\n")
+
+    returncode, _, stderr = _finish(_launch(text, _build_out(tmp_path, "llm-build-2"), pybin))
+
+    assert returncode == 0, stderr
+    assert not lock.exists()
+    assert len([ln for ln in pip_log.read_text().splitlines() if " -e " in ln]) == 2
+
+
+def test_generated_command_rebuilds_a_venv_whose_interpreter_is_gone(tmp_path: Path) -> None:
+    fm_tune = _fake_fm_tune(tmp_path, "pass\n")
+    pybin, pip_log = _fake_python_dir(tmp_path)
+    text = _spec(fm_tune_root=str(fm_tune))
+    assert _finish(_launch(text, _build_out(tmp_path, "llm-build-1"), pybin))[0] == 0
+    (venv,) = (tmp_path / ".gb-venvs").glob("autotune-*")
+    (venv / "bin" / "python").unlink()
+
+    returncode, _, stderr = _finish(_launch(text, _build_out(tmp_path, "llm-build-2"), pybin))
+
+    assert returncode == 0, stderr
+    assert len([ln for ln in pip_log.read_text().splitlines() if " -e " in ln]) == 2
+
+
+def test_generated_command_keys_the_venv_by_fm_tune_dependencies(tmp_path: Path) -> None:
+    fm_tune = _fake_fm_tune(tmp_path, "pass\n")
+    pybin, _ = _fake_python_dir(tmp_path)
+    text = _spec(fm_tune_root=str(fm_tune))
+
+    assert _finish(_launch(text, _build_out(tmp_path, "llm-build-1"), pybin))[0] == 0
+    (fm_tune / "pyproject.toml").write_text('[project]\nname = "fm-tune"\nversion = "2"\n')
+    assert _finish(_launch(text, _build_out(tmp_path, "llm-build-2"), pybin))[0] == 0
+
+    assert len(list((tmp_path / ".gb-venvs").glob("autotune-*/.installed"))) == 2
+
+
+def test_generated_command_outside_the_workdir_layout_uses_a_per_build_venv(
+    tmp_path: Path,
+) -> None:
+    fm_tune = _fake_fm_tune(tmp_path, "pass\n")
+    pybin, _ = _fake_python_dir(tmp_path)
+    out = tmp_path / "elsewhere" / "outputs"
+
+    returncode, _, stderr = _finish(_launch(_spec(fm_tune_root=str(fm_tune)), out, pybin))
+
+    assert returncode == 0, stderr
+    assert list((tmp_path / "elsewhere" / ".gb-venvs").glob("autotune-*/.installed"))
 
 
 def test_generated_command_prints_no_marker_when_main_py_fails(tmp_path: Path) -> None:
-    fm_tune = tmp_path / "fm-tune"
-    fm_tune.mkdir()
-    (fm_tune / "main.py").write_text("raise SystemExit(7)\n")
-    venv_bin = tmp_path / ".gb-venvs" / "autotune" / "bin"
-    venv_bin.mkdir(parents=True)
-    (venv_bin / "python").symlink_to(sys.executable)
-    (venv_bin / "pip").write_text("#!/bin/sh\nexit 0\n")
-    (venv_bin / "pip").chmod(0o755)
-    out = tmp_path / "workdir" / "outputs"
-    out.mkdir(parents=True)
+    fm_tune = _fake_fm_tune(tmp_path, "raise SystemExit(7)\n")
+    pybin, _ = _fake_python_dir(tmp_path)
 
-    text = _spec(fm_tune_root=str(fm_tune))
-    command = _command(text).replace(DATASET_BINDING, "/d").replace(MODEL_BINDING, "/m")
-    env = {k: str(v) for k, v in _step_config(text)["bash"]["env"].items()}
-    env |= {
-        "LLMB_BASH_PYTHON_DIR": os.path.dirname(sys.executable),
-        "LLMB_BASH_OUTPUT_DIR": str(out),
-    }
-    proc = subprocess.run(
-        [shutil.which("sh") or "/bin/sh", "-c", command],
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=60,
+    returncode, stdout, _ = _finish(
+        _launch(_spec(fm_tune_root=str(fm_tune)), _build_out(tmp_path), pybin)
     )
 
-    assert proc.returncode == 7
-    assert "GB_ARTIFACT_ID:" not in proc.stdout
+    assert returncode == 7
+    assert "GB_ARTIFACT_ID:" not in stdout

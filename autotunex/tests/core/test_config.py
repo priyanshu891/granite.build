@@ -829,11 +829,30 @@ def test_llmb_standalone_does_not_require_custom_code_inputs(
         environment="test",
         job_backend="llmb",
         gb_environment="standalone",
+        bash_fm_tune_root="/opt/fm-tune",
         gb_server_url="http://localhost:9000",
     )
 
     assert settings.gb_environment == "standalone"
     assert settings.job_runtime_image is None
+
+
+@pytest.mark.parametrize("root", [None, "", "relative/fm-tune", "file:///opt/fm-tune"])
+def test_llmb_standalone_bash_requires_an_absolute_fm_tune_root(
+    monkeypatch: pytest.MonkeyPatch, root: str | None
+) -> None:
+    """The bash variant fails startup, not its first launch, without a usable trainer root."""
+    monkeypatch.setenv("GB_TOKEN", "t")
+
+    with pytest.raises(ValueError, match="bash_fm_tune_root"):
+        Settings(
+            _env_file=None,
+            environment="test",
+            job_backend="llmb",
+            gb_environment="standalone",
+            gb_server_url="http://localhost:9000",
+            bash_fm_tune_root=root,
+        )
 
 
 def test_llmb_custom_code_still_requires_cluster_inputs(
@@ -961,6 +980,7 @@ def test_llmb_standalone_bash_unaffected_by_lsf_branch(monkeypatch: pytest.Monke
         environment="test",
         job_backend="llmb",
         gb_environment="standalone",
+        bash_fm_tune_root="/opt/fm-tune",
         gb_server_url="http://localhost:9000",
     )
 
