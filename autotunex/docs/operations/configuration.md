@@ -232,10 +232,9 @@ spec anchors each run's output under `AUTOTUNEX_ARTIFACT_DIR`, resolved to an ab
 | Variable | Meaning | Default |
 | --- | --- | --- |
 | `GB_ENVIRONMENT` | **Read without the `AUTOTUNEX_` prefix** — it reuses the build tooling's own `GB_ENVIRONMENT` variable, and the prefixed `AUTOTUNEX_GB_ENVIRONMENT` is deliberately ignored. Set to `standalone` to select the local-`bash` build spec — matched case-insensitively and whitespace-trimmed, so granite.build's own `GB_ENVIRONMENT=STANDALONE` selects it too. | *(unset)* |
-| `AUTOTUNEX_BASH_FM_TUNE_ROOT` | Trainer checkout/repo injected into the bash spec's environment. | *(unset)* |
-| `AUTOTUNEX_BASH_FM_TUNE_REF` | Branch/tag/commit of the trainer to check out; unset uses the repo's default branch. | *(unset)* |
-| `AUTOTUNEX_BASH_FM_TUNE_EXTRA` | The extras to install in the bash spec. | `full,mlx` |
-| `AUTOTUNEX_BASH_BACKEND` | Compute backend for the bash spec: `mlx` (Apple Silicon) or `torch`. | `mlx` |
+| `AUTOTUNEX_BASH_FM_TUNE_ROOT` | Absolute path of a local fm-tune checkout on the gbserver host; required by the bash spec, which rejects a repo URL. | *(unset)* |
+| `AUTOTUNEX_BASH_FM_TUNE_EXTRA` | The fm-tune extras the bash spec installs into its venv. | `full,mlx` |
+| `AUTOTUNEX_BASH_BACKEND` | fm-tune's `--backend` for the bash spec: `mlx` (Apple Silicon) or `torch`. | `mlx` |
 | `AUTOTUNEX_JOB_CALLBACK_URL` | The api-bridge / callback base URL the build reports to, injected into the bash spec's environment as `AUTOTUNEX_SERVER_URL`. Unlike the `custom_code` and LSF start commands — which emit `--autotunex_server_url` only when it is set — the bash spec **always** emits it, falling back to `http://localhost:8001` (the api-bridge's default port) when unset. | *(unset — the bash spec then emits `http://localhost:8001`)* |
 
 ### `llmb` backend (LSF / SkyPilot variant)
