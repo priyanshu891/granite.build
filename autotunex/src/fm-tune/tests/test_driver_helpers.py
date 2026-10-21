@@ -307,6 +307,26 @@ class TestBuildResourcePoolManager:
         with pytest.raises(ValueError, match="Unsupported"):
             build_resource_pool_manager(num_workers=4, rl_algorithm="reinforce")
 
+    def test_reference_policy_is_fused_into_the_actor(self):
+        """verl 0.9 has no separate ref worker: ActorRolloutRef carries it."""
+        from verl.trainer.ppo.ray_trainer import Role
+
+        from autotune.trainers.driver_multi_verl import build_resource_pool_manager
+
+        rpm = build_resource_pool_manager(num_workers=4, rl_algorithm="grpo", use_reference_policy=True)
+        assert Role.ActorRolloutRef in rpm.mapping
+        assert Role.RefPolicy not in rpm.mapping
+        assert Role.ActorRollout not in rpm.mapping
+
+    def test_no_reference_policy_uses_plain_actor_rollout(self):
+        from verl.trainer.ppo.ray_trainer import Role
+
+        from autotune.trainers.driver_multi_verl import build_resource_pool_manager
+
+        rpm = build_resource_pool_manager(num_workers=4, rl_algorithm="ppo", use_reference_policy=False)
+        assert Role.ActorRollout in rpm.mapping
+        assert Role.ActorRolloutRef not in rpm.mapping
+
 
 # Template stand-ins: 4.2 branches on enable_thinking, 4.1 does not.
 GRANITE42_TEMPLATE = "{%- if enable_thinking %}<|im_start|>assistant<think>{%- endif %}"

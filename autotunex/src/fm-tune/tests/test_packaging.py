@@ -1,5 +1,6 @@
 """Tests that fm-tune's base install is slim and the heavy stack lives in extras."""
 
+import re
 from pathlib import Path
 
 import tomllib  # Python 3.11+
@@ -11,18 +12,21 @@ def test_base_dependencies_are_slim():
     assert _PYPROJECT["project"]["dependencies"] == ["pyyaml>=6.0.2"]
 
 
-def test_full_carries_the_heavy_training_stack_and_core_is_gone():
-    extras = _PYPROJECT["project"]["optional-dependencies"]
-    assert "core" not in extras  # dropped 2026-08-22 (dmf-lib retired)
-    full = " ".join(extras["full"])
+def _names(reqs):
+    """Requirement names without versions, extras or markers ("verl[vllm]==0.9.1; ..." -> "verl")."""
+    return {re.split(r"[\[=<>~!; ]", r, maxsplit=1)[0].lower() for r in reqs}
+
+
+def test_core_carries_the_training_stack():
+    """`core` is the lean CPU/demo install (single-device SFT + DPO/KTO); pyproject explains why it exists."""
+    core = _names(_PYPROJECT["project"]["optional-dependencies"]["core"])
     for dep in (
-        "torch==2.8.0",
-        "transformers==4.57.6",
-        "peft==0.18.0",
-        "trl==0.29.0",
-        "bitsandbytes==0.49.0",
+        "torch",
+        "transformers",
+        "peft",
+        "trl",
+        "bitsandbytes",
         "accelerate",
-        "deepspeed",
         "hyperopt",
         "tokenizers",
         "sentencepiece",
@@ -30,9 +34,17 @@ def test_full_carries_the_heavy_training_stack_and_core_is_gone():
         "tensorboardx",
         "packaging",
         "datasets",
-        "ray[tune,default]",
+        "ray",
     ):
-        assert dep in full, dep
+        assert dep in core, dep
+    # The GPU-only stack must stay out of core (it does not build on CPU / macOS).
+    assert not core & {"verl", "flash-attn", "deepspeed", "vllm"}
+
+
+def test_full_is_core_plus_the_gpu_stack():
+    full = _PYPROJECT["project"]["optional-dependencies"]["full"]
+    assert "autotune[core]" in full  # every shared pin lives in core only
+    assert {"verl", "flash-attn", "deepspeed"} <= _names(full)
 
 
 def test_configs_are_shipped_as_package_data():
