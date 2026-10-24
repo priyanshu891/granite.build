@@ -1,4 +1,6 @@
 docs/superpowers
+docs/agents
+CLAUDE.local.md
 # from demo scripts
 outputs/**
 # from env var GBSERVER_LOG_FILE=gbserver-log.txt

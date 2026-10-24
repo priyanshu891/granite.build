@@ -115,6 +115,19 @@ def test_start_command_model_at_root_and_keep_diagnostics_flags() -> None:
     assert "--keep_diagnostics" not in kept_without_root
 
 
+def test_start_command_without_cuda_home_or_backend() -> None:
+    # The local-bash builder: no CUDA toolkit to export, and fm-tune's --backend set.
+    bash = start_command(
+        _ctx(), config_file="/c.yaml", callback_url=None, cuda_home=None, backend="mlx"
+    )
+    remote = start_command(_ctx(), config_file="/c.yaml", callback_url=None, cuda_home="x")
+
+    assert bash.startswith("export LOG_PATH=$OUTPUT_PATH && python main.py ")
+    assert bash.endswith(" --backend mlx")
+    assert "CUDA_HOME" not in bash
+    assert "--backend" not in remote
+
+
 def test_inject_reward_function_returns_empty_without_code() -> None:
     config: dict[str, object] = {
         "training_rl_config": {"reward_function_path": {"default": "orig.py"}}

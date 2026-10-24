@@ -55,6 +55,7 @@ def test_registry_selects_bash_builder_when_standalone(monkeypatch: pytest.Monke
         environment="test",
         job_backend="llmb",
         gb_environment="standalone",
+        bash_fm_tune_root="/opt/fm-tune",
         gb_server_url="https://gbserver.example",
     )
 
@@ -74,6 +75,7 @@ def test_registry_bash_builder_anchors_output_under_artifact_dir(
         environment="test",
         job_backend="llmb",
         gb_environment="standalone",
+        bash_fm_tune_root="/opt/fm-tune",
         gb_server_url="https://gbserver.example",
         artifact_dir="/data/artifacts",
     )
@@ -190,6 +192,7 @@ def test_registry_still_selects_bash_when_standalone_without_lsf_cluster(
         environment="test",
         job_backend="llmb",
         gb_environment="standalone",
+        bash_fm_tune_root="/opt/fm-tune",
         gb_server_url="http://localhost:9000",
     )
 

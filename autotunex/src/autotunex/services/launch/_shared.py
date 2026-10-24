@@ -7,12 +7,13 @@ The custom_code builder (``spec.py``) and the LSF/SkyPilot builder
 the ``|``-literal YAML dumper, the ``num_gpus_per_node`` derivation, reward-
 function injection for online RL, and the ``python main.py`` start command.
 They live here so there is exactly one implementation of each, rather than a
-copy per builder. The local-bash builder (``bash_spec.py``) deliberately shares
-none of these — it is a different execution shape.
+copy per builder. The local-bash builder (``bash_spec.py``) is a different
+execution shape and shares only the dumper and the start command.
 """
 
 from __future__ import annotations
 
+import shlex
 from collections.abc import Sequence
 from typing import Any
 
@@ -109,10 +110,12 @@ def start_command(
     *,
     config_file: str,
     callback_url: str | None,
-    cuda_home: str,
+    cuda_home: str | None,
     model_at_root: bool = False,
     keep_diagnostics: bool = False,
     bind_base_model: bool = False,
+    backend: str | None = None,
+    shell_quote: bool = False,
 ) -> str:
     """Build the container's ``main.py`` invocation, a faithful port of build_start_cmd.
 
@@ -120,7 +123,9 @@ def start_command(
     2025 command; ``--tuning_algo``, ``--rl_algo``, ``--no_autotune`` and
     ``--autotunex_server_url`` are conditional. ``cuda_home`` is the only value that
     differs between the custom_code (``/usr/local/cuda-13.0``) and LSF
-    (``/opt/share/cuda-12.9``) builders — every other flag is identical.
+    (``/opt/share/cuda-12.9``) builders — every other flag is identical. The local-bash
+    builder passes ``cuda_home=None`` (no CUDA export) and a ``backend``, appended as
+    fm-tune's ``--backend`` (``mlx`` or ``torch``).
 
     ``model_at_root`` appends fm-tune's ``--model_at_root`` (the saved model is moved
     to the root of ``$OUTPUT_PATH``, everything else deleted), and with it
@@ -130,21 +135,36 @@ def start_command(
 
     ``bind_base_model`` points ``--model_name_or_path`` at the ``base_model`` input's
     mount instead of naming ``ctx.model`` (see :func:`base_model_uri`).
+
+    ``shell_quote`` single-quotes every value taken from the job (names, the model,
+    the binding paths) and double-quotes ``$OUTPUT_PATH``, so a name holding a space,
+    ``;`` or ``$(…)`` stays one inert argument; ``config_file`` is emitted as given.
+    The local-bash builder sets it, since its command runs under ``sh -c`` on the
+    gbserver host. The custom_code step renders ``start_command`` into a
+    single-quoted YAML scalar, where an added ``'`` would break the chart, so the
+    remote builders leave it off.
     """
+    quote = shlex.quote if shell_quote else str
+    output_path = '"$OUTPUT_PATH"' if shell_quote else "$OUTPUT_PATH"
+    model = _BASE_MODEL_BINDING if bind_base_model else ctx.model
+
+    def split(name: str) -> str:
+        return quote(f"{_DATASET_BINDING}/{ctx.dataset_name}_{name}.{ctx.data_format}")
+
     flags = [
         "python main.py",
         f"--config_file {config_file}",
-        f"--train_file {_DATASET_BINDING}/{ctx.dataset_name}_train.{ctx.data_format}",
-        f"--validation_file {_DATASET_BINDING}/{ctx.dataset_name}_validation.{ctx.data_format}",
-        f"--model_name_or_path {_BASE_MODEL_BINDING if bind_base_model else ctx.model}",
+        f"--train_file {split('train')}",
+        f"--validation_file {split('validation')}",
+        f"--model_name_or_path {quote(model)}",
     ]
     if ctx.tuning_type:
-        flags.append(f"--tuning_algo {ctx.tuning_type}")
+        flags.append(f"--tuning_algo {quote(ctx.tuning_type)}")
     if ctx.rl_tuner_type:
-        flags.append(f"--rl_algo {ctx.rl_tuner_type}")
-    flags.append(f"--run_name {ctx.experiment_name}")
-    flags.append("--output_dir $OUTPUT_PATH")
-    flags.append(f"--output_model_name {ctx.experiment_name}")
+        flags.append(f"--rl_algo {quote(ctx.rl_tuner_type)}")
+    flags.append(f"--run_name {quote(ctx.experiment_name)}")
+    flags.append(f"--output_dir {output_path}")
+    flags.append(f"--output_model_name {quote(ctx.experiment_name)}")
     flags.append("--cleanup --save_history")
     if model_at_root:
         flags.append("--model_at_root")
@@ -154,6 +174,9 @@ def start_command(
         flags.append("--no_autotune")
     flags.append(f"--job_id {ctx.job_id}")
     if callback_url:
-        flags.append(f"--autotunex_server_url {callback_url}")
+        flags.append(f"--autotunex_server_url {quote(callback_url)}")
+    if backend:
+        flags.append(f"--backend {quote(backend)}")
     python_cmd = " ".join(flags)
-    return f"export CUDA_HOME={cuda_home} && export LOG_PATH=$OUTPUT_PATH && {python_cmd}"
+    cuda_export = f"export CUDA_HOME={cuda_home} && " if cuda_home else ""
+    return f"{cuda_export}export LOG_PATH={output_path} && {python_cmd}"
